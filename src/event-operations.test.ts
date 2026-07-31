@@ -61,6 +61,39 @@ export function eventOperationsContract(
       ])
     })
 
+    it("lists open Events earliest first and restores closed Events in chronological order", () => {
+      const operations = createOperations()
+      const september = operations.createEvent({
+        templateId: "wellness",
+        name: "September wellbeing session",
+        date: "2027-09-18",
+        venue: "Tampines Hub",
+      })
+      const august = operations.createEvent({
+        templateId: "skill-enhancement",
+        name: "August skills session",
+        date: "2027-08-09",
+        venue: "Marina Bay Community Plaza",
+      })
+      const july = operations.createEvent({
+        templateId: "distribution-of-pre-loved-items",
+        name: "July distribution",
+        date: "2027-07-12",
+        venue: "Jurong Community Hall",
+      })
+
+      operations.closeEvent(july.id)
+
+      expect(operations.listEvents().map((event) => event.name)).toEqual([
+        august.name,
+        september.name,
+      ])
+      expect(
+        operations.listEvents({ includeClosed: true }).map((event) => event.name),
+      ).toEqual([july.name, august.name, september.name])
+      expect(operations.getEvent(july.id)).toMatchObject({ status: "Closed" })
+    })
+
     it("rejects starting a Task that is already in progress", () => {
       const operations = createOperations()
       const event = operations.createEvent({

@@ -43,7 +43,17 @@ export type Event = {
   venue: string
   sourceTemplateId: string
   sourceTemplateName: string
+  status: "Open" | "Closed"
   tasks: EventTask[]
+}
+
+export function eventsForCollection(
+  events: Event[],
+  includeClosed = false,
+): Event[] {
+  return events
+    .filter((event) => includeClosed || event.status !== "Closed")
+    .sort((left, right) => left.date.localeCompare(right.date))
 }
 
 export type TeamMember = {
@@ -81,8 +91,9 @@ export interface EventOperations {
   resetBuiltInEventTemplate(templateId: string): EventTemplate
   deleteCustomEventTemplate(templateId: string): void
   listTeamMembers(): TeamMember[]
-  listEvents(): Event[]
+  listEvents(options?: { includeClosed?: boolean }): Event[]
   getEvent(eventId: string): Event | undefined
+  closeEvent(eventId: string): Event
   createEventDraft(templateId: string): EventDraft
   updateEventDraft(
     draftId: string,
@@ -287,6 +298,7 @@ export function createInMemoryEventOperations(): EventOperations {
       venue: input.venue,
       sourceTemplateId: template.id,
       sourceTemplateName: template.name,
+      status: "Open",
       tasks: template.tasks.map((task) => ({
         id: `${task.id}-event-${nextEventId - 1}`,
         title: task.title,
@@ -368,10 +380,17 @@ export function createInMemoryEventOperations(): EventOperations {
       templates.splice(index, 1)
     },
     listTeamMembers: () => copy(teamMembers),
-    listEvents: () => copy(events),
+    listEvents: ({ includeClosed = false } = {}) =>
+      copy(eventsForCollection(events, includeClosed)),
     getEvent: (eventId) => {
       const event = events.find((item) => item.id === eventId)
       return event ? copy(event) : undefined
+    },
+    closeEvent: (eventId) => {
+      const event = events.find((item) => item.id === eventId)
+      if (!event) throw new Error("Event not found.")
+      event.status = "Closed"
+      return copy(event)
     },
     createEventDraft: (templateId) => {
       if (!templates.some((item) => item.id === templateId)) {
@@ -465,6 +484,7 @@ export function createInMemoryEventOperations(): EventOperations {
         venue: draft.venue,
         sourceTemplateId: template.id,
         sourceTemplateName: template.name,
+        status: "Open",
         tasks: draft.tasks.map((task) => ({
           ...copy(task),
           id: `${task.id}-event-${nextEventId - 1}`,

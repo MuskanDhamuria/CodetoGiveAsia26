@@ -1,6 +1,7 @@
-import { FormEvent, useRef, useState } from "react"
+import { FormEvent, useMemo, useRef, useState } from "react"
 import {
   createInMemoryEventOperations,
+  eventsForCollection,
   type Event,
   type EventDraft,
   type EventOperations,
@@ -93,6 +94,112 @@ function EventWorkspace({
   )
 }
 
+type CollectionView = "list" | "calendar"
+
+function eventCompletion(event: Event) {
+  const done = event.tasks.filter((task) => task.status === "Done").length
+  return { done, total: event.tasks.length }
+}
+
+function monthLabel(month: Date) {
+  return new Intl.DateTimeFormat("en-SG", {
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(month)
+}
+
+function EventCalendar({
+  events,
+  month,
+  onChangeMonth,
+  onOpen,
+}: {
+  events: Event[]
+  month: Date
+  onChangeMonth: (direction: -1 | 1) => void
+  onOpen: (event: Event) => void
+}) {
+  const year = month.getUTCFullYear()
+  const monthIndex = month.getUTCMonth()
+  const firstWeekday = (new Date(Date.UTC(year, monthIndex, 1)).getUTCDay() + 6) % 7
+  const daysInMonth = new Date(Date.UTC(year, monthIndex + 1, 0)).getUTCDate()
+  const cells = Array.from({ length: Math.ceil((firstWeekday + daysInMonth) / 7) * 7 })
+
+  return (
+    <section aria-label={`${monthLabel(month)} Event calendar`} className="event-collection-calendar">
+      <header>
+        <button aria-label="Previous month" type="button" onClick={() => onChangeMonth(-1)}>←</button>
+        <h3>{monthLabel(month)}</h3>
+        <button aria-label="Next month" type="button" onClick={() => onChangeMonth(1)}>→</button>
+      </header>
+      <div className="event-calendar-weekdays">
+        {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day) => <span key={day}>{day}</span>)}
+      </div>
+      <div className="event-calendar-grid">
+        {cells.map((_, index) => {
+          const day = index - firstWeekday + 1
+          const dayEvents = day > 0 && day <= daysInMonth
+            ? events.filter((event) => event.date === `${year}-${String(monthIndex + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`)
+            : []
+          return <div key={index} className={dayEvents.length ? "has-events" : ""}>
+            {day > 0 && day <= daysInMonth && <span>{day}</span>}
+            {dayEvents.map((event) => <button key={event.id} type="button" onClick={() => onOpen(event)}>{event.name}</button>)}
+          </div>
+        })}
+      </div>
+    </section>
+  )
+}
+
+function EventCollection({
+  events,
+  onNewEvent,
+  onOpen,
+}: {
+  events: Event[]
+  onNewEvent: () => void
+  onOpen: (event: Event) => void
+}) {
+  const [view, setView] = useState<CollectionView>("list")
+  const [showClosed, setShowClosed] = useState(false)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [month, setMonth] = useState(() => new Date(Date.UTC(2027, 7, 1)))
+  const visibleEvents = useMemo(
+    () => eventsForCollection(events, showClosed),
+    [events, showClosed],
+  )
+  const selected = visibleEvents.find((event) => event.id === selectedId) ?? visibleEvents[0]
+
+  return (
+    <section aria-labelledby="event-collection-title" className="event-collection">
+      <header className="event-collection-header">
+        <div><p>Events</p><h2 id="event-collection-title">Event collection</h2><span>Find scheduled work in date order.</span></div>
+        <div className="event-collection-controls">
+          <div aria-label="Collection view" className="event-view-toggle">
+            <button className={view === "list" ? "active" : ""} type="button" onClick={() => setView("list")}>List</button>
+            <button className={view === "calendar" ? "active" : ""} type="button" onClick={() => setView("calendar")}>Calendar</button>
+          </div>
+          <label><input checked={showClosed} type="checkbox" onChange={() => setShowClosed((current) => !current)} /> Show closed</label>
+          <button className="event-new-button" type="button" onClick={onNewEvent}>+ New event</button>
+        </div>
+      </header>
+      {events.length === 0 ? (
+        <div className="event-operations-empty"><h3>No Events yet</h3><p>Create an Event from an Event Template to schedule its plan.</p><button type="button" onClick={onNewEvent}>New event</button></div>
+      ) : view === "calendar" ? (
+        <EventCalendar events={visibleEvents} month={month} onChangeMonth={(direction) => setMonth((current) => new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth() + direction, 1)))} onOpen={onOpen} />
+      ) : (
+        <div className="event-collection-listing">
+          <div className="event-collection-list" aria-label="Events earliest first">
+            {visibleEvents.map((event) => <button className={selected?.id === event.id ? "selected" : ""} key={event.id} type="button" onClick={() => setSelectedId(event.id)}><time>{new Intl.DateTimeFormat("en-SG", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }).format(new Date(`${event.date}T00:00:00Z`))}</time><strong>{event.name}</strong><span>{event.venue}</span><em className={event.status === "Closed" ? "closed" : ""}>{event.status}</em></button>)}
+          </div>
+          {selected && <aside className="event-collection-preview"><p>Selected Event</p><h3>{selected.name}</h3><span>{selected.date} · {selected.venue}</span><dl><div><dt>Status</dt><dd>{selected.status}</dd></div><div><dt>Event Template</dt><dd>{selected.sourceTemplateName}</dd></div><div><dt>Tasks complete</dt><dd>{eventCompletion(selected).done} of {eventCompletion(selected).total}</dd></div></dl><button type="button" onClick={() => onOpen(selected)}>Open event workspace</button></aside>}
+        </div>
+      )}
+    </section>
+  )
+}
+
 export default function EventOperationsMvp() {
   const [operations] = useState<EventOperations>(() =>
     createInMemoryEventOperations(),
@@ -100,7 +207,10 @@ export default function EventOperationsMvp() {
   const [templates, setTemplates] = useState(() =>
     operations.listEventTemplates(),
   )
-  const [events, setEvents] = useState<Event[]>(() => operations.listEvents())
+  const [events, setEvents] = useState<Event[]>(() =>
+    operations.listEvents({ includeClosed: true }),
+  )
+  const [openEventId, setOpenEventId] = useState<string | null>(null)
   const [draft, setDraft] = useState<EventDraft | null>(null)
   const [creationStep, setCreationStep] = useState(1)
   const [creationErrors, setCreationErrors] = useState<Record<string, string>>({})
@@ -262,6 +372,10 @@ export default function EventOperationsMvp() {
       )
     }
   }
+  function openEventWorkspace(event: Event) {
+    setOpenEventId(event.id)
+    setMessage(`Opened ${event.name} workspace.`)
+  }
   function updateDraft(changes: Pick<EventDraft, "name" | "date" | "venue">) {
     if (!draft) return
     setDraft(operations.updateEventDraft(draft.id, changes))
@@ -286,7 +400,7 @@ export default function EventOperationsMvp() {
     }
     try {
       operations.createEventFromDraft(draft.id)
-      setEvents(operations.listEvents())
+      setEvents(operations.listEvents({ includeClosed: true }))
       setDraft(null)
       setMessage("Event created from its Event Template.")
     } catch (error) {
@@ -295,6 +409,7 @@ export default function EventOperationsMvp() {
       )
     }
   }
+  const openEvent = openEventId ? operations.getEvent(openEventId) : undefined
 
   return (
     <section className="events-page">
@@ -310,6 +425,7 @@ export default function EventOperationsMvp() {
         <p aria-live="polite" className="event-operations-feedback">
           {message}
         </p>
+        <EventCollection events={events} onNewEvent={openCreator} onOpen={openEventWorkspace} />
         <section
           className="event-operations-library"
           aria-labelledby="template-library-title"
@@ -360,25 +476,7 @@ export default function EventOperationsMvp() {
             </article>
           ))}
         </div>
-        <section className="event-operations-library" aria-label="Create Event">
-          <div>
-            <p>New Event</p>
-            <h2>Create from an Event Template</h2>
-            <select
-              value={selectedTemplateId}
-              onChange={(event) => setSelectedTemplateId(event.target.value)}
-            >
-              {templates.map((template) => (
-                <option key={template.id} value={template.id}>
-                  {template.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <button type="button" onClick={openCreator}>
-            New event
-          </button>
-        </section>
+        <label className="event-template-picker">New Events start with an Event Template<select value={selectedTemplateId} onChange={(event) => setSelectedTemplateId(event.target.value)}>{templates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}</select></label>
         {showTemplateEditor ? (
           <form className="event-operations-creator" onSubmit={saveTemplate}>
             <h2>
@@ -512,16 +610,9 @@ export default function EventOperationsMvp() {
             </section>
           </div>
         )}
-        {events.length === 0 ? (
-          <section className="event-operations-empty">
-            <h2>No Events yet</h2>
-            <p>Create an Event from an Event Template.</p>
-          </section>
-        ) : (
-          events.map((event) => (
+        {openEvent && (
             <EventWorkspace
-              event={event}
-              key={event.id}
+              event={openEvent}
               operations={operations}
               onEventChanged={(updated) =>
                 setEvents((current) =>
@@ -531,7 +622,6 @@ export default function EventOperationsMvp() {
                 )
               }
             />
-          ))
         )}
       </div>
     </section>

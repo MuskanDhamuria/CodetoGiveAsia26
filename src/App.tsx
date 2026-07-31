@@ -940,7 +940,6 @@ function PlaceholderPage({ title }: { title: string }) {
 
 export default function App() {
   const [activePage, setActivePage] = useState<Page>(readInitialPage);
-  const [isCopilotOpen, setIsCopilotOpen] = useState(false);
   const [openEventIndex, setOpenEventIndex] = useState<number | null>(null);
   const [openVolunteerIndex, setOpenVolunteerIndex] = useState<number | null>(
     null,
@@ -952,7 +951,6 @@ export default function App() {
     if (page === "home") url.searchParams.delete("page");
     else url.searchParams.set("page", page);
     window.history.replaceState({}, "", url);
-    if (page === "home") setIsCopilotOpen(false);
     if (page !== "events") setOpenEventIndex(null);
     if (page !== "volunteers") setOpenVolunteerIndex(null);
   }
@@ -970,51 +968,44 @@ export default function App() {
       return;
     }
 
-    if (action === "generate-report" || action === "send-broadcast") {
-      setIsCopilotOpen(true);
-    }
   }
 
   return (
-    <main>
+    <main className={activePage === "home" ? "" : "product-app"}>
       <Navbar
         activePage={activePage}
-        onNavigate={(page) => {
-          navigate(page);
-          if (page === "ai") setIsCopilotOpen(true);
-        }}
+        onNavigate={navigate}
       />
       {activePage === "home" && (
         <LandingPage onGetStarted={() => navigate("dashboard")} />
       )}
-      {activePage === "dashboard" && (
-        <DashboardPage onQuickAction={handleQuickAction} />
-      )}
-      {activePage === "events" && (
-        <EventsPage
-          key={`events-${openEventIndex ?? "list"}`}
-          initialEventIndex={openEventIndex}
-        />
-      )}
-      {activePage === "volunteers" && (
-        <VolunteersPage
-          key={`volunteers-${openVolunteerIndex ?? "list"}`}
-          initialVolunteerIndex={openVolunteerIndex}
-          onInviteToEvent={() => {
-            setOpenEventIndex(0);
-            navigate("events");
-          }}
-          onMessageVolunteer={() => setIsCopilotOpen(true)}
-        />
-      )}
-      {activePage === "ai" && <PlaceholderPage title="AI Copilot" />}
       {activePage !== "home" && (
-        <AiCopilot
-          activePage={activePage}
-          isOpen={isCopilotOpen}
-          onClose={() => setIsCopilotOpen(false)}
-          onOpen={() => setIsCopilotOpen(true)}
-        />
+        <div className="product-frame">
+          <div className="product-page-content">
+            {activePage === "dashboard" && (
+              <DashboardPage onQuickAction={handleQuickAction} />
+            )}
+            {activePage === "events" && (
+              <EventsPage
+                key={`events-${openEventIndex ?? "list"}`}
+                initialEventIndex={openEventIndex}
+              />
+            )}
+            {activePage === "volunteers" && (
+              <VolunteersPage
+                key={`volunteers-${openVolunteerIndex ?? "list"}`}
+                initialVolunteerIndex={openVolunteerIndex}
+                onInviteToEvent={() => {
+                  setOpenEventIndex(0);
+                  navigate("events");
+                }}
+                onMessageVolunteer={() => undefined}
+              />
+            )}
+            {activePage === "ai" && <PlaceholderPage title="AI Copilot" />}
+          </div>
+          <AiCopilot activePage={activePage} />
+        </div>
       )}
     </main>
   );

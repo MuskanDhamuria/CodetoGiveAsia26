@@ -1,12 +1,6 @@
 import { useState } from "react";
 import type { Page } from "./App";
 
-const prompts = [
-  "Create an event for me",
-  "Send targeted broadcast to participants",
-  "Draft and follow up on emails for me",
-];
-
 const pageContext: Record<Page, string> = {
   home: "Landing",
   dashboard: "Dashboard",
@@ -15,23 +9,52 @@ const pageContext: Record<Page, string> = {
   ai: "AI Copilot",
 };
 
-export default function AiCopilot({
-  activePage,
-  isOpen,
-  onOpen,
-  onClose,
+const pageInsight: Record<Page, string> = {
+  home: "I can help you set up your first volunteer event.",
+  dashboard: "Five volunteers still need a reminder for Health Fair.",
+  events: "National Day is on track, but registration needs 8 more volunteers.",
+  volunteers: "Four high-match volunteers are available for your open roles.",
+  ai: "Tell me the outcome you want and I’ll build a reviewable plan.",
+};
+
+function Composer({
+  draft,
+  onChange,
+  onSend,
 }: {
-  activePage: Page;
-  isOpen: boolean;
-  onOpen: () => void;
-  onClose: () => void;
+  draft: string;
+  onChange: (value: string) => void;
+  onSend: () => void;
 }) {
+  return (
+    <form
+      className="copilot-composer"
+      onSubmit={(event) => {
+        event.preventDefault();
+        onSend();
+      }}
+    >
+      <textarea
+        aria-label="Message Passion AI"
+        placeholder="Ask Passion AI…"
+        rows={1}
+        value={draft}
+        onChange={(event) => onChange(event.target.value)}
+      />
+      <button type="submit" aria-label="Send message">
+        ↑
+      </button>
+    </form>
+  );
+}
+
+export default function AiCopilot({ activePage }: { activePage: Page }) {
   const [draft, setDraft] = useState("");
   const [goal, setGoal] = useState("");
 
   function loadGoal(nextGoal: string) {
-    setDraft(nextGoal);
     setGoal(nextGoal);
+    setDraft(nextGoal);
   }
 
   function sendGoal() {
@@ -41,93 +64,63 @@ export default function AiCopilot({
   }
 
   return (
-    <>
-      <button
-        className="copilot-fab"
-        type="button"
-        aria-controls="copilot-panel"
-        aria-expanded={isOpen}
-        onClick={onOpen}
-      >
-        <span>AI</span>
-        Copilot
-      </button>
+    <aside className="copilot-sidebar" aria-label="AI Copilot">
+      <header className="copilot-brief-header">
+        <div>
+          <p>Workspace intelligence</p>
+          <h2>{pageContext[activePage]} brief</h2>
+        </div>
+        <div className="copilot-ai-mark">AI</div>
+      </header>
 
-      <aside
-        className={`copilot-panel copilot-workflow-panel ${isOpen ? "open" : ""}`}
-        id="copilot-panel"
-        aria-hidden={!isOpen}
-      >
-        <header className="copilot-workflow-header">
-          <div>
-            <p>Passion AI</p>
-            <h2>Copilot</h2>
-          </div>
-          <button type="button" aria-label="Close AI Copilot" onClick={onClose}>
-            Close
+      <div className="copilot-brief-body">
+        <section className="copilot-priority-card">
+          <span>Needs your attention</span>
+          <h3>{pageInsight[activePage]}</h3>
+          <button type="button" onClick={() => loadGoal("Resolve this for me")}>
+            Resolve with AI
           </button>
-        </header>
+        </section>
 
-        <div className="copilot-page-context">
-          <span>Working in</span>
-          <strong>{pageContext[activePage]}</strong>
-        </div>
-
-        <div className="copilot-workflow-body">
-          <div>
-            <p className="copilot-eyebrow">Plan before sending</p>
-            <h3>Turn a request into a reviewable workflow.</h3>
+        <section className="copilot-action-stack">
+          <div className="copilot-section-label">
+            <strong>Recommended actions</strong>
+            <span>3 ready</span>
           </div>
+          {[
+            ["Send 5 reminders", "Review recipients"],
+            ["Fill registration gaps", "View matches"],
+            ["Prepare weekly summary", "Generate draft"],
+          ].map(([title, action], index) => (
+            <button key={title} type="button" onClick={() => loadGoal(title)}>
+              <span>{String(index + 1).padStart(2, "0")}</span>
+              <strong>{title}</strong>
+              <em>{action} →</em>
+            </button>
+          ))}
+        </section>
 
-          <ol className="copilot-steps">
-            <li>
-              <span>1</span>
-              <div>
-                <strong>Choose a goal</strong>
-                <p>{goal || "Pick one of the common tasks below."}</p>
-              </div>
-            </li>
-            <li>
-              <span>2</span>
-              <div>
-                <strong>Review the draft</strong>
-                <p>Copilot gathers details and shows you what it will do.</p>
-              </div>
-            </li>
-            <li>
-              <span>3</span>
-              <div>
-                <strong>Approve the action</strong>
-                <p>Nothing goes out until you confirm it.</p>
-              </div>
-            </li>
-          </ol>
-
-          <div className="copilot-prompts" aria-label="Sample prompts">
-            {prompts.map((prompt) => (
-              <button key={prompt} type="button" onClick={() => loadGoal(prompt)}>
-                {prompt}
-                <span aria-hidden="true">↗</span>
-              </button>
-            ))}
+        <section className="copilot-approval-queue">
+          <div className="copilot-section-label">
+            <strong>Approval queue</strong>
+            <span>1 item</span>
           </div>
-        </div>
+          <article>
+            <div>
+              <span>Broadcast draft</span>
+              <strong>Health Fair reminder</strong>
+            </div>
+            <button type="button">Review</button>
+          </article>
+        </section>
 
-        <form
-          className="copilot-workflow-composer"
-          onSubmit={(event) => {
-            event.preventDefault();
-            sendGoal();
-          }}
-        >
-          <input
-            value={draft}
-            onChange={(event) => setDraft(event.target.value)}
-            placeholder="Tell Copilot what you need"
-          />
-          <button type="submit">Send</button>
-        </form>
-      </aside>
-    </>
+        {goal && <p className="copilot-active-goal">Preparing: {goal}</p>}
+      </div>
+
+      <div className="copilot-brief-composer">
+        <span>What outcome do you need?</span>
+        <Composer draft={draft} onChange={setDraft} onSend={sendGoal} />
+      </div>
+    </aside>
   );
 }

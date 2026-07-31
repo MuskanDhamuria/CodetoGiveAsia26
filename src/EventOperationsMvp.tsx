@@ -112,7 +112,7 @@ function EventWorkspace({
       <label>Team Member<select value={task.assigneeId ?? ""} disabled={event.status === "Closed"} onChange={(input) => { const assigneeId = input.target.value || null; updateTask(task, { assigneeId }); onMessage(assigneeId ? `Assigned to ${teamMembers.find((member) => member.id === assigneeId)?.name}` : "Task is now unassigned.") }}><option value="">Unassigned</option>{teamMembers.map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}</select></label>
       {event.status === "Open" && <label>Subtasks<input defaultValue={task.subtasks.map((subtask) => subtask.title).join(", ")} onBlur={(input) => updateTask(task, { subtasks: input.target.value.split(",").map((title) => ({ title: title.trim(), completed: false })).filter((subtask) => subtask.title) })} /></label>}
       {task.subtasks.length > 0 && <fieldset><legend>Subtasks</legend>{task.subtasks.map((subtask, subtaskIndex) => <label key={`${task.id}-${subtaskIndex}`}><input checked={subtask.completed} disabled={event.status === "Closed"} type="checkbox" onChange={() => { try { operations.toggleSubtask({ eventId: event.id, taskId: task.id, subtaskIndex }); onEventChanged(operations.getEvent(event.id)!); onMessage(`Subtask ${subtask.completed ? "reopened" : "completed"}: ${subtask.title}`) } catch (error) { onMessage(error instanceof Error ? error.message : "Unable to update Subtask.") } }} />{subtask.title}</label>)}</fieldset>}
-      {event.status === "Open" && <div className="event-operations-task-actions"><button type="button" onClick={() => changeStatus(task)}>{task.status === "To do" ? "Start task" : task.status === "In progress" ? "Mark done" : "Reopen"}</button><button type="button" onClick={() => { operations.moveEventTask({ eventId: event.id, taskId: task.id, direction: -1 }); onEventChanged(operations.getEvent(event.id)!) }}>Move up</button><button type="button" onClick={() => { operations.moveEventTask({ eventId: event.id, taskId: task.id, direction: 1 }); onEventChanged(operations.getEvent(event.id)!) }}>Move down</button><button type="button" onClick={() => setConfirmation({ title: `Remove ${task.title}?`, description: "This Task will be removed from this Event plan.", cancelLabel: "Keep Task", confirmLabel: "Remove Task", onConfirm: () => { operations.removeEventTask({ eventId: event.id, taskId: task.id }); onEventChanged(operations.getEvent(event.id)!); onMessage(`Task removed: ${task.title}`) } })}>Remove Task</button></div>}
+      {event.status === "Open" && task.status !== "Done" && <div className="event-operations-task-actions"><button type="button" onClick={() => changeStatus(task)}>{task.status === "To do" ? "Start task" : "Mark done"}</button></div>}
     </article>
   )
   return (
@@ -134,7 +134,12 @@ function EventWorkspace({
         <button type="button" onClick={() => setConfirmation({ title: `Delete “${event.name}” permanently?`, description: "This cannot be undone.", cancelLabel: "Keep event", confirmLabel: "Delete event", onConfirm: () => { operations.deleteEvent(event.id); onDeleted(); onMessage(`Event deleted: ${event.name}.`) } })}>Delete event</button>
       </div>
       <h3>Task workspace</h3>
-      <div className="event-operations-kanban">{(["To do", "In progress", "Done"] as const).map((status) => <section key={status}><h4>{status}</h4>{event.tasks.filter((task) => task.status === status).map(taskCard)}</section>)}</div>
+      <div className="event-operations-kanban">{(["To do", "In progress", "Done"] as const).map((status) => {
+        const tasks = event.tasks.filter((task) => task.status === status)
+        const firstTask = tasks[0]
+        const remainingTasks = tasks.slice(1)
+        return <section key={status}><h4>{status}</h4>{firstTask && taskCard(firstTask)}{remainingTasks.length > 0 && <details className="event-operations-task-expander"><summary>Show {remainingTasks.length} more {remainingTasks.length === 1 ? "Task" : "Tasks"}</summary><div className="event-operations-task-expander-content">{remainingTasks.map(taskCard)}</div></details>}</section>
+      })}</div>
       {event.status === "Open" && <div className="event-operations-add-task">{showNewTask ? <><label>Task title<input value={newTask.title} onChange={(input) => setNewTask({ ...newTask, title: input.target.value })} /></label><label>Phase<select value={newTask.phase} onChange={(input) => setNewTask({ ...newTask, phase: input.target.value as EventPhase })}>{phases.map((phase) => <option key={phase}>{phase}</option>)}</select></label><label>Deadline<input type="date" value={newTask.deadline} onChange={(input) => setNewTask({ ...newTask, deadline: input.target.value })} /></label><button type="button" onClick={() => { try { operations.addEventTask({ eventId: event.id, ...newTask }); onEventChanged(operations.getEvent(event.id)!); setShowNewTask(false); setNewTask({ title: "", phase: "Planning", deadline: event.date }) } catch (error) { onMessage(error instanceof Error ? error.message : "Unable to add Task.") } }}>Add Task</button><button type="button" onClick={() => setShowNewTask(false)}>Cancel</button></> : <button type="button" onClick={() => setShowNewTask(true)}>Add Task</button>}</div>}
       {confirmation && <section aria-label="Confirm action" className="event-operations-confirmation"><strong>{confirmation.title}</strong><p>{confirmation.description}</p><button type="button" onClick={() => setConfirmation(null)}>{confirmation.cancelLabel}</button><button type="button" onClick={() => { confirmation.onConfirm(); setConfirmation(null) }}>{confirmation.confirmLabel}</button></section>}
     </section>
@@ -248,9 +253,16 @@ function EventCollection({
 }
 
 export default function EventOperationsMvp() {
-  const [operations] = useState<EventOperations>(() =>
-    createInMemoryEventOperations(),
-  )
+  const [operations] = useState<EventOperations>(() => {
+    const instance = createInMemoryEventOperations()
+    instance.createEvent({
+      templateId: "distribution-of-pre-loved-items",
+      name: "Distribution of clothes",
+      date: "2027-08-09",
+      venue: "Tampines Hub",
+    })
+    return instance
+  })
   const [templates, setTemplates] = useState(() =>
     operations.listEventTemplates(),
   )
@@ -461,7 +473,7 @@ export default function EventOperationsMvp() {
 
   return (
     <section className="events-page">
-      <div className="dashboard-shell event-operations-page">
+      <div className={`dashboard-shell event-operations-page ${openEvent ? "workspace-open" : ""}`}>
         <header className="section-hero">
           <p>Event operations</p>
           <h1>Plan the work behind every Event</h1>
@@ -677,6 +689,10 @@ export default function EventOperationsMvp() {
           </div>
         )}
         {openEvent && (
+          <>
+            <button className="event-workspace-back" type="button" onClick={() => setOpenEventId(null)}>
+              <span aria-hidden="true">←</span> Back to Events
+            </button>
             <EventWorkspace
               event={openEvent}
               operations={operations}
@@ -695,6 +711,7 @@ export default function EventOperationsMvp() {
               }}
               onMessage={setMessage}
             />
+          </>
         )}
       </div>
     </section>

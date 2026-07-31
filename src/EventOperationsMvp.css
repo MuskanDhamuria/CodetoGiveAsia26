@@ -1,4 +1,8 @@
 .event-operations-page { max-width: none; }
+.event-operations-page.workspace-open > * { display: none; }
+.event-operations-page.workspace-open > .event-workspace-back, .event-operations-page.workspace-open > .event-operations-workspace { display: grid; }
+.event-workspace-back { align-items: center; background: transparent; border: 0; color: #285c3d; cursor: pointer; font-size: .9rem; font-weight: 800; gap: 8px; justify-content: start; padding: 8px 0; }
+.event-workspace-back span { font-size: 1.35rem; line-height: 1; }
 .event-operations-page > .section-hero, .event-operations-page > .event-operations-feedback, .event-operations-page > .event-operations-library, .event-operations-page > .event-operations-template-list, .event-operations-page > .event-template-picker { display: none; }
 .event-operations-library, .event-operations-creator, .event-operations-empty, .event-operations-workspace { background: #fff; border: 1px solid #e4e8e4; border-radius: 16px; box-shadow: 0 10px 24px rgba(24, 57, 38, .06); margin-top: 20px; padding: 24px; }
 .event-operations-library { align-items: center; display: flex; gap: 20px; justify-content: space-between; }
@@ -54,6 +58,9 @@
 .event-operations-task-card legend { color: #5a685d; font-size: .75rem; font-weight: 700; padding: 0; }
 .event-operations-task-card fieldset label { align-items: center; display: flex; font-size: .78rem; gap: 7px; }
 .event-operations-task-actions, .event-operations-add-task { display: flex; flex-wrap: wrap; gap: 7px; }
+.event-operations-task-expander { border-top: 1px solid #dbe4dc; padding-top: 9px; }
+.event-operations-task-expander summary { color: #246b45; cursor: pointer; font-size: .78rem; font-weight: 800; list-style-position: inside; }
+.event-operations-task-expander-content { display: grid; gap: 10px; margin-top: 10px; }
 .event-operations-add-task { align-items: end; border: 1px dashed #9db5a2; border-radius: 9px; padding: 12px; }
 @media (max-width: 760px) { .event-operations-event-details { grid-template-columns: 1fr; }.event-operations-kanban { grid-template-columns: repeat(3, minmax(240px, 1fr)); } }
 .event-operations-confirmation { background: #fff8ef; border: 1px solid #e7c995; border-radius: 10px; display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; padding: 16px; }.event-operations-confirmation strong { flex-basis: 100%; }.event-operations-confirmation p { color: #5e6961; flex-basis: 100%; margin: 0; }.event-operations-confirmation button { background: #edf2ed; border: 0; border-radius: 7px; cursor: pointer; font-weight: 700; padding: 9px 12px; }.event-operations-confirmation button:last-child { background: #8f2d24; color: #fff; }

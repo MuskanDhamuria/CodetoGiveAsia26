@@ -19,6 +19,7 @@ describe("Event Operations MVP primary organizer journey", () => {
     await user.type(screen.getByLabelText("Venue"), "Marina Bay Community Plaza")
     await user.click(screen.getByRole("button", { name: "Continue" }))
     await user.click(screen.getByRole("button", { name: "Create event" }))
+    await user.click(screen.getByRole("button", { name: /Kanban layout check/ }))
     await user.click(screen.getByRole("button", { name: /Open event workspace/ }))
 
     const workspace = screen.getByRole("region", { name: "Kanban layout check" })
@@ -34,6 +35,9 @@ describe("Event Operations MVP primary organizer journey", () => {
     const styles = readFileSync("src/EventOperationsMvp.css", "utf8")
     expect(styles).toMatch(/\.event-operations-kanban\s*\{[^}]*display:\s*grid/)
     expect(styles).toMatch(/\.event-operations-kanban\s*\{[^}]*grid-template-columns:\s*repeat\(3,/)
+
+    await user.click(screen.getByRole("button", { name: /Back to Events/ }))
+    expect(screen.getByRole("heading", { name: "Event portfolio" })).toBeTruthy()
   })
 
   it("creates, operates, closes, reopens, and finds an Event in Calendar", async () => {
@@ -51,6 +55,7 @@ describe("Event Operations MVP primary organizer journey", () => {
     await user.click(screen.getByRole("button", { name: "Create event" }))
     expect(screen.getByText("Event created from its Event Template.")).toBeTruthy()
 
+    await user.click(screen.getByRole("button", { name: /August community distribution/ }))
     await user.click(screen.getByRole("button", { name: /Open event workspace/ }))
     await user.clear(screen.getAllByLabelText("Task title")[0])
     await user.type(screen.getAllByLabelText("Task title")[0], "Confirm community partners")
@@ -61,8 +66,10 @@ describe("Event Operations MVP primary organizer journey", () => {
     await user.click(startTask)
     expect(screen.getByText(/Task started:/)).toBeTruthy()
     await user.click(screen.getByRole("button", { name: "Mark done" }))
-    await user.click(screen.getByRole("button", { name: "Reopen" }))
-    expect(screen.getByText(/Task reopened:/)).toBeTruthy()
+    expect(screen.queryByRole("button", { name: "Reopen" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "Move up" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "Move down" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "Remove Task" })).toBeNull()
 
     fireEvent.change(screen.getByLabelText("Event date"), { target: { value: "2027-08-16" } })
     expect(screen.getAllByText("56 days before Event").length).toBeGreaterThan(0)

@@ -1,10 +1,41 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen, within } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react"
+import { readFileSync } from "node:fs"
 import userEvent from "@testing-library/user-event"
-import { describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it } from "vitest"
 import EventOperationsMvp from "./EventOperationsMvp"
 
+afterEach(cleanup)
+
 describe("Event Operations MVP primary organizer journey", () => {
+  it("renders the Event workspace as a three-column Kanban board", async () => {
+    const user = userEvent.setup()
+    render(<EventOperationsMvp />)
+
+    await user.click(screen.getAllByRole("button", { name: /new event/i })[0])
+    await user.click(screen.getByRole("button", { name: "Continue" }))
+    await user.type(screen.getByLabelText("Event name"), "Kanban layout check")
+    fireEvent.change(screen.getByLabelText("Event date"), { target: { value: "2027-08-09" } })
+    await user.type(screen.getByLabelText("Venue"), "Marina Bay Community Plaza")
+    await user.click(screen.getByRole("button", { name: "Continue" }))
+    await user.click(screen.getByRole("button", { name: "Create event" }))
+    await user.click(screen.getByRole("button", { name: "Open event workspace" }))
+
+    const workspace = screen.getByRole("heading", { level: 2, name: "Kanban layout check" }).closest("section")!
+    const board = workspace.querySelector(".event-operations-kanban")
+    expect(board).toBeTruthy()
+    expect(board?.querySelectorAll(":scope > section")).toHaveLength(3)
+    expect(Array.from(board?.querySelectorAll(":scope > section > h4") ?? []).map((heading) => heading.textContent)).toEqual([
+      "To do",
+      "In progress",
+      "Done",
+    ])
+
+    const styles = readFileSync("src/EventOperationsMvp.css", "utf8")
+    expect(styles).toMatch(/\.event-operations-kanban\s*\{[^}]*display:\s*grid/)
+    expect(styles).toMatch(/\.event-operations-kanban\s*\{[^}]*grid-template-columns:\s*repeat\(3,/)
+  })
+
   it("creates, operates, closes, reopens, and finds an Event in Calendar", async () => {
     const user = userEvent.setup()
     render(<EventOperationsMvp />)

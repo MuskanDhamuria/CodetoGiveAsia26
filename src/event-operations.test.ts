@@ -272,6 +272,85 @@ export function eventOperationsContract(
         "August community distribution",
       )
     })
+
+    it("creates an independent editable plan inside a draft", () => {
+      const operations = createOperations()
+      const draft = operations.createEventDraft(
+        "distribution-of-pre-loved-items",
+      )
+      const originalTask = draft.tasks[0]
+
+      operations.updateEventDraftTask(draft.id, {
+        taskId: originalTask.id,
+        title: "Confirm community partners",
+        phase: "Execution",
+        relativeDeadlineDays: -2,
+        assigneeId: "priya-nair",
+        subtasks: [{ title: "Call the venue", completed: false }],
+      })
+      operations.updateEventDraft(draft.id, {
+        name: "August community distribution",
+        date: "2027-08-09",
+        venue: "Marina Bay Community Plaza",
+      })
+
+      const event = operations.createEventFromDraft(draft.id)
+      expect(event.tasks[0]).toMatchObject({
+        title: "Confirm community partners",
+        phase: "Execution",
+        relativeDeadlineDays: -2,
+        deadline: "2027-08-07",
+        assigneeId: "priya-nair",
+        subtasks: [{ title: "Call the venue", completed: false }],
+      })
+      expect(
+        operations
+          .listEventTemplates()
+          .find((template) => template.id === draft.templateId)!.tasks[0].title,
+      ).toBe("Align the team on holding the event")
+    })
+
+    it("changes a draft template without losing Event details", () => {
+      const operations = createOperations()
+      const draft = operations.createEventDraft(
+        "distribution-of-pre-loved-items",
+      )
+      operations.updateEventDraft(draft.id, {
+        name: "Wellness day",
+        date: "2027-08-09",
+        venue: "Marina Bay Community Plaza",
+      })
+
+      const changed = operations.changeEventDraftTemplate(draft.id, "wellness")
+
+      expect(changed).toMatchObject({
+        templateId: "wellness",
+        name: "Wellness day",
+        date: "2027-08-09",
+        venue: "Marina Bay Community Plaza",
+      })
+      expect(changed.tasks).toHaveLength(7)
+    })
+
+    it("rejects a draft plan with no Tasks without creating an Event", () => {
+      const operations = createOperations()
+      const draft = operations.createEventDraft(
+        "distribution-of-pre-loved-items",
+      )
+      operations.updateEventDraft(draft.id, {
+        name: "August community distribution",
+        date: "2027-08-09",
+        venue: "Marina Bay Community Plaza",
+      })
+      draft.tasks.forEach((task) =>
+        operations.removeEventDraftTask(draft.id, task.id),
+      )
+
+      expect(() => operations.createEventFromDraft(draft.id)).toThrow(
+        "Keep at least one Task in this Event plan.",
+      )
+      expect(operations.listEvents()).toEqual([])
+    })
   })
 }
 

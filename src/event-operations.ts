@@ -64,7 +64,13 @@ export type EventDraft = {
   name: string
   date: string
   venue: string
+  tasks: EventTask[]
 }
+
+export type EventDraftTaskInput = Pick<
+  EventTask,
+  "title" | "phase" | "relativeDeadlineDays" | "assigneeId" | "subtasks"
+> & { taskId: string }
 
 export interface EventOperations {
   listEventTemplates(): EventTemplate[]
@@ -82,6 +88,13 @@ export interface EventOperations {
     draftId: string,
     changes: Pick<EventDraft, "name" | "date" | "venue">,
   ): EventDraft
+  changeEventDraftTemplate(draftId: string, templateId: string): EventDraft
+  updateEventDraftTask(
+    draftId: string,
+    input: EventDraftTaskInput,
+  ): EventDraft
+  addEventDraftTask(draftId: string): EventDraft
+  removeEventDraftTask(draftId: string, taskId: string): EventDraft
   discardEventDraft(draftId: string): void
   createEventFromDraft(draftId: string): Event
   createEvent(input: CreateEventInput): Event
@@ -292,6 +305,25 @@ export function createInMemoryEventOperations(): EventOperations {
     return copy(event)
   }
 
+  function copiedTasks(template: EventTemplate, eventDate = ""): EventTask[] {
+    return template.tasks.map((task) => ({
+      id: `${task.id}-draft-${nextDraftId}`,
+      title: task.title,
+      phase: task.phase,
+      relativeDeadlineDays: task.relativeDeadlineDays,
+      deadline: eventDate ? deadlineFor(eventDate, task.relativeDeadlineDays) : "",
+      status: "To do",
+      assigneeId: null,
+      subtasks: task.subtaskTitles.map((title) => ({ title, completed: false })),
+    }))
+  }
+
+  function requireDraft(draftId: string): EventDraft {
+    const draft = drafts.get(draftId)
+    if (!draft) throw new Error("Event draft not found.")
+    return draft
+  }
+
   return {
     listEventTemplates: () => copy(templates),
     createCustomEventTemplate: (input) => {
@@ -351,25 +383,97 @@ export function createInMemoryEventOperations(): EventOperations {
         name: "",
         date: "",
         venue: "",
+        tasks: copiedTasks(templates.find((item) => item.id === templateId)!),
       }
       drafts.set(draft.id, draft)
       return copy(draft)
     },
     updateEventDraft: (draftId, changes) => {
-      const draft = drafts.get(draftId)
-      if (!draft) throw new Error("Event draft not found.")
+      const draft = requireDraft(draftId)
       Object.assign(draft, changes)
+      if (changes.date) {
+        draft.tasks.forEach((task) => {
+          task.deadline = deadlineFor(changes.date, task.relativeDeadlineDays)
+        })
+      }
+      return copy(draft)
+    },
+    changeEventDraftTemplate: (draftId, templateId) => {
+      const draft = requireDraft(draftId)
+      const template = templates.find((item) => item.id === templateId)
+      if (!template) throw new Error("Choose a valid Event Template.")
+      draft.templateId = templateId
+      draft.tasks = copiedTasks(template, draft.date)
+      return copy(draft)
+    },
+    updateEventDraftTask: (draftId, { taskId, ...changes }) => {
+      const draft = requireDraft(draftId)
+      const task = draft.tasks.find((item) => item.id === taskId)
+      if (!task) throw new Error("Draft Task not found.")
+      if (!changes.title.trim()) throw new Error("Enter a Task title.")
+      if (!Number.isInteger(changes.relativeDeadlineDays)) {
+        throw new Error("Set a Task deadline.")
+      }
+      if (
+        changes.assigneeId !== null &&
+        !teamMembers.some((member) => member.id === changes.assigneeId)
+      ) {
+        throw new Error("Choose a valid Team Member.")
+      }
+      Object.assign(task, changes)
+      task.deadline = draft.date
+        ? deadlineFor(draft.date, task.relativeDeadlineDays)
+        : ""
+      return copy(draft)
+    },
+    addEventDraftTask: (draftId) => {
+      const draft = requireDraft(draftId)
+      draft.tasks.push({
+        id: `draft-task-${nextDraftId}-${draft.tasks.length + 1}`,
+        title: "New Task",
+        phase: "Planning",
+        relativeDeadlineDays: 0,
+        deadline: draft.date ? deadlineFor(draft.date, 0) : "",
+        status: "To do",
+        assigneeId: null,
+        subtasks: [],
+      })
+      return copy(draft)
+    },
+    removeEventDraftTask: (draftId, taskId) => {
+      const draft = requireDraft(draftId)
+      const index = draft.tasks.findIndex((task) => task.id === taskId)
+      if (index === -1) throw new Error("Draft Task not found.")
+      draft.tasks.splice(index, 1)
       return copy(draft)
     },
     discardEventDraft: (draftId) => {
       if (!drafts.delete(draftId)) throw new Error("Event draft not found.")
     },
     createEventFromDraft: (draftId) => {
-      const draft = drafts.get(draftId)
-      if (!draft) throw new Error("Event draft not found.")
-      const event = createEvent(draft)
+      const draft = requireDraft(draftId)
+      validateEventDetails(draft)
+      if (draft.tasks.length === 0) {
+        throw new Error("Keep at least one Task in this Event plan.")
+      }
+      const template = templates.find((item) => item.id === draft.templateId)
+      if (!template) throw new Error("Choose a valid Event Template.")
+      const event: Event = {
+        id: `event-${nextEventId++}`,
+        name: draft.name,
+        date: draft.date,
+        venue: draft.venue,
+        sourceTemplateId: template.id,
+        sourceTemplateName: template.name,
+        tasks: draft.tasks.map((task) => ({
+          ...copy(task),
+          id: `${task.id}-event-${nextEventId - 1}`,
+          deadline: deadlineFor(draft.date, task.relativeDeadlineDays),
+        })),
+      }
+      events.push(event)
       drafts.delete(draftId)
-      return event
+      return copy(event)
     },
     createEvent,
     startTask: ({ eventId, taskId }) => {

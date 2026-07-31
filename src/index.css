@@ -1472,6 +1472,18 @@ button {
   padding: 0 16px;
 }
 
+.copilot-workflow-panel { background: #fbfbf9; }
+.copilot-workflow-header { align-items: flex-start; border-bottom: 1px solid rgba(10, 10, 10, .09); display: flex; justify-content: space-between; padding: 24px; }
+.copilot-workflow-header p, .copilot-eyebrow, .copilot-page-context span { color: #737373; font-size: 10px; font-weight: 800; letter-spacing: .1em; margin: 0 0 8px; text-transform: uppercase; }
+.copilot-workflow-header h2 { font-size: 31px; letter-spacing: -.065em; line-height: .9; margin: 0; }
+.copilot-workflow-header button { background: #ecece7; border-radius: 999px; font-size: 12px; font-weight: 800; padding: 9px 12px; }
+.copilot-page-context { align-items: baseline; border-bottom: 1px solid rgba(10, 10, 10, .09); display: flex; gap: 8px; padding: 12px 24px; }
+.copilot-page-context span { margin: 0; }.copilot-page-context strong { font-size: 13px; letter-spacing: -.02em; }
+.copilot-workflow-body { align-content: start; display: grid; flex: 1; gap: 22px; overflow: auto; padding: 24px; }.copilot-workflow-body h3 { font-size: 25px; letter-spacing: -.055em; line-height: 1.04; margin: 0; }
+.copilot-steps { display: grid; gap: 16px; list-style: none; margin: 0; padding: 0; }.copilot-steps li { display: grid; gap: 12px; grid-template-columns: 26px 1fr; }.copilot-steps li > span { align-items: center; background: #0a0a0a; border-radius: 50%; color: #fff; display: flex; font-size: 11px; font-weight: 800; height: 26px; justify-content: center; }.copilot-steps li strong { font-size: 14px; letter-spacing: -.02em; }.copilot-steps li p { color: #666; font-size: 13px; line-height: 1.4; margin: 4px 0 0; }
+.copilot-prompts { display: grid; gap: 9px; }.copilot-prompts button { background: #fff; border: 1px solid rgba(10, 10, 10, .12); border-radius: 10px; display: flex; font-size: 13px; font-weight: 700; justify-content: space-between; letter-spacing: -.02em; padding: 14px; text-align: left; }.copilot-prompts button:hover { background: #0a0a0a; color: #fff; }
+.copilot-workflow-composer { border-top: 1px solid rgba(10, 10, 10, .1); display: flex; gap: 8px; padding: 16px 20px 20px; }.copilot-workflow-composer input { background: #fff; border: 1px solid rgba(10, 10, 10, .12); border-radius: 999px; flex: 1; font: inherit; font-size: 13px; font-weight: 600; min-width: 0; outline: 0; padding: 12px 14px; }.copilot-workflow-composer button { background: #0a0a0a; border-radius: 999px; color: #fff; font-size: 12px; font-weight: 800; padding: 0 15px; }
+
 @keyframes line-pulse {
   0% {
     opacity: 0;

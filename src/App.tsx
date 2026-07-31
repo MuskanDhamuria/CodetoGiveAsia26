@@ -1,6 +1,7 @@
 import { useState } from "react";
+import AiCopilot from "./AiCopilot";
 
-type Page = "home" | "dashboard" | "events" | "volunteers" | "ai";
+export type Page = "home" | "dashboard" | "events" | "volunteers" | "ai";
 
 const navLinks: { label: string; page: Page }[] = [
   { label: "Dashboard", page: "dashboard" },
@@ -15,6 +16,13 @@ const pageLabels: Record<Page, string> = {
   volunteers: "Volunteers",
   ai: "AI Copilot",
 };
+
+function readInitialPage(): Page {
+  const page = new URLSearchParams(window.location.search).get("page");
+  return page === "dashboard" || page === "events" || page === "volunteers" || page === "ai"
+    ? page
+    : "home";
+}
 
 const heroImage =
   "https://images.higgs.ai/?default=1&output=webp&url=https%3A%2F%2Fd8j0ntlcm91z4.cloudfront.net%2Fuser_38xzZboKViGWJOttwIXH07lWA1P%2Fhf_20260626_041422_4a459e05-abce-4150-9fb7-4ededc423cd1.png&w=1280&q=85";
@@ -298,92 +306,6 @@ function Navbar({
         </div>
       </div>
     </nav>
-  );
-}
-
-function AiCopilot({
-  activePage,
-  isOpen,
-  onClose,
-  onOpen,
-  onSuggestionAction,
-}: {
-  activePage: Page;
-  isOpen: boolean;
-  onClose: () => void;
-  onOpen: () => void;
-  onSuggestionAction: (scope: string) => void;
-}) {
-  const suggestions = copilotSuggestions[activePage];
-
-  return (
-    <>
-      <button
-        className="copilot-fab"
-        type="button"
-        aria-expanded={isOpen}
-        aria-controls="copilot-panel"
-        onClick={onOpen}
-      >
-        <span>AI</span>
-        Copilot
-      </button>
-
-      <aside
-        className={`copilot-panel ${isOpen ? "open" : ""}`}
-        id="copilot-panel"
-        aria-hidden={!isOpen}
-      >
-        <div className="copilot-header">
-          <div>
-            <p>Passion AI</p>
-            <h2>Copilot</h2>
-          </div>
-          <button type="button" aria-label="Close AI Copilot" onClick={onClose}>
-            Close
-          </button>
-        </div>
-
-        <div className="copilot-context">
-          <span>Context</span>
-          <strong>{pageLabels[activePage]}</strong>
-          <p>
-            Monitoring volunteer response, readiness signals and recommended
-            next actions for this workspace.
-          </p>
-        </div>
-
-        <div className="copilot-chat">
-          <article className="copilot-message assistant">
-            <span>AI Copilot</span>
-            <p>
-              I found {suggestions.length} proactive recommendation
-              {suggestions.length > 1 ? "s" : ""} for this page.
-            </p>
-          </article>
-
-          {suggestions.map((suggestion) => (
-            <article className="suggestion-card" key={suggestion.summary}>
-              <div>
-                <span>{suggestion.scope}</span>
-                <p>{suggestion.summary}</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => onSuggestionAction(suggestion.scope)}
-              >
-                {suggestion.action}
-              </button>
-            </article>
-          ))}
-        </div>
-
-        <div className="copilot-composer">
-          <input placeholder="Ask Copilot to help with this page" />
-          <button type="button">Send</button>
-        </div>
-      </aside>
-    </>
   );
 }
 
@@ -1017,7 +939,7 @@ function PlaceholderPage({ title }: { title: string }) {
 }
 
 export default function App() {
-  const [activePage, setActivePage] = useState<Page>("home");
+  const [activePage, setActivePage] = useState<Page>(readInitialPage);
   const [isCopilotOpen, setIsCopilotOpen] = useState(false);
   const [openEventIndex, setOpenEventIndex] = useState<number | null>(null);
   const [openVolunteerIndex, setOpenVolunteerIndex] = useState<number | null>(
@@ -1026,6 +948,11 @@ export default function App() {
 
   function navigate(page: Page) {
     setActivePage(page);
+    const url = new URL(window.location.href);
+    if (page === "home") url.searchParams.delete("page");
+    else url.searchParams.set("page", page);
+    window.history.replaceState({}, "", url);
+    if (page === "home") setIsCopilotOpen(false);
     if (page !== "events") setOpenEventIndex(null);
     if (page !== "volunteers") setOpenVolunteerIndex(null);
   }
@@ -1046,35 +973,6 @@ export default function App() {
     if (action === "generate-report" || action === "send-broadcast") {
       setIsCopilotOpen(true);
     }
-  }
-
-  function handleCopilotSuggestion(scope: string) {
-    if (scope === "Response Risk" || scope === "Availability Conflict") {
-      setOpenVolunteerIndex(0);
-      navigate("volunteers");
-      setIsCopilotOpen(false);
-      return;
-    }
-
-    if (
-      scope === "Registration Trend" ||
-      scope === "Staffing Gap" ||
-      scope === "Workflow Memory"
-    ) {
-      setOpenEventIndex(0);
-      navigate("events");
-      setIsCopilotOpen(false);
-      return;
-    }
-
-    if (scope === "Role Match") {
-      setOpenVolunteerIndex(1);
-      navigate("volunteers");
-      setIsCopilotOpen(false);
-      return;
-    }
-
-    setIsCopilotOpen(true);
   }
 
   return (
@@ -1110,13 +1008,14 @@ export default function App() {
         />
       )}
       {activePage === "ai" && <PlaceholderPage title="AI Copilot" />}
-      <AiCopilot
-        activePage={activePage}
-        isOpen={isCopilotOpen}
-        onClose={() => setIsCopilotOpen(false)}
-        onOpen={() => setIsCopilotOpen(true)}
-        onSuggestionAction={handleCopilotSuggestion}
-      />
+      {activePage !== "home" && (
+        <AiCopilot
+          activePage={activePage}
+          isOpen={isCopilotOpen}
+          onClose={() => setIsCopilotOpen(false)}
+          onOpen={() => setIsCopilotOpen(true)}
+        />
+      )}
     </main>
   );
 }

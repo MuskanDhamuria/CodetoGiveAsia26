@@ -61,6 +61,10 @@
   padding: 116px clamp(28px, 5vw, 76px) 120px;
 }
 
+.collection-variant-c {
+  background: #f6f7f9;
+}
+
 .collection-variant button {
   font: inherit;
 }
@@ -2710,6 +2714,7 @@ button {
   background: #fff;
   border: 1px solid rgba(10, 10, 10, 0.08);
   border-radius: 12px;
+  min-width: 0;
   overflow: hidden;
 }
 
@@ -2737,7 +2742,8 @@ button {
   border-top: 1px solid rgba(10, 10, 10, 0.07);
   display: grid;
   gap: 10px;
-  grid-template-columns: 26px 1fr auto;
+  grid-template-columns: 26px minmax(0, 1fr) minmax(0, 1fr);
+  min-width: 0;
   padding: 13px 15px;
   text-align: left;
   width: 100%;
@@ -2751,6 +2757,7 @@ button {
 
 .copilot-action-stack > button strong {
   font-size: 12px;
+  min-width: 0;
 }
 
 .copilot-action-stack > button em {
@@ -2758,6 +2765,9 @@ button {
   font-size: 10px;
   font-style: normal;
   font-weight: 800;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  text-align: right;
 }
 
 .copilot-approval-queue article {

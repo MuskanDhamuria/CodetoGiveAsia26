@@ -3,23 +3,24 @@ import { useEffect, useMemo, useState } from "react";
 // PROTOTYPE ONLY: three Event collection variants, switchable via
 // `?variant=`, on the existing Events route.
 
-type PrototypeEvent = {
+export type EventCollectionItem = {
+  id: string;
   name: string;
   date: string;
   day: number;
   venue: string;
-  status: "Planning" | "Recruiting" | "On track" | "Needs attention" | "Closed";
+  status: string;
   progress: number;
   tasksDone: number;
   tasksTotal: number;
 };
 
-const prototypeEvents: PrototypeEvent[] = [
-  { name: "National Day Celebration 2027", date: "9 Aug 2027", day: 9, venue: "Marina Bay Community Plaza", status: "Planning", progress: 68, tasksDone: 19, tasksTotal: 28 },
-  { name: "Community Health Fair", date: "18 Aug 2027", day: 18, venue: "Tampines Hub", status: "Recruiting", progress: 54, tasksDone: 13, tasksTotal: 24 },
-  { name: "Beach Cleanup Drive", date: "24 Aug 2027", day: 24, venue: "East Coast Park Area C", status: "On track", progress: 81, tasksDone: 17, tasksTotal: 21 },
-  { name: "Food Donation Sortathon", date: "15 Sep 2027", day: 15, venue: "Central Warehouse", status: "Needs attention", progress: 39, tasksDone: 9, tasksTotal: 23 },
-  { name: "Migrant Wellness Morning", date: "12 Jul 2027", day: 12, venue: "Jurong Community Hall", status: "Closed", progress: 100, tasksDone: 18, tasksTotal: 18 },
+const prototypeEvents: EventCollectionItem[] = [
+  { id: "prototype-national-day", name: "National Day Celebration 2027", date: "9 Aug 2027", day: 9, venue: "Marina Bay Community Plaza", status: "Planning", progress: 68, tasksDone: 19, tasksTotal: 28 },
+  { id: "prototype-health-fair", name: "Community Health Fair", date: "18 Aug 2027", day: 18, venue: "Tampines Hub", status: "Recruiting", progress: 54, tasksDone: 13, tasksTotal: 24 },
+  { id: "prototype-beach-cleanup", name: "Beach Cleanup Drive", date: "24 Aug 2027", day: 24, venue: "East Coast Park Area C", status: "On track", progress: 81, tasksDone: 17, tasksTotal: 21 },
+  { id: "prototype-food-sortathon", name: "Food Donation Sortathon", date: "15 Sep 2027", day: 15, venue: "Central Warehouse", status: "Needs attention", progress: 39, tasksDone: 9, tasksTotal: 23 },
+  { id: "prototype-wellness", name: "Migrant Wellness Morning", date: "12 Jul 2027", day: 12, venue: "Jurong Community Hall", status: "Closed", progress: 100, tasksDone: 18, tasksTotal: 18 },
 ];
 
 const variantNames = {
@@ -31,7 +32,7 @@ const variantNames = {
 type Variant = keyof typeof variantNames;
 type View = "list" | "calendar";
 
-function EventStatus({ status }: { status: PrototypeEvent["status"] }) {
+function EventStatus({ status }: { status: EventCollectionItem["status"] }) {
   return <span className={`collection-status status-${status.toLowerCase().replace(" ", "-")}`}>{status}</span>;
 }
 
@@ -69,10 +70,10 @@ function PrototypeCalendar({
   onMonth,
   onOpen,
 }: {
-  events: PrototypeEvent[];
+  events: EventCollectionItem[];
   month: number;
   onMonth: (direction: number) => void;
-  onOpen: (event: PrototypeEvent) => void;
+  onOpen: (event: EventCollectionItem) => void;
 }) {
   const monthName = month === 7 ? "July" : month === 8 ? "August" : "September";
   const monthEvents = events.filter((event) => event.date.includes(monthName.slice(0, 3)));
@@ -83,7 +84,7 @@ function PrototypeCalendar({
   });
 
   return (
-    <section className="collection-calendar">
+    <section aria-label={`${monthName} 2027 Event calendar`} className="collection-calendar">
       <header>
         <button type="button" onClick={() => onMonth(-1)} aria-label="Previous month">←</button>
         <h2>{monthName} 2027</h2>
@@ -114,15 +115,15 @@ function PrototypeCalendar({
 }
 
 type VariantProps = {
-  events: PrototypeEvent[];
+  events: EventCollectionItem[];
   view: View;
   month: number;
   showClosed: boolean;
-  selected: PrototypeEvent;
+  selected: EventCollectionItem;
   onMonth: (direction: number) => void;
   onNewEvent: () => void;
-  onOpen: (event: PrototypeEvent) => void;
-  onSelect: (event: PrototypeEvent) => void;
+  onOpen: (event: EventCollectionItem) => void;
+  onSelect: (event: EventCollectionItem) => void;
   onShowClosed: () => void;
   onView: (view: View) => void;
 };
@@ -223,26 +224,41 @@ function PrototypeSwitcher({ current, onCycle }: { current: Variant; onCycle: (d
   );
 }
 
-export default function EventCollectionPrototype() {
+export default function EventCollectionPrototype({
+  events: liveEvents,
+  onNewEvent,
+  onOpen,
+}: {
+  events?: EventCollectionItem[];
+  onNewEvent?: () => void;
+  onOpen?: (event: EventCollectionItem) => void;
+}) {
   const params = new URLSearchParams(window.location.search);
   const initialVariant = params.get("variant");
   const [variant, setVariant] = useState<Variant>(initialVariant === "A" || initialVariant === "B" ? initialVariant : "C");
   const [view, setView] = useState<View>(variant === "B" ? "calendar" : "list");
   const [showClosed, setShowClosed] = useState(false);
   const [month, setMonth] = useState(8);
-  const [selected, setSelected] = useState(prototypeEvents[0]);
+  const sourceEvents = liveEvents ?? prototypeEvents;
+  const [selected, setSelected] = useState(sourceEvents[0]);
   const [notice, setNotice] = useState("");
   const visibleEvents = useMemo(
     () =>
-      prototypeEvents
+      sourceEvents
         .filter((event) => showClosed || event.status !== "Closed")
         .sort((left, right) => {
-          const month = (event: PrototypeEvent) =>
+          const month = (event: EventCollectionItem) =>
             event.date.includes("Jul") ? 7 : event.date.includes("Aug") ? 8 : 9;
           return month(left) * 100 + left.day - (month(right) * 100 + right.day);
         }),
-    [showClosed],
+    [showClosed, sourceEvents],
   );
+
+  useEffect(() => {
+    setSelected((current) =>
+      sourceEvents.find((event) => event.id === current?.id) ?? sourceEvents[0],
+    );
+  }, [sourceEvents]);
 
   function setUrlVariant(next: Variant) {
     const nextUrl = new URL(window.location.href);
@@ -269,6 +285,17 @@ export default function EventCollectionPrototype() {
     return () => window.removeEventListener("keydown", handleKey);
   }, [variant]);
 
+  if (!selected) {
+    return (
+      <div className="collection-variant collection-variant-c">
+        <header className="portfolio-header">
+          <div><p>Events / Portfolio</p><h1>Event portfolio</h1><span>No Events scheduled yet.</span></div>
+          <button className="collection-new-event" type="button" onClick={onNewEvent}><span>＋</span> New event</button>
+        </header>
+      </div>
+    );
+  }
+
   const props: VariantProps = {
     events: visibleEvents,
     view,
@@ -276,8 +303,8 @@ export default function EventCollectionPrototype() {
     showClosed,
     selected,
     onMonth: (direction) => setMonth((value) => Math.min(9, Math.max(7, value + direction))),
-    onNewEvent: () => setNotice("New Event flow would open here."),
-    onOpen: (event) => setNotice(`Opening ${event.name} workspace…`),
+    onNewEvent: onNewEvent ?? (() => setNotice("New Event flow would open here.")),
+    onOpen: onOpen ?? ((event) => setNotice(`Opening ${event.name} workspace…`)),
     onSelect: setSelected,
     onShowClosed: () => setShowClosed((value) => !value),
     onView: setView,

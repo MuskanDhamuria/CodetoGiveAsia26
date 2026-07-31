@@ -1,0 +1,112 @@
+   Event Use Cases
+Avenues for Automation
+Introduction............................................................................................................................ 3
+    List of events covered........................................................................................................ 3
+Event-wise activities.............................................................................................................. 4
+    Distribution of pre-loved items............................................................................................4
+        Planning....................................................................................................................... 4
+        Execution......................................................................................................................4
+        Post execution.............................................................................................................. 4
+        Challenge..................................................................................................................... 4
+    Wellness – yoga / zumba / meditation................................................................................5
+        Planning....................................................................................................................... 5
+        Execution......................................................................................................................5
+        Post Execution............................................................................................................. 5
+Introduction
+The document attempts at capturing various actions that the NGO takes to conduct different
+events. This includes interactions covering planning, logistics, communications, event
+orchestration and media management that go into holding events and running programs.
+Usually the events are planned a few months in advance. This causes communication
+between different events to interleave. It's harder to track which event thread has been
+responded to / handled and which is pending. This is limiting the capacity of the team to hold
+more events.
+
+
+List of events covered
+   ●​ Distribution of pre-loved items
+   ●​ Wellness
+          ○​ Yoga / Zumba / Meditation
+   ●​ Skill Enhancement
+          ○​ Financial Literacy
+          ○​ Computer Literacy
+          ○​ Language Literacy
+Event-wise activities
+
+Distribution of pre-loved items
+
+Planning
+  ●​ Initiation communication within the team on holding the event (whatsapp)
+  ●​ Identify contacts of supporting organizations like condominium management and
+     businesses (email + whatsapp)
+  ●​ Establish venue and schedule with each entity for collection (email)
+  ●​ Transport company communication to line up collection schedule (email + whatsapp)
+  ●​ Ware house communication to hold collected items (email + whatsapp)
+  ●​ Communication to the benefactor migrant workers (whatsapp, email, notice boards),
+     Social media updates (whatsapp, facebook, LinkedIn)
+  ●​ Volunteers registration(https://www.giving.sg/, email, whatspp)
+
+
+Execution
+  ●​ Event day actions with volunteer organising
+        ○​ Sort the collected items
+        ○​ Manage item distribution
+        ○​ Capture memories
+        ○​ Cleanup of the venue
+
+
+Post execution
+  ●​ Volunteer coordination to send certificates (email), acknowledgement (whatsap)
+  ●​ Social media updates with captured memories and other updates (whatsapp,
+     facebook, LinkedIn)
+Wellness – yoga / zumba / meditation
+
+Planning
+  ●​   Initiation communication within the team on holding the event (whatsapp)
+  ●​   Venue booking to hold the event (email)
+  ●​   Communication to the benefactor migrant workers (whatsapp, email, notice boards)
+  ●​   Yoga / Zumba / Meditation teacher volunteer engagement (email, whatsapp)
+
+
+Execution
+  ●​ Event day actions
+        ○​ Setup the audio system
+        ○​ Capture the memories
+        ○​ Post event food distribution
+
+
+Post Execution
+  ●​ Volunteer coordination to send acknowledgement (whatsapp, email)
+  ●​ Social media updates with captured memories and other updates (whatsapp,
+     facebook, Linkedin)
+Skill Enhancement
+For skill enhancement like computer literacy, there is a need to track dependency in the
+courses that a benefactor has attended. This is a problem that is yet to be solved, stopping
+the NGO from going deeper in the skill development. The same holds good for language
+learning.
+Other skills like financial literacy are administered using interactive games.
+
+
+Planning
+   ●​ Initiation communication within the team on holding the event (whatsapp)
+   ●​ Identify and coordinate the venue with suitable infrastructure to support the
+      session(email, whatsapp).
+           ○​ Computer facilities to support computer literacy
+           ○​ Classroom facilities to support language learning or financial literacy
+   ●​ Communication to the benefactor migrant workers (whatsapp, email, notice boards),
+      Social media updates (whatsapp, facebook, LinkedIn)
+   ●​ Course administration contact coordination (email, whatsapp)
+   ●​ Volunteers registration(https://www.giving.sg/, email, whatsapp)
+
+
+Execution
+   ●​ Event day actions –volunteer organising
+         ○​ Infrastructure setup - computer labs / seats for holding the sessions
+         ○​ Capture the memories
+         ○​ Wrap up the venue
+
+
+Post execution
+   ●​ Volunteer coordination to send certificates (email), acknowledgement (whatsap)
+   ●​ Social media updates with captured memories and other updates (whatsapp,
+      facebook, LinkedIn)
+

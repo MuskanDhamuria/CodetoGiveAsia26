@@ -1,5 +1,8 @@
 import { useState } from "react";
 import AiCopilot from "./AiCopilot";
+import EventCollectionPrototype from "./EventCollectionPrototype";
+import EventCreationPrototype from "./EventCreationPrototype";
+import EventTaskHierarchyPrototype from "./EventTaskHierarchyPrototype";
 import EventOperationsMvp from "./EventOperationsMvp";
 
 export type Page = "home" | "dashboard" | "events" | "volunteers" | "ai";
@@ -565,15 +568,36 @@ function EventCard({
 }
 
 function EventsPage({ initialEventIndex }: { initialEventIndex: number | null }) {
-  if (!new URLSearchParams(window.location.search).get("prototype")) {
+  const prototype = new URLSearchParams(window.location.search).get("prototype");
+  if (!prototype) {
     return <EventOperationsMvp />;
   }
+  if (prototype === "event-collection") {
+    return <EventCollectionPrototype />;
+  }
 
+  const isCollectionPrototype = prototype === "event-collection";
+  const isTaskPrototype =
+    new URLSearchParams(window.location.search).get("prototype") ===
+    "task-hierarchy";
+  const isCreationPrototype =
+    prototype === "event-creation";
+  if (prototype === "operations") {
+    return <EventOperationsMvp />;
+  }
   const [selectedIndex, setSelectedIndex] = useState<number | null>(
-    initialEventIndex,
+    isTaskPrototype ? 0 : initialEventIndex,
   );
   const selectedEvent =
     selectedIndex === null ? null : events[selectedIndex];
+
+  if (isCollectionPrototype) {
+    return <EventCollectionPrototype />;
+  }
+
+  if (isCreationPrototype) {
+    return <EventCreationPrototype />;
+  }
 
   return (
     <section className="events-page">
@@ -606,7 +630,9 @@ function EventsPage({ initialEventIndex }: { initialEventIndex: number | null })
 
         {selectedEvent && (
           <div
-            className="workspace-modal"
+            className={`workspace-modal ${
+              isTaskPrototype ? "prototype-workspace-modal" : ""
+            }`}
             role="dialog"
             aria-modal="true"
             aria-labelledby="workspace-title"
@@ -650,18 +676,22 @@ function EventsPage({ initialEventIndex }: { initialEventIndex: number | null })
                 </article>
               </div>
 
-              <div className="kanban-board">
-                {kanbanColumns.map((column) => (
-                  <section className="kanban-column" key={column.title}>
-                    <h2>{column.title}</h2>
-                    <div>
-                      {column.cards.map((card) => (
-                        <article key={card}>{card}</article>
-                      ))}
-                    </div>
-                  </section>
-                ))}
-              </div>
+              {isTaskPrototype ? (
+                <EventTaskHierarchyPrototype />
+              ) : (
+                <div className="kanban-board">
+                  {kanbanColumns.map((column) => (
+                    <section className="kanban-column" key={column.title}>
+                      <h2>{column.title}</h2>
+                      <div>
+                        {column.cards.map((card) => (
+                          <article key={card}>{card}</article>
+                        ))}
+                      </div>
+                    </section>
+                  ))}
+                </div>
+              )}
             </section>
           </div>
         )}

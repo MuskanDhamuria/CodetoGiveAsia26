@@ -1,4 +1,5 @@
-.event-operations-page { max-width: 1040px; }
+.event-operations-page { max-width: none; }
+.event-operations-page > .section-hero, .event-operations-page > .event-operations-feedback, .event-operations-page > .event-operations-library, .event-operations-page > .event-operations-template-list, .event-operations-page > .event-template-picker { display: none; }
 .event-operations-library, .event-operations-creator, .event-operations-empty, .event-operations-workspace { background: #fff; border: 1px solid #e4e8e4; border-radius: 16px; box-shadow: 0 10px 24px rgba(24, 57, 38, .06); margin-top: 20px; padding: 24px; }
 .event-operations-library { align-items: center; display: flex; gap: 20px; justify-content: space-between; }
 .event-operations-library p, .event-operations-workspace > p:first-child { color: #44765b; font-size: .8rem; font-weight: 700; letter-spacing: .08em; margin: 0 0 6px; text-transform: uppercase; }

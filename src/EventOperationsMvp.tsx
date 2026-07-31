@@ -10,6 +10,7 @@ import {
   type EventTemplate,
   type TemplateTaskInput,
 } from "./event-operations"
+import EventCollectionPrototype from "./EventCollectionPrototype"
 import "./EventOperationsMvp.css"
 
 const phases: EventPhase[] = ["Planning", "Execution", "Post-execution"]
@@ -472,7 +473,24 @@ export default function EventOperationsMvp() {
         <p aria-live="polite" className="event-operations-feedback">
           {message}
         </p>
-        <EventCollection events={events} onNewEvent={openCreator} onOpen={openEventWorkspace} />
+        <EventCollectionPrototype
+          events={events.map((event) => {
+            const tasksDone = event.tasks.filter((task) => task.status === "Done").length
+            return {
+              id: event.id,
+              name: event.name,
+              date: new Intl.DateTimeFormat("en-SG", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }).format(new Date(`${event.date}T00:00:00Z`)),
+              day: Number(event.date.slice(8, 10)),
+              venue: event.venue,
+              status: event.status === "Closed" ? "Closed" : tasksDone === event.tasks.length ? "On track" : "Planning",
+              progress: event.tasks.length ? Math.round((tasksDone / event.tasks.length) * 100) : 0,
+              tasksDone,
+              tasksTotal: event.tasks.length,
+            }
+          })}
+          onNewEvent={openCreator}
+          onOpen={(event) => openEventWorkspace(operations.getEvent(event.id)!)}
+        />
         <section
           className="event-operations-library"
           aria-labelledby="template-library-title"

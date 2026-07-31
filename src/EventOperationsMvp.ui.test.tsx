@@ -19,9 +19,9 @@ describe("Event Operations MVP primary organizer journey", () => {
     await user.type(screen.getByLabelText("Venue"), "Marina Bay Community Plaza")
     await user.click(screen.getByRole("button", { name: "Continue" }))
     await user.click(screen.getByRole("button", { name: "Create event" }))
-    await user.click(screen.getByRole("button", { name: "Open event workspace" }))
+    await user.click(screen.getByRole("button", { name: /Open event workspace/ }))
 
-    const workspace = screen.getByRole("heading", { level: 2, name: "Kanban layout check" }).closest("section")!
+    const workspace = screen.getByRole("region", { name: "Kanban layout check" })
     const board = workspace.querySelector(".event-operations-kanban")
     expect(board).toBeTruthy()
     expect(board?.querySelectorAll(":scope > section")).toHaveLength(3)
@@ -51,7 +51,7 @@ describe("Event Operations MVP primary organizer journey", () => {
     await user.click(screen.getByRole("button", { name: "Create event" }))
     expect(screen.getByText("Event created from its Event Template.")).toBeTruthy()
 
-    await user.click(screen.getByRole("button", { name: "Open event workspace" }))
+    await user.click(screen.getByRole("button", { name: /Open event workspace/ }))
     await user.clear(screen.getAllByLabelText("Task title")[0])
     await user.type(screen.getAllByLabelText("Task title")[0], "Confirm community partners")
     await user.tab()
@@ -80,7 +80,7 @@ describe("Event Operations MVP primary organizer journey", () => {
 
     await user.click(screen.getByRole("button", { name: "Calendar" }))
     expect(screen.getByLabelText("August 2027 Event calendar")).toBeTruthy()
-    expect(screen.getByRole("button", { name: "August community distribution" })).toBeTruthy()
+    expect(screen.getByRole("button", { name: /August community distribution/ })).toBeTruthy()
 
     await user.click(screen.getByRole("button", { name: "New Event Template" }))
     const templateEditor = screen.getByRole("heading", { name: "New Event Template" }).closest("form")!

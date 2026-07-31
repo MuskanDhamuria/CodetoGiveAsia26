@@ -23,13 +23,7 @@ const prototypeEvents: EventCollectionItem[] = [
   { id: "prototype-wellness", name: "Migrant Wellness Morning", date: "12 Jul 2027", day: 12, venue: "Jurong Community Hall", status: "Closed", progress: 100, tasksDone: 18, tasksTotal: 18 },
 ];
 
-const variantNames = {
-  A: "Chronological ledger",
-  B: "Calendar command",
-  C: "Portfolio split",
-} as const;
-
-type Variant = keyof typeof variantNames;
+type Variant = "A" | "B" | "C";
 type View = "list" | "calendar";
 
 function EventStatus({ status }: { status: EventCollectionItem["status"] }) {
@@ -213,17 +207,6 @@ function VariantC({ events, view, month, showClosed, selected, onMonth, onNewEve
   );
 }
 
-function PrototypeSwitcher({ current, onCycle }: { current: Variant; onCycle: (direction: number) => void }) {
-  if (import.meta.env.PROD) return null;
-  return (
-    <div className="prototype-switcher" aria-label="Prototype variant switcher">
-      <button type="button" onClick={() => onCycle(-1)} aria-label="Previous variant">←</button>
-      <strong>{current} — {variantNames[current]}</strong>
-      <button type="button" onClick={() => onCycle(1)} aria-label="Next variant">→</button>
-    </div>
-  );
-}
-
 export default function EventCollectionPrototype({
   events: liveEvents,
   onNewEvent,
@@ -235,7 +218,7 @@ export default function EventCollectionPrototype({
 }) {
   const params = new URLSearchParams(window.location.search);
   const initialVariant = params.get("variant");
-  const [variant, setVariant] = useState<Variant>(initialVariant === "A" || initialVariant === "B" ? initialVariant : "C");
+  const variant: Variant = initialVariant === "A" || initialVariant === "B" || initialVariant === "C" ? initialVariant : "C";
   const [view, setView] = useState<View>(variant === "B" ? "calendar" : "list");
   const [showClosed, setShowClosed] = useState(false);
   const [month, setMonth] = useState(8);
@@ -259,31 +242,6 @@ export default function EventCollectionPrototype({
       sourceEvents.find((event) => event.id === current?.id) ?? sourceEvents[0],
     );
   }, [sourceEvents]);
-
-  function setUrlVariant(next: Variant) {
-    const nextUrl = new URL(window.location.href);
-    nextUrl.searchParams.set("variant", next);
-    window.history.replaceState({}, "", nextUrl);
-    setVariant(next);
-    if (next === "B") setView("calendar");
-  }
-
-  function cycle(direction: number) {
-    const variants: Variant[] = ["A", "B", "C"];
-    const next = variants[(variants.indexOf(variant) + direction + variants.length) % variants.length];
-    setUrlVariant(next);
-  }
-
-  useEffect(() => {
-    function handleKey(event: KeyboardEvent) {
-      const target = event.target as HTMLElement;
-      if (["INPUT", "TEXTAREA"].includes(target.tagName) || target.isContentEditable) return;
-      if (event.key === "ArrowLeft") cycle(-1);
-      if (event.key === "ArrowRight") cycle(1);
-    }
-    window.addEventListener("keydown", handleKey);
-    return () => window.removeEventListener("keydown", handleKey);
-  }, [variant]);
 
   if (!selected) {
     return (
@@ -316,7 +274,6 @@ export default function EventCollectionPrototype({
       {variant === "B" && <VariantB {...props} />}
       {variant === "C" && <VariantC {...props} />}
       {notice && <button className="collection-notice" type="button" onClick={() => setNotice("")}>{notice}<span>Dismiss</span></button>}
-      <PrototypeSwitcher current={variant} onCycle={cycle} />
     </>
   );
 }

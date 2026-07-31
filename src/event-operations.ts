@@ -82,6 +82,20 @@ export type EventDraftTaskInput = Pick<
   "title" | "phase" | "relativeDeadlineDays" | "assigneeId" | "subtasks"
 > & { taskId: string }
 
+export type EventTaskInput = Pick<
+  EventTask,
+  "title" | "phase" | "assigneeId" | "subtasks"
+> & {
+  deadline: string
+}
+
+export type EventTaskRef = {
+  eventId: string
+  taskId: string
+}
+
+export type NewEventTaskInput = Pick<EventTaskInput, "title" | "phase" | "deadline">
+
 export interface EventOperations {
   listEventTemplates(): EventTemplate[]
   createCustomEventTemplate(input: EventTemplateInput): EventTemplate
@@ -93,7 +107,13 @@ export interface EventOperations {
   listTeamMembers(): TeamMember[]
   listEvents(options?: { includeClosed?: boolean }): Event[]
   getEvent(eventId: string): Event | undefined
+  updateEvent(
+    eventId: string,
+    changes: Partial<Pick<Event, "name" | "date" | "venue">>,
+  ): Event
   closeEvent(eventId: string): Event
+  reopenEvent(eventId: string): Event
+  deleteEvent(eventId: string): void
   createEventDraft(templateId: string): EventDraft
   updateEventDraft(
     draftId: string,
@@ -109,7 +129,20 @@ export interface EventOperations {
   discardEventDraft(draftId: string): void
   createEventFromDraft(draftId: string): Event
   createEvent(input: CreateEventInput): Event
-  startTask(input: { eventId: string; taskId: string }): EventTask
+  startTask(input: EventTaskRef): EventTask
+  markTaskDone(input: EventTaskRef): EventTask
+  reopenTask(input: EventTaskRef): EventTask
+  updateEventTask(
+    input: EventTaskRef & EventTaskInput,
+  ): EventTask
+  addEventTask(input: { eventId: string } & NewEventTaskInput): EventTask
+  removeEventTask(input: EventTaskRef): void
+  moveEventTask(input: {
+    direction: -1 | 1
+  } & EventTaskRef): Event
+  toggleSubtask(input: {
+    subtaskIndex: number
+  } & EventTaskRef): EventTask
 }
 
 type TemplateTaskFixture = [string, EventPhase, number, string[]?]
@@ -231,6 +264,13 @@ export function deadlineFor(
   return date.toISOString().slice(0, 10)
 }
 
+export function relativeDeadlineDaysFor(eventDate: string, deadline: string): number {
+  return Math.round(
+    (Date.parse(`${deadline}T00:00:00Z`) - Date.parse(`${eventDate}T00:00:00Z`)) /
+      86_400_000,
+  )
+}
+
 function validateEventDetails(
   input: Pick<CreateEventInput, "name" | "date" | "venue">,
 ) {
@@ -336,6 +376,37 @@ export function createInMemoryEventOperations(): EventOperations {
     return draft
   }
 
+  function requireEvent(eventId: string): Event {
+    const event = events.find((item) => item.id === eventId)
+    if (!event) throw new Error("Event not found.")
+    return event
+  }
+
+  function requireEditableEvent(eventId: string): Event {
+    const event = requireEvent(eventId)
+    if (event.status === "Closed") throw new Error("Closed Events are read-only.")
+    return event
+  }
+
+  function requireTask(event: Event, taskId: string): EventTask {
+    const task = event.tasks.find((item) => item.id === taskId)
+    if (!task) throw new Error("Task not found.")
+    return task
+  }
+
+  function validateEventTaskInput(input: EventTaskInput) {
+    if (!input.title.trim()) throw new Error("Enter a Task title.")
+    if (!input.deadline || !/^\d{4}-\d{2}-\d{2}$/.test(input.deadline)) {
+      throw new Error("Set a Task deadline.")
+    }
+    if (
+      input.assigneeId !== null &&
+      !teamMembers.some((member) => member.id === input.assigneeId)
+    ) {
+      throw new Error("Choose a valid Team Member.")
+    }
+  }
+
   return {
     listEventTemplates: () => copy(templates),
     createCustomEventTemplate: (input) => {
@@ -386,11 +457,32 @@ export function createInMemoryEventOperations(): EventOperations {
       const event = events.find((item) => item.id === eventId)
       return event ? copy(event) : undefined
     },
+    updateEvent: (eventId, changes) => {
+      const event = requireEditableEvent(eventId)
+      const next = { ...event, ...changes }
+      validateEventDetails(next)
+      event.name = next.name.trim()
+      event.date = next.date
+      event.venue = next.venue.trim()
+      event.tasks.forEach((task) => {
+        task.deadline = deadlineFor(event.date, task.relativeDeadlineDays)
+      })
+      return copy(event)
+    },
     closeEvent: (eventId) => {
-      const event = events.find((item) => item.id === eventId)
-      if (!event) throw new Error("Event not found.")
+      const event = requireEvent(eventId)
       event.status = "Closed"
       return copy(event)
+    },
+    reopenEvent: (eventId) => {
+      const event = requireEvent(eventId)
+      event.status = "Open"
+      return copy(event)
+    },
+    deleteEvent: (eventId) => {
+      const index = events.findIndex((item) => item.id === eventId)
+      if (index === -1) throw new Error("Event not found.")
+      events.splice(index, 1)
     },
     createEventDraft: (templateId) => {
       if (!templates.some((item) => item.id === templateId)) {
@@ -497,12 +589,81 @@ export function createInMemoryEventOperations(): EventOperations {
     },
     createEvent,
     startTask: ({ eventId, taskId }) => {
-      const event = events.find((item) => item.id === eventId)
-      const task = event?.tasks.find((item) => item.id === taskId)
-      if (!task) throw new Error("Task not found.")
+      const task = requireTask(requireEditableEvent(eventId), taskId)
       if (task.status !== "To do")
         throw new Error("Only To do Tasks can be started.")
       task.status = "In progress"
+      return copy(task)
+    },
+    markTaskDone: ({ eventId, taskId }) => {
+      const task = requireTask(requireEditableEvent(eventId), taskId)
+      if (task.status !== "In progress") {
+        throw new Error("Only In progress Tasks can be marked done.")
+      }
+      task.status = "Done"
+      return copy(task)
+    },
+    reopenTask: ({ eventId, taskId }) => {
+      const task = requireTask(requireEditableEvent(eventId), taskId)
+      if (task.status !== "Done") throw new Error("Only Done Tasks can be reopened.")
+      task.status = "In progress"
+      return copy(task)
+    },
+    updateEventTask: ({ eventId, taskId, ...changes }) => {
+      const event = requireEditableEvent(eventId)
+      const task = requireTask(event, taskId)
+      validateEventTaskInput(changes)
+      task.title = changes.title.trim()
+      task.phase = changes.phase
+      task.relativeDeadlineDays = relativeDeadlineDaysFor(event.date, changes.deadline)
+      task.deadline = deadlineFor(event.date, task.relativeDeadlineDays)
+      task.assigneeId = changes.assigneeId
+      task.subtasks = changes.subtasks.map((subtask) => ({
+        title: subtask.title.trim(),
+        completed: subtask.completed,
+      })).filter((subtask) => subtask.title)
+      return copy(task)
+    },
+    addEventTask: ({ eventId, ...input }) => {
+      const event = requireEditableEvent(eventId)
+      validateEventTaskInput({ ...input, assigneeId: null, subtasks: [] })
+      const task: EventTask = {
+        id: `${event.id}-task-${event.tasks.length + 1}`,
+        title: input.title.trim(),
+        phase: input.phase,
+        relativeDeadlineDays: relativeDeadlineDaysFor(event.date, input.deadline),
+        deadline: input.deadline,
+        status: "To do",
+        assigneeId: null,
+        subtasks: [],
+      }
+      event.tasks.push(task)
+      return copy(task)
+    },
+    removeEventTask: ({ eventId, taskId }) => {
+      const event = requireEditableEvent(eventId)
+      const index = event.tasks.findIndex((item) => item.id === taskId)
+      if (index === -1) throw new Error("Task not found.")
+      event.tasks.splice(index, 1)
+    },
+    moveEventTask: ({ eventId, taskId, direction }) => {
+      const event = requireEditableEvent(eventId)
+      const index = event.tasks.findIndex((item) => item.id === taskId)
+      if (index === -1) throw new Error("Task not found.")
+      const target = index + direction
+      if (target >= 0 && target < event.tasks.length) {
+        ;[event.tasks[index], event.tasks[target]] = [
+          event.tasks[target],
+          event.tasks[index],
+        ]
+      }
+      return copy(event)
+    },
+    toggleSubtask: ({ eventId, taskId, subtaskIndex }) => {
+      const task = requireTask(requireEditableEvent(eventId), taskId)
+      const subtask = task.subtasks[subtaskIndex]
+      if (!subtask) throw new Error("Subtask not found.")
+      subtask.completed = !subtask.completed
       return copy(task)
     },
   }

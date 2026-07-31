@@ -384,6 +384,106 @@ export function eventOperationsContract(
       )
       expect(operations.listEvents()).toEqual([])
     })
+
+    it("operates an active Event plan and recalculates Task deadlines from its date", () => {
+      const operations = createOperations()
+      const event = operations.createEvent({
+        templateId: "distribution-of-pre-loved-items",
+        name: "August community distribution",
+        date: "2027-08-09",
+        venue: "Marina Bay Community Plaza",
+      })
+      const task = event.tasks[0]
+
+      const updated = operations.updateEventTask({
+        eventId: event.id,
+        taskId: task.id,
+        title: "Confirm community partners",
+        phase: "Planning",
+        deadline: "2027-08-07",
+        assigneeId: "priya-nair",
+        subtasks: [{ title: "Call the venue", completed: false }],
+      })
+      expect(updated).toMatchObject({
+        title: "Confirm community partners",
+        relativeDeadlineDays: -2,
+        deadline: "2027-08-07",
+        assigneeId: "priya-nair",
+      })
+
+      const moved = operations.updateEvent(event.id, { date: "2027-08-16" })
+      expect(moved.tasks[0]).toMatchObject({
+        deadline: "2027-08-14",
+        relativeDeadlineDays: -2,
+      })
+    })
+
+    it("keeps Subtask completion separate from the strict Task status cycle", () => {
+      const operations = createOperations()
+      const event = operations.createEvent({
+        templateId: "distribution-of-pre-loved-items",
+        name: "August community distribution",
+        date: "2027-08-09",
+        venue: "Marina Bay Community Plaza",
+      })
+      const task = event.tasks[8]
+
+      expect(operations.toggleSubtask({ eventId: event.id, taskId: task.id, subtaskIndex: 0 })).toMatchObject({
+        status: "To do",
+        subtasks: expect.arrayContaining([expect.objectContaining({ completed: true })]),
+      })
+      operations.startTask({ eventId: event.id, taskId: task.id })
+      expect(operations.markTaskDone({ eventId: event.id, taskId: task.id }).status).toBe("Done")
+      expect(operations.reopenTask({ eventId: event.id, taskId: task.id }).status).toBe("In progress")
+      expect(operations.markTaskDone({ eventId: event.id, taskId: task.id }).status).toBe("Done")
+      expect(() => operations.startTask({ eventId: event.id, taskId: task.id })).toThrow(
+        "Only To do Tasks can be started.",
+      )
+      expect(() => operations.reopenTask({ eventId: event.id, taskId: event.tasks[0].id })).toThrow(
+        "Only Done Tasks can be reopened.",
+      )
+    })
+
+    it("makes a closed Event read-only, then reopens or deletes it deliberately", () => {
+      const operations = createOperations()
+      const event = operations.createEvent({
+        templateId: "wellness",
+        name: "September wellbeing session",
+        date: "2027-09-18",
+        venue: "Tampines Hub",
+      })
+
+      operations.closeEvent(event.id)
+      expect(() => operations.startTask({ eventId: event.id, taskId: event.tasks[0].id })).toThrow(
+        "Closed Events are read-only.",
+      )
+      expect(operations.reopenEvent(event.id).status).toBe("Open")
+      operations.deleteEvent(event.id)
+      expect(operations.getEvent(event.id)).toBeUndefined()
+    })
+
+    it("starts manually added Tasks unassigned with an unchecked empty checklist", () => {
+      const operations = createOperations()
+      const event = operations.createEvent({
+        templateId: "wellness",
+        name: "September wellbeing session",
+        date: "2027-09-18",
+        venue: "Tampines Hub",
+      })
+
+      const task = operations.addEventTask({
+        eventId: event.id,
+        title: "Set up signage",
+        phase: "Execution",
+        deadline: "2027-09-18",
+      })
+
+      expect(task).toMatchObject({
+        status: "To do",
+        assigneeId: null,
+        subtasks: [],
+      })
+    })
   })
 }
 

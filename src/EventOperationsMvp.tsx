@@ -6,6 +6,7 @@ import {
   type EventDraft,
   type EventOperations,
   type EventPhase,
+  type EventTask,
   type EventTemplate,
   type TemplateTaskInput,
 } from "./event-operations"
@@ -49,11 +50,61 @@ function EventWorkspace({
   event,
   operations,
   onEventChanged,
+  onDeleted,
+  onMessage,
 }: {
   event: Event
   operations: EventOperations
   onEventChanged: (event: Event) => void
+  onDeleted: () => void
+  onMessage: (message: string) => void
 }) {
+  const [showNewTask, setShowNewTask] = useState(false)
+  const [newTask, setNewTask] = useState({
+    title: "",
+    phase: "Planning" as EventPhase,
+    deadline: event.date,
+  })
+  const teamMembers = operations.listTeamMembers()
+  const updateTask = (task: EventTask, changes: Partial<EventTask>) => {
+    try {
+      operations.updateEventTask({
+        eventId: event.id,
+        taskId: task.id,
+        title: changes.title ?? task.title,
+        phase: changes.phase ?? task.phase,
+        deadline: changes.deadline ?? task.deadline,
+        assigneeId:
+          changes.assigneeId === undefined ? task.assigneeId : changes.assigneeId,
+        subtasks: changes.subtasks ?? task.subtasks,
+      })
+      onEventChanged(operations.getEvent(event.id)!)
+    } catch (error) {
+      onMessage(error instanceof Error ? error.message : "Unable to update Task.")
+    }
+  }
+  const changeStatus = (task: EventTask) => {
+    try {
+      if (task.status === "To do") operations.startTask({ eventId: event.id, taskId: task.id })
+      else if (task.status === "In progress") operations.markTaskDone({ eventId: event.id, taskId: task.id })
+      else operations.reopenTask({ eventId: event.id, taskId: task.id })
+      onEventChanged(operations.getEvent(event.id)!)
+    } catch (error) {
+      onMessage(error instanceof Error ? error.message : "Unable to change Task status.")
+    }
+  }
+  const taskCard = (task: EventTask) => (
+    <article className="event-operations-task-card" key={task.id}>
+      <label>Task title<input defaultValue={task.title} disabled={event.status === "Closed"} onBlur={(input) => input.target.value !== task.title && updateTask(task, { title: input.target.value })} /></label>
+      <label>Phase<select defaultValue={task.phase} disabled={event.status === "Closed"} onChange={(input) => updateTask(task, { phase: input.target.value as EventPhase })}>{phases.map((phase) => <option key={phase}>{phase}</option>)}</select></label>
+      <label>Deadline<input type="date" defaultValue={task.deadline} disabled={event.status === "Closed"} onChange={(input) => updateTask(task, { deadline: input.target.value })} /></label>
+      <small>{relativeDeadlineLabel(task.relativeDeadlineDays)}</small>
+      <label>Team Member<select value={task.assigneeId ?? ""} disabled={event.status === "Closed"} onChange={(input) => updateTask(task, { assigneeId: input.target.value || null })}><option value="">Unassigned</option>{teamMembers.map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}</select></label>
+      {event.status === "Open" && <label>Subtasks<input defaultValue={task.subtasks.map((subtask) => subtask.title).join(", ")} onBlur={(input) => updateTask(task, { subtasks: input.target.value.split(",").map((title) => ({ title: title.trim(), completed: false })).filter((subtask) => subtask.title) })} /></label>}
+      {task.subtasks.length > 0 && <fieldset><legend>Subtasks</legend>{task.subtasks.map((subtask, subtaskIndex) => <label key={`${task.id}-${subtaskIndex}`}><input checked={subtask.completed} disabled={event.status === "Closed"} type="checkbox" onChange={() => { try { operations.toggleSubtask({ eventId: event.id, taskId: task.id, subtaskIndex }); onEventChanged(operations.getEvent(event.id)!) } catch (error) { onMessage(error instanceof Error ? error.message : "Unable to update Subtask.") } }} />{subtask.title}</label>)}</fieldset>}
+      {event.status === "Open" && <div className="event-operations-task-actions"><button type="button" onClick={() => changeStatus(task)}>{task.status === "To do" ? "Start task" : task.status === "In progress" ? "Mark done" : "Reopen"}</button><button type="button" onClick={() => { operations.moveEventTask({ eventId: event.id, taskId: task.id, direction: -1 }); onEventChanged(operations.getEvent(event.id)!) }}>Move up</button><button type="button" onClick={() => { operations.moveEventTask({ eventId: event.id, taskId: task.id, direction: 1 }); onEventChanged(operations.getEvent(event.id)!) }}>Move down</button><button type="button" onClick={() => { if (window.confirm(`Remove ${task.title}?`)) { operations.removeEventTask({ eventId: event.id, taskId: task.id }); onEventChanged(operations.getEvent(event.id)!) } }}>Remove Task</button></div>}
+    </article>
+  )
   return (
     <section
       aria-labelledby={`event-workspace-title-${event.id}`}
@@ -61,35 +112,19 @@ function EventWorkspace({
     >
       <p>Event workspace</p>
       <h2 id={`event-workspace-title-${event.id}`}>{event.name}</h2>
-      <span>
-        {event.date} · {event.venue}
-      </span>
-      <p>From {event.sourceTemplateName}</p>
-      <h3>Auto-generated plan</h3>
-      <div className="event-operations-task-list">
-        {event.tasks.map((task) => (
-          <article key={task.id}>
-            <div>
-              <strong>{task.title}</strong>
-              <span>
-                {task.phase} · Due {task.deadline}
-              </span>
-            </div>
-            <span className="event-operations-status">{task.status}</span>
-            {task.status === "To do" && (
-              <button
-                type="button"
-                onClick={() => {
-                  operations.startTask({ eventId: event.id, taskId: task.id })
-                  onEventChanged(operations.getEvent(event.id)!)
-                }}
-              >
-                Start task
-              </button>
-            )}
-          </article>
-        ))}
+      <div className="event-operations-event-details">
+        <label>Event name<input defaultValue={event.name} disabled={event.status === "Closed"} onBlur={(input) => input.target.value !== event.name && onEventChanged(operations.updateEvent(event.id, { name: input.target.value }))} /></label>
+        <label>Event date<input defaultValue={event.date} disabled={event.status === "Closed"} type="date" onChange={(input) => onEventChanged(operations.updateEvent(event.id, { date: input.target.value }))} /></label>
+        <label>Venue<input defaultValue={event.venue} disabled={event.status === "Closed"} onBlur={(input) => input.target.value !== event.venue && onEventChanged(operations.updateEvent(event.id, { venue: input.target.value }))} /></label>
       </div>
+      <p>From {event.sourceTemplateName}</p>
+      <div className="event-operations-workspace-actions">
+        {event.status === "Open" ? <button type="button" onClick={() => { if (window.confirm(`Close ${event.name}? Its plan will become read-only.`)) { onEventChanged(operations.closeEvent(event.id)); onMessage("Event closed. Its plan is read-only.") } }}>Close Event</button> : <button type="button" onClick={() => { onEventChanged(operations.reopenEvent(event.id)); onMessage("Event reopened.") }}>Reopen Event</button>}
+        <button type="button" onClick={() => { if (window.confirm(`Delete ${event.name}? This cannot be undone.`)) { operations.deleteEvent(event.id); onDeleted(); onMessage("Event deleted.") } }}>Delete Event</button>
+      </div>
+      <h3>Task workspace</h3>
+      <div className="event-operations-kanban">{(["To do", "In progress", "Done"] as const).map((status) => <section key={status}><h4>{status}</h4>{event.tasks.filter((task) => task.status === status).map(taskCard)}</section>)}</div>
+      {event.status === "Open" && <div className="event-operations-add-task">{showNewTask ? <><label>Task title<input value={newTask.title} onChange={(input) => setNewTask({ ...newTask, title: input.target.value })} /></label><label>Phase<select value={newTask.phase} onChange={(input) => setNewTask({ ...newTask, phase: input.target.value as EventPhase })}>{phases.map((phase) => <option key={phase}>{phase}</option>)}</select></label><label>Deadline<input type="date" value={newTask.deadline} onChange={(input) => setNewTask({ ...newTask, deadline: input.target.value })} /></label><button type="button" onClick={() => { try { operations.addEventTask({ eventId: event.id, ...newTask }); onEventChanged(operations.getEvent(event.id)!); setShowNewTask(false); setNewTask({ title: "", phase: "Planning", deadline: event.date }) } catch (error) { onMessage(error instanceof Error ? error.message : "Unable to add Task.") } }}>Add Task</button><button type="button" onClick={() => setShowNewTask(false)}>Cancel</button></> : <button type="button" onClick={() => setShowNewTask(true)}>Add Task</button>}</div>}
     </section>
   )
 }
@@ -621,6 +656,13 @@ export default function EventOperationsMvp() {
                   ),
                 )
               }
+              onDeleted={() => {
+                setEvents((current) =>
+                  current.filter((item) => item.id !== openEvent.id),
+                )
+                setOpenEventId(null)
+              }}
+              onMessage={setMessage}
             />
         )}
       </div>

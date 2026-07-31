@@ -1,5 +1,6 @@
 import { useState } from "react";
 import AiCopilot from "./AiCopilot";
+import EventOperationsMvp from "./EventOperationsMvp";
 
 export type Page = "home" | "dashboard" | "events" | "volunteers" | "ai";
 
@@ -564,6 +565,10 @@ function EventCard({
 }
 
 function EventsPage({ initialEventIndex }: { initialEventIndex: number | null }) {
+  if (!new URLSearchParams(window.location.search).get("prototype")) {
+    return <EventOperationsMvp />;
+  }
+
   const [selectedIndex, setSelectedIndex] = useState<number | null>(
     initialEventIndex,
   );

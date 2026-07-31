@@ -1,0 +1,19 @@
+.event-operations-page { max-width: 1040px; }
+.event-operations-library, .event-operations-creator, .event-operations-empty, .event-operations-workspace { background: #fff; border: 1px solid #e4e8e4; border-radius: 16px; box-shadow: 0 10px 24px rgba(24, 57, 38, .06); margin-top: 20px; padding: 24px; }
+.event-operations-library { align-items: center; display: flex; gap: 20px; justify-content: space-between; }
+.event-operations-library p, .event-operations-workspace > p:first-child { color: #44765b; font-size: .8rem; font-weight: 700; letter-spacing: .08em; margin: 0 0 6px; text-transform: uppercase; }
+.event-operations-library h2, .event-operations-workspace h2 { margin: 0; }
+.event-operations-library span, .event-operations-workspace > span, .event-operations-workspace > p { color: #5e6961; display: block; margin-top: 6px; }
+.event-operations-library button, .event-operations-creator button[type="submit"], .event-operations-task-list button { background: #246b45; border: 0; border-radius: 8px; color: #fff; cursor: pointer; font-weight: 700; padding: 10px 14px; }
+.event-operations-creator { display: grid; gap: 14px; max-width: 620px; }
+.event-operations-creator h2 { margin: 0 0 4px; }
+.event-operations-creator label { color: #28362d; display: grid; font-weight: 700; gap: 6px; }
+.event-operations-creator input { border: 1px solid #b9c9bd; border-radius: 8px; font: inherit; padding: 10px; }
+.event-operations-creator > div { display: flex; gap: 10px; justify-content: flex-end; }
+.event-operations-creator button[type="button"] { background: #f0f4f0; border: 0; border-radius: 8px; color: #284f39; cursor: pointer; font-weight: 700; padding: 10px 14px; }
+.event-operations-task-list { display: grid; gap: 10px; }
+.event-operations-task-list article { align-items: center; border: 1px solid #e4e8e4; border-radius: 10px; display: grid; gap: 12px; grid-template-columns: 1fr auto auto; padding: 14px; }
+.event-operations-task-list strong, .event-operations-task-list article span { display: block; }
+.event-operations-task-list article div span { color: #5e6961; font-size: .9rem; margin-top: 3px; }
+.event-operations-status { color: #44765b; font-weight: 700; }
+@media (max-width: 640px) { .event-operations-library { align-items: flex-start; flex-direction: column; } .event-operations-task-list article { align-items: flex-start; grid-template-columns: 1fr; } }

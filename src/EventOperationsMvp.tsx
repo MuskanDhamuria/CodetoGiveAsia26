@@ -60,6 +60,13 @@ function EventWorkspace({
   onMessage: (message: string) => void
 }) {
   const [showNewTask, setShowNewTask] = useState(false)
+  const [confirmation, setConfirmation] = useState<{
+    title: string
+    description: string
+    cancelLabel: string
+    confirmLabel: string
+    onConfirm: () => void
+  } | null>(null)
   const [newTask, setNewTask] = useState({
     title: "",
     phase: "Planning" as EventPhase,
@@ -85,10 +92,12 @@ function EventWorkspace({
   }
   const changeStatus = (task: EventTask) => {
     try {
+      const action = task.status === "To do" ? "started" : task.status === "In progress" ? "marked done" : "reopened"
       if (task.status === "To do") operations.startTask({ eventId: event.id, taskId: task.id })
       else if (task.status === "In progress") operations.markTaskDone({ eventId: event.id, taskId: task.id })
       else operations.reopenTask({ eventId: event.id, taskId: task.id })
       onEventChanged(operations.getEvent(event.id)!)
+      onMessage(`Task ${action}: ${task.title}`)
     } catch (error) {
       onMessage(error instanceof Error ? error.message : "Unable to change Task status.")
     }
@@ -99,10 +108,10 @@ function EventWorkspace({
       <label>Phase<select defaultValue={task.phase} disabled={event.status === "Closed"} onChange={(input) => updateTask(task, { phase: input.target.value as EventPhase })}>{phases.map((phase) => <option key={phase}>{phase}</option>)}</select></label>
       <label>Deadline<input type="date" defaultValue={task.deadline} disabled={event.status === "Closed"} onChange={(input) => updateTask(task, { deadline: input.target.value })} /></label>
       <small>{relativeDeadlineLabel(task.relativeDeadlineDays)}</small>
-      <label>Team Member<select value={task.assigneeId ?? ""} disabled={event.status === "Closed"} onChange={(input) => updateTask(task, { assigneeId: input.target.value || null })}><option value="">Unassigned</option>{teamMembers.map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}</select></label>
+      <label>Team Member<select value={task.assigneeId ?? ""} disabled={event.status === "Closed"} onChange={(input) => { const assigneeId = input.target.value || null; updateTask(task, { assigneeId }); onMessage(assigneeId ? `Assigned to ${teamMembers.find((member) => member.id === assigneeId)?.name}` : "Task is now unassigned.") }}><option value="">Unassigned</option>{teamMembers.map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}</select></label>
       {event.status === "Open" && <label>Subtasks<input defaultValue={task.subtasks.map((subtask) => subtask.title).join(", ")} onBlur={(input) => updateTask(task, { subtasks: input.target.value.split(",").map((title) => ({ title: title.trim(), completed: false })).filter((subtask) => subtask.title) })} /></label>}
-      {task.subtasks.length > 0 && <fieldset><legend>Subtasks</legend>{task.subtasks.map((subtask, subtaskIndex) => <label key={`${task.id}-${subtaskIndex}`}><input checked={subtask.completed} disabled={event.status === "Closed"} type="checkbox" onChange={() => { try { operations.toggleSubtask({ eventId: event.id, taskId: task.id, subtaskIndex }); onEventChanged(operations.getEvent(event.id)!) } catch (error) { onMessage(error instanceof Error ? error.message : "Unable to update Subtask.") } }} />{subtask.title}</label>)}</fieldset>}
-      {event.status === "Open" && <div className="event-operations-task-actions"><button type="button" onClick={() => changeStatus(task)}>{task.status === "To do" ? "Start task" : task.status === "In progress" ? "Mark done" : "Reopen"}</button><button type="button" onClick={() => { operations.moveEventTask({ eventId: event.id, taskId: task.id, direction: -1 }); onEventChanged(operations.getEvent(event.id)!) }}>Move up</button><button type="button" onClick={() => { operations.moveEventTask({ eventId: event.id, taskId: task.id, direction: 1 }); onEventChanged(operations.getEvent(event.id)!) }}>Move down</button><button type="button" onClick={() => { if (window.confirm(`Remove ${task.title}?`)) { operations.removeEventTask({ eventId: event.id, taskId: task.id }); onEventChanged(operations.getEvent(event.id)!) } }}>Remove Task</button></div>}
+      {task.subtasks.length > 0 && <fieldset><legend>Subtasks</legend>{task.subtasks.map((subtask, subtaskIndex) => <label key={`${task.id}-${subtaskIndex}`}><input checked={subtask.completed} disabled={event.status === "Closed"} type="checkbox" onChange={() => { try { operations.toggleSubtask({ eventId: event.id, taskId: task.id, subtaskIndex }); onEventChanged(operations.getEvent(event.id)!); onMessage(`Subtask ${subtask.completed ? "reopened" : "completed"}: ${subtask.title}`) } catch (error) { onMessage(error instanceof Error ? error.message : "Unable to update Subtask.") } }} />{subtask.title}</label>)}</fieldset>}
+      {event.status === "Open" && <div className="event-operations-task-actions"><button type="button" onClick={() => changeStatus(task)}>{task.status === "To do" ? "Start task" : task.status === "In progress" ? "Mark done" : "Reopen"}</button><button type="button" onClick={() => { operations.moveEventTask({ eventId: event.id, taskId: task.id, direction: -1 }); onEventChanged(operations.getEvent(event.id)!) }}>Move up</button><button type="button" onClick={() => { operations.moveEventTask({ eventId: event.id, taskId: task.id, direction: 1 }); onEventChanged(operations.getEvent(event.id)!) }}>Move down</button><button type="button" onClick={() => setConfirmation({ title: `Remove ${task.title}?`, description: "This Task will be removed from this Event plan.", cancelLabel: "Keep Task", confirmLabel: "Remove Task", onConfirm: () => { operations.removeEventTask({ eventId: event.id, taskId: task.id }); onEventChanged(operations.getEvent(event.id)!); onMessage(`Task removed: ${task.title}`) } })}>Remove Task</button></div>}
     </article>
   )
   return (
@@ -112,6 +121,7 @@ function EventWorkspace({
     >
       <p>Event workspace</p>
       <h2 id={`event-workspace-title-${event.id}`}>{event.name}</h2>
+      {event.status === "Closed" && <p className="event-operations-closed-notice">This Event is closed. Reopen it to make changes.</p>}
       <div className="event-operations-event-details">
         <label>Event name<input defaultValue={event.name} disabled={event.status === "Closed"} onBlur={(input) => input.target.value !== event.name && onEventChanged(operations.updateEvent(event.id, { name: input.target.value }))} /></label>
         <label>Event date<input defaultValue={event.date} disabled={event.status === "Closed"} type="date" onChange={(input) => onEventChanged(operations.updateEvent(event.id, { date: input.target.value }))} /></label>
@@ -119,12 +129,13 @@ function EventWorkspace({
       </div>
       <p>From {event.sourceTemplateName}</p>
       <div className="event-operations-workspace-actions">
-        {event.status === "Open" ? <button type="button" onClick={() => { if (window.confirm(`Close ${event.name}? Its plan will become read-only.`)) { onEventChanged(operations.closeEvent(event.id)); onMessage("Event closed. Its plan is read-only.") } }}>Close Event</button> : <button type="button" onClick={() => { onEventChanged(operations.reopenEvent(event.id)); onMessage("Event reopened.") }}>Reopen Event</button>}
-        <button type="button" onClick={() => { if (window.confirm(`Delete ${event.name}? This cannot be undone.`)) { operations.deleteEvent(event.id); onDeleted(); onMessage("Event deleted.") } }}>Delete Event</button>
+        {event.status === "Open" ? <button type="button" onClick={() => setConfirmation({ title: `Close “${event.name}”?`, description: "This Event will become read-only. You can reopen it later.", cancelLabel: "Keep active", confirmLabel: "Close event", onConfirm: () => { onEventChanged(operations.closeEvent(event.id)); onMessage("Event closed. It is now read-only.") } })}>Close event</button> : <button type="button" onClick={() => setConfirmation({ title: `Reopen “${event.name}”?`, description: "Its existing plan and Task history will be preserved.", cancelLabel: "Keep closed", confirmLabel: "Reopen event", onConfirm: () => { onEventChanged(operations.reopenEvent(event.id)); onMessage("Event reopened. You can make changes again.") } })}>Reopen event</button>}
+        <button type="button" onClick={() => setConfirmation({ title: `Delete “${event.name}” permanently?`, description: "This cannot be undone.", cancelLabel: "Keep event", confirmLabel: "Delete event", onConfirm: () => { operations.deleteEvent(event.id); onDeleted(); onMessage(`Event deleted: ${event.name}.`) } })}>Delete event</button>
       </div>
       <h3>Task workspace</h3>
       <div className="event-operations-kanban">{(["To do", "In progress", "Done"] as const).map((status) => <section key={status}><h4>{status}</h4>{event.tasks.filter((task) => task.status === status).map(taskCard)}</section>)}</div>
       {event.status === "Open" && <div className="event-operations-add-task">{showNewTask ? <><label>Task title<input value={newTask.title} onChange={(input) => setNewTask({ ...newTask, title: input.target.value })} /></label><label>Phase<select value={newTask.phase} onChange={(input) => setNewTask({ ...newTask, phase: input.target.value as EventPhase })}>{phases.map((phase) => <option key={phase}>{phase}</option>)}</select></label><label>Deadline<input type="date" value={newTask.deadline} onChange={(input) => setNewTask({ ...newTask, deadline: input.target.value })} /></label><button type="button" onClick={() => { try { operations.addEventTask({ eventId: event.id, ...newTask }); onEventChanged(operations.getEvent(event.id)!); setShowNewTask(false); setNewTask({ title: "", phase: "Planning", deadline: event.date }) } catch (error) { onMessage(error instanceof Error ? error.message : "Unable to add Task.") } }}>Add Task</button><button type="button" onClick={() => setShowNewTask(false)}>Cancel</button></> : <button type="button" onClick={() => setShowNewTask(true)}>Add Task</button>}</div>}
+      {confirmation && <section aria-label="Confirm action" className="event-operations-confirmation"><strong>{confirmation.title}</strong><p>{confirmation.description}</p><button type="button" onClick={() => setConfirmation(null)}>{confirmation.cancelLabel}</button><button type="button" onClick={() => { confirmation.onConfirm(); setConfirmation(null) }}>{confirmation.confirmLabel}</button></section>}
     </section>
   )
 }
@@ -264,12 +275,21 @@ export default function EventOperationsMvp() {
     newEditableTask(),
   ])
   const [message, setMessage] = useState("")
+  const [templateConfirmation, setTemplateConfirmation] = useState<{
+    title: string
+    description: string
+    confirmLabel: string
+    onConfirm: () => void
+  } | null>(null)
   const [templateErrors, setTemplateErrors] = useState<{
     name?: string
     tasks?: string
   }>({})
   const templateNameInput = useRef<HTMLInputElement>(null)
   const firstTaskInput = useRef<HTMLInputElement>(null)
+  const eventNameInput = useRef<HTMLInputElement>(null)
+  const eventDateInput = useRef<HTMLInputElement>(null)
+  const venueInput = useRef<HTMLInputElement>(null)
 
   function refreshTemplates() {
     setTemplates(operations.listEventTemplates())
@@ -313,7 +333,7 @@ export default function EventOperationsMvp() {
   function saveTemplate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (!templateName.trim()) {
-      setTemplateErrors({ name: "Enter an Event Template name." })
+      setTemplateErrors({ name: "Enter a template name." })
       templateNameInput.current?.focus()
       return
     }
@@ -326,7 +346,7 @@ export default function EventOperationsMvp() {
     ) {
       setTemplateErrors({
         tasks:
-          "Every Task needs a title, phase, and date-relative deadline.",
+          "Add at least one complete Task before saving.",
       })
       firstTaskInput.current?.focus()
       return
@@ -372,21 +392,10 @@ export default function EventOperationsMvp() {
     }
   }
   function deleteTemplate(template: EventTemplate) {
-    if (
-      !window.confirm(
-        `Delete ${template.name}? This will not change existing Events.`,
-      )
-    )
-      return
-    operations.deleteCustomEventTemplate(template.id)
-    refreshTemplates()
-    setMessage("Custom Event Template deleted. Existing Events are unchanged.")
+    setTemplateConfirmation({ title: `Delete “${template.name}” permanently?`, description: "This cannot be undone. Existing Events created from this template will not change.", confirmLabel: "Delete template", onConfirm: () => { operations.deleteCustomEventTemplate(template.id); refreshTemplates(); setMessage("Custom Event Template deleted. Existing Events are unchanged.") } })
   }
   function resetTemplate(template: EventTemplate) {
-    if (!window.confirm(`Reset ${template.name} to its bundled plan?`)) return
-    operations.resetBuiltInEventTemplate(template.id)
-    refreshTemplates()
-    setMessage("Built-in Event Template reset to its bundled plan.")
+    setTemplateConfirmation({ title: `Reset “${template.name}” to its bundled plan?`, description: "Future Events will use the reset plan.", confirmLabel: "Reset template", onConfirm: () => { operations.resetBuiltInEventTemplate(template.id); refreshTemplates(); setMessage("Built-in Event Template reset to its bundled plan.") } })
   }
   function planningHorizon(template: EventTemplate) {
     const earliestDeadline = Math.min(
@@ -428,6 +437,9 @@ export default function EventOperationsMvp() {
       if (!draft.venue.trim()) errors.venue = "Enter a venue."
       if (Object.keys(errors).length) {
         setCreationErrors(errors)
+        if (errors.name) eventNameInput.current?.focus()
+        else if (errors.date) eventDateInput.current?.focus()
+        else venueInput.current?.focus()
         return
       }
       setCreationStep(3)
@@ -511,6 +523,7 @@ export default function EventOperationsMvp() {
             </article>
           ))}
         </div>
+        {templateConfirmation && <section aria-label="Confirm template action" className="event-operations-confirmation"><strong>{templateConfirmation.title}</strong><p>{templateConfirmation.description}</p><button type="button" onClick={() => setTemplateConfirmation(null)}>Keep template</button><button type="button" onClick={() => { templateConfirmation.onConfirm(); setTemplateConfirmation(null) }}>{templateConfirmation.confirmLabel}</button></section>}
         <label className="event-template-picker">New Events start with an Event Template<select value={selectedTemplateId} onChange={(event) => setSelectedTemplateId(event.target.value)}>{templates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}</select></label>
         {showTemplateEditor ? (
           <form className="event-operations-creator" onSubmit={saveTemplate}>
@@ -639,7 +652,7 @@ export default function EventOperationsMvp() {
               <header><div><p>New Event</p><h2 id="new-event-title">Create an Event</h2></div><button aria-label="Cancel Event creation" className="event-creation-close" type="button" onClick={() => setConfirmDiscard(true)}>×</button></header>
               <ol className="event-creation-steps"><li className={creationStep >= 1 ? "active" : ""}>1 <span>Choose template</span></li><li className={creationStep >= 2 ? "active" : ""}>2 <span>Event details</span></li><li className={creationStep >= 3 ? "active" : ""}>3 <span>Review plan</span></li></ol>
               {creationStep === 1 && <div className="event-creation-body"><h3>Choose an Event Template</h3><p>Start with a reusable workflow. You can edit the copied plan before creating the Event.</p><div className="event-creation-templates">{templates.map((template) => <button className={draft.templateId === template.id ? "selected" : ""} key={template.id} type="button" onClick={() => setDraft(operations.changeEventDraftTemplate(draft.id, template.id))}><strong>{template.name}</strong><span>{template.description}</span><small>{template.tasks.length} Tasks · {planningHorizon(template)}</small></button>)}</div><button className="event-creation-link" type="button" onClick={() => { setCreatingTemplateForDraft(true); openTemplateEditor() }}>Create a custom Event Template</button></div>}
-              {creationStep === 2 && <div className="event-creation-body"><div className="event-creation-summary"><strong>{templates.find((template) => template.id === draft.templateId)?.name}</strong><span>{draft.tasks.length} Tasks · {planningHorizon(templates.find((template) => template.id === draft.templateId)!)}</span><button type="button" onClick={() => setCreationStep(1)}>Change template</button></div><h3>Event details</h3><label>Event name<input aria-invalid={Boolean(creationErrors.name)} value={draft.name} onChange={(event) => { updateDraft({ name: event.target.value, date: draft.date, venue: draft.venue }); setCreationErrors((errors) => ({ ...errors, name: "" })) }} /></label>{creationErrors.name && <p className="event-creation-error">{creationErrors.name}</p>}<label>Event date<input aria-invalid={Boolean(creationErrors.date)} type="date" value={draft.date} onChange={(event) => { updateDraft({ name: draft.name, date: event.target.value, venue: draft.venue }); setCreationErrors((errors) => ({ ...errors, date: "" })) }} /></label>{creationErrors.date && <p className="event-creation-error">{creationErrors.date}</p>}<label>Venue<input aria-invalid={Boolean(creationErrors.venue)} value={draft.venue} onChange={(event) => { updateDraft({ name: draft.name, date: draft.date, venue: event.target.value }); setCreationErrors((errors) => ({ ...errors, venue: "" })) }} /></label>{creationErrors.venue && <p className="event-creation-error">{creationErrors.venue}</p>}</div>}
+              {creationStep === 2 && <div className="event-creation-body"><div className="event-creation-summary"><strong>{templates.find((template) => template.id === draft.templateId)?.name}</strong><span>{draft.tasks.length} Tasks · {planningHorizon(templates.find((template) => template.id === draft.templateId)!)}</span><button type="button" onClick={() => setCreationStep(1)}>Change template</button></div><h3>Event details</h3><label>Event name<input ref={eventNameInput} aria-describedby={creationErrors.name ? "event-name-error" : undefined} aria-invalid={Boolean(creationErrors.name)} value={draft.name} onChange={(event) => { updateDraft({ name: event.target.value, date: draft.date, venue: draft.venue }); setCreationErrors((errors) => ({ ...errors, name: "" })) }} /></label>{creationErrors.name && <p className="event-creation-error" id="event-name-error">{creationErrors.name}</p>}<label>Event date<input ref={eventDateInput} aria-describedby={creationErrors.date ? "event-date-error" : undefined} aria-invalid={Boolean(creationErrors.date)} type="date" value={draft.date} onChange={(event) => { updateDraft({ name: draft.name, date: event.target.value, venue: draft.venue }); setCreationErrors((errors) => ({ ...errors, date: "" })) }} /></label>{creationErrors.date && <p className="event-creation-error" id="event-date-error">{creationErrors.date}</p>}<label>Venue<input ref={venueInput} aria-describedby={creationErrors.venue ? "event-venue-error" : undefined} aria-invalid={Boolean(creationErrors.venue)} value={draft.venue} onChange={(event) => { updateDraft({ name: draft.name, date: draft.date, venue: event.target.value }); setCreationErrors((errors) => ({ ...errors, venue: "" })) }} /></label>{creationErrors.venue && <p className="event-creation-error" id="event-venue-error">{creationErrors.venue}</p>}</div>}
               {creationStep === 3 && <div className="event-creation-body"><div className="event-creation-summary"><strong>{draft.name || "Untitled Event"}</strong><span>{draft.date || "Choose a date"} · {draft.venue || "Choose a venue"}</span><span>From {templates.find((template) => template.id === draft.templateId)?.name} · {draft.tasks.length} Tasks · {planningHorizon(templates.find((template) => template.id === draft.templateId)!)}</span><button type="button" onClick={() => setCreationStep(2)}>Change details</button></div><h3>Auto-generated plan</h3><p>These Tasks are copied from the Event Template and only become an Event when you create it.</p>{draft.tasks.map((task) => <article className="event-creation-task" key={task.id}><label>Task<input value={task.title} onChange={(event) => setDraft(operations.updateEventDraftTask(draft.id, { ...task, taskId: task.id, title: event.target.value }))} /></label><label>Phase<select value={task.phase} onChange={(event) => setDraft(operations.updateEventDraftTask(draft.id, { ...task, taskId: task.id, phase: event.target.value as EventPhase }))}>{phases.map((phase) => <option key={phase}>{phase}</option>)}</select></label><label>Deadline<input type="date" value={task.deadline} onChange={(event) => { const offset = offsetForDate(draft.date, event.target.value); if (offset !== null) setDraft(operations.updateEventDraftTask(draft.id, { ...task, taskId: task.id, relativeDeadlineDays: offset })) }} /></label><label>Team Member<select value={task.assigneeId ?? ""} onChange={(event) => setDraft(operations.updateEventDraftTask(draft.id, { ...task, taskId: task.id, assigneeId: event.target.value || null }))}><option value="">Unassigned</option>{operations.listTeamMembers().map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}</select></label><label>Subtasks<input value={task.subtasks.map((subtask) => subtask.title).join(", ")} onChange={(event) => setDraft(operations.updateEventDraftTask(draft.id, { ...task, taskId: task.id, subtasks: event.target.value.split(",").map((title) => ({ title: title.trim(), completed: false })).filter((subtask) => subtask.title) }))} /></label><small>{task.deadline || "Set an Event date first"} · {relativeDeadlineLabel(task.relativeDeadlineDays)}</small><button type="button" onClick={() => setDraft(operations.removeEventDraftTask(draft.id, task.id))}>Remove Task</button></article>)}<button className="event-creation-add-task" type="button" onClick={() => setDraft(operations.addEventDraftTask(draft.id))}>Add Task</button>{draft.tasks.length === 0 && <p className="event-creation-error">Keep at least one Task in this Event plan.</p>}</div>}
               {confirmDiscard ? <div className="event-creation-confirm"><strong>Discard this Event draft?</strong><p>Your Event details and plan edits will be lost.</p><button type="button" onClick={() => setConfirmDiscard(false)}>Keep editing</button><button type="button" onClick={() => { operations.discardEventDraft(draft.id); setDraft(null); setConfirmDiscard(false); setMessage("Event draft discarded.") }}>Discard draft</button></div> : <footer><button type="button" disabled={creationStep === 1} onClick={() => setCreationStep((step) => step - 1)}>Back</button><button type="button" onClick={() => creationStep === 3 ? continueCreation() : continueCreation()} disabled={creationStep === 3 && draft.tasks.length === 0}>{creationStep === 3 ? "Create event" : "Continue"}</button></footer>}
             </section>

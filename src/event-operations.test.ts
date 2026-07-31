@@ -93,6 +93,141 @@ export function eventOperationsContract(
       ).toContain("Priya Nair")
     })
 
+    it("creates, updates, reorders, and deletes a custom Event Template", () => {
+      const operations = createOperations()
+      const template = operations.createCustomEventTemplate({
+        name: "Community outreach",
+        description: "A reusable local outreach workflow.",
+        tasks: [
+          {
+            title: "Book a venue",
+            phase: "Planning",
+            relativeDeadlineDays: -14,
+            subtaskTitles: ["Confirm availability"],
+          },
+        ],
+      })
+
+      expect(template).toMatchObject({
+        isBuiltIn: false,
+        name: "Community outreach",
+        tasks: [
+          { title: "Book a venue", subtaskTitles: ["Confirm availability"] },
+        ],
+      })
+
+      const event = operations.createEvent({
+        templateId: template.id,
+        name: "Community outreach day",
+        date: "2027-08-09",
+        venue: "Marina Bay Community Plaza",
+      })
+
+      const updated = operations.updateEventTemplate({
+        templateId: template.id,
+        name: "Community outreach day",
+        description: "An updated workflow.",
+        tasks: [
+          {
+            title: "Welcome participants",
+            phase: "Execution",
+            relativeDeadlineDays: 0,
+            subtaskTitles: [],
+          },
+          {
+            title: "Book a venue",
+            phase: "Planning",
+            relativeDeadlineDays: -14,
+            subtaskTitles: ["Confirm availability"],
+          },
+        ],
+      })
+
+      expect(updated.tasks.map((task) => task.title)).toEqual([
+        "Welcome participants",
+        "Book a venue",
+      ])
+      operations.deleteCustomEventTemplate(template.id)
+      expect(operations.listEventTemplates()).not.toContainEqual(
+        expect.objectContaining({ id: template.id }),
+      )
+      expect(operations.getEvent(event.id)).toMatchObject({
+        sourceTemplateId: template.id,
+        sourceTemplateName: "Community outreach",
+        tasks: [expect.objectContaining({ title: "Book a venue" })],
+      })
+    })
+
+    it("rejects incomplete custom Event Templates and protects built-ins from deletion", () => {
+      const operations = createOperations()
+
+      expect(() =>
+        operations.createCustomEventTemplate({
+          name: "",
+          description: "",
+          tasks: [],
+        }),
+      ).toThrow("Enter an Event Template name.")
+      expect(() =>
+        operations.createCustomEventTemplate({
+          name: "Incomplete plan",
+          description: "",
+          tasks: [
+            {
+              title: "",
+              phase: "Planning",
+              relativeDeadlineDays: -1,
+              subtaskTitles: [],
+            },
+          ],
+        }),
+      ).toThrow("Complete every Event Template Task.")
+      expect(() =>
+        operations.deleteCustomEventTemplate("distribution-of-pre-loved-items"),
+      ).toThrow("Built-in Event Templates cannot be deleted.")
+    })
+
+    it("resets a built-in Event Template while keeping existing Event plans independent", () => {
+      const operations = createOperations()
+      const event = operations.createEvent({
+        templateId: "distribution-of-pre-loved-items",
+        name: "August community distribution",
+        date: "2027-08-09",
+        venue: "Marina Bay Community Plaza",
+      })
+
+      operations.updateEventTemplate({
+        templateId: "distribution-of-pre-loved-items",
+        name: "Refined distribution",
+        description: "A temporary session change.",
+        tasks: [
+          {
+            title: "One revised Task",
+            phase: "Planning",
+            relativeDeadlineDays: -1,
+            subtaskTitles: [],
+          },
+        ],
+      })
+      expect(operations.getEvent(event.id)!.tasks).toHaveLength(12)
+      expect(operations.listEventTemplates()).toContainEqual(
+        expect.objectContaining({ name: "Refined distribution" }),
+      )
+
+      operations.resetBuiltInEventTemplate("distribution-of-pre-loved-items")
+      const reset = operations
+        .listEventTemplates()
+        .find((template) => template.id === "distribution-of-pre-loved-items")
+      expect(reset).toMatchObject({
+        name: "Distribution of pre-loved items",
+        tasks: expect.arrayContaining([
+          expect.objectContaining({
+            title: "Align the team on holding the event",
+          }),
+        ]),
+      })
+    })
+
     it("creates an Event only when its isolated draft is committed", () => {
       const operations = createOperations()
       const draft = operations.createEventDraft(
@@ -119,7 +254,9 @@ export function eventOperationsContract(
 
     it("keeps an incomplete draft isolated when creation is rejected", () => {
       const operations = createOperations()
-      const draft = operations.createEventDraft("distribution-of-pre-loved-items")
+      const draft = operations.createEventDraft(
+        "distribution-of-pre-loved-items",
+      )
 
       expect(() => operations.createEventFromDraft(draft.id)).toThrow(
         "Enter an Event name.",

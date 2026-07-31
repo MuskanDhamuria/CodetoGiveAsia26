@@ -13,7 +13,16 @@ export type EventTemplate = {
   id: string
   name: string
   description: string
+  isBuiltIn: boolean
   tasks: TemplateTask[]
+}
+
+export type TemplateTaskInput = Omit<TemplateTask, "id">
+
+export type EventTemplateInput = {
+  name: string
+  description: string
+  tasks: TemplateTaskInput[]
 }
 
 export type EventTask = {
@@ -59,6 +68,12 @@ export type EventDraft = {
 
 export interface EventOperations {
   listEventTemplates(): EventTemplate[]
+  createCustomEventTemplate(input: EventTemplateInput): EventTemplate
+  updateEventTemplate(
+    input: EventTemplateInput & { templateId: string },
+  ): EventTemplate
+  resetBuiltInEventTemplate(templateId: string): EventTemplate
+  deleteCustomEventTemplate(templateId: string): void
   listTeamMembers(): TeamMember[]
   listEvents(): Event[]
   getEvent(eventId: string): Event | undefined
@@ -73,11 +88,11 @@ export interface EventOperations {
   startTask(input: { eventId: string; taskId: string }): EventTask
 }
 
-type TemplateTaskInput = [string, EventPhase, number, string[]?]
+type TemplateTaskFixture = [string, EventPhase, number, string[]?]
 
 function createTemplateTasks(
   templateId: string,
-  rows: TemplateTaskInput[],
+  rows: TemplateTaskFixture[],
 ): TemplateTask[] {
   return rows.map(
     ([title, phase, relativeDeadlineDays, subtaskTitles = []], index) => ({
@@ -120,12 +135,14 @@ export const builtInEventTemplates: EventTemplate[] = [
     id: "distribution-of-pre-loved-items",
     name: "Distribution of pre-loved items",
     description: "Collect, sort, and distribute essential items.",
+    isBuiltIn: true,
     tasks: distributionTasks,
   },
   {
     id: "wellness",
     name: "Wellness",
     description: "Run a focused wellbeing session for migrant workers.",
+    isBuiltIn: true,
     tasks: createTemplateTasks("wellness", [
       ["Align the team on holding the event", "Planning", -56],
       ["Book the event venue", "Planning", -42],
@@ -149,6 +166,7 @@ export const builtInEventTemplates: EventTemplate[] = [
     id: "skill-enhancement",
     name: "Skill Enhancement",
     description: "Coordinate a practical learning session.",
+    isBuiltIn: true,
     tasks: createTemplateTasks("skill", [
       ["Align the team on holding the event", "Planning", -56],
       ["Coordinate course administration", "Planning", -49],
@@ -189,12 +207,34 @@ export function deadlineFor(
   return date.toISOString().slice(0, 10)
 }
 
-function validateEventDetails(input: Pick<CreateEventInput, "name" | "date" | "venue">) {
+function validateEventDetails(
+  input: Pick<CreateEventInput, "name" | "date" | "venue">,
+) {
   if (!input.name.trim()) throw new Error("Enter an Event name.")
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.date) || Number.isNaN(Date.parse(`${input.date}T00:00:00Z`))) {
+  if (
+    !/^\d{4}-\d{2}-\d{2}$/.test(input.date) ||
+    Number.isNaN(Date.parse(`${input.date}T00:00:00Z`))
+  ) {
     throw new Error("Choose an Event date.")
   }
   if (!input.venue.trim()) throw new Error("Enter a venue.")
+}
+
+function validateTemplateInput(input: EventTemplateInput) {
+  if (!input.name.trim()) throw new Error("Enter an Event Template name.")
+  if (input.tasks.length === 0) {
+    throw new Error("Add at least one Event Template Task.")
+  }
+  if (
+    input.tasks.some(
+      (task) =>
+        !task.title.trim() ||
+        !["Planning", "Execution", "Post-execution"].includes(task.phase) ||
+        !Number.isInteger(task.relativeDeadlineDays),
+    )
+  ) {
+    throw new Error("Complete every Event Template Task.")
+  }
 }
 
 function copy<T>(value: T): T {
@@ -202,11 +242,25 @@ function copy<T>(value: T): T {
 }
 
 export function createInMemoryEventOperations(): EventOperations {
-  const templates = copy(builtInEventTemplates)
+  const bundledTemplates = copy(builtInEventTemplates)
+  const templates = copy(bundledTemplates)
   const events: Event[] = []
   const drafts = new Map<string, EventDraft>()
   let nextEventId = 1
   let nextDraftId = 1
+  let nextTemplateId = 1
+
+  function templateTasksFrom(input: TemplateTaskInput[], templateId: string) {
+    return input.map((task, index) => ({
+      id: `${templateId}-task-${index + 1}`,
+      title: task.title.trim(),
+      phase: task.phase,
+      relativeDeadlineDays: task.relativeDeadlineDays,
+      subtaskTitles: task.subtaskTitles
+        .map((title) => title.trim())
+        .filter(Boolean),
+    }))
+  }
 
   function createEvent(input: CreateEventInput): Event {
     validateEventDetails(input)
@@ -240,6 +294,47 @@ export function createInMemoryEventOperations(): EventOperations {
 
   return {
     listEventTemplates: () => copy(templates),
+    createCustomEventTemplate: (input) => {
+      validateTemplateInput(input)
+      const id = `custom-template-${nextTemplateId++}`
+      const template: EventTemplate = {
+        id,
+        name: input.name.trim(),
+        description: input.description.trim(),
+        isBuiltIn: false,
+        tasks: templateTasksFrom(input.tasks, id),
+      }
+      templates.push(template)
+      return copy(template)
+    },
+    updateEventTemplate: ({ templateId, ...input }) => {
+      validateTemplateInput(input)
+      const template = templates.find((item) => item.id === templateId)
+      if (!template) throw new Error("Event Template not found.")
+      template.name = input.name.trim()
+      template.description = input.description.trim()
+      template.tasks = templateTasksFrom(input.tasks, template.id)
+      return copy(template)
+    },
+    resetBuiltInEventTemplate: (templateId) => {
+      const bundledTemplate = bundledTemplates.find(
+        (item) => item.id === templateId,
+      )
+      if (!bundledTemplate)
+        throw new Error("Only built-in Event Templates can be reset.")
+      const index = templates.findIndex((item) => item.id === templateId)
+      if (index === -1) throw new Error("Event Template not found.")
+      templates[index] = copy(bundledTemplate)
+      return copy(templates[index])
+    },
+    deleteCustomEventTemplate: (templateId) => {
+      const index = templates.findIndex((item) => item.id === templateId)
+      if (index === -1) throw new Error("Event Template not found.")
+      if (templates[index].isBuiltIn) {
+        throw new Error("Built-in Event Templates cannot be deleted.")
+      }
+      templates.splice(index, 1)
+    },
     listTeamMembers: () => copy(teamMembers),
     listEvents: () => copy(events),
     getEvent: (eventId) => {

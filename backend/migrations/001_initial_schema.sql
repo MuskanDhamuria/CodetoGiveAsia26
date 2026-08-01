@@ -112,7 +112,7 @@ CREATE TABLE IF NOT EXISTS team_members (
 
 CREATE TABLE IF NOT EXISTS events (
     id INTEGER PRIMARY KEY,
-    event_template_id INTEGER NOT NULL
+    event_template_id INTEGER
         REFERENCES event_templates(id) ON DELETE RESTRICT,
     name TEXT NOT NULL CHECK (length(trim(name)) > 0),
     venue TEXT NOT NULL CHECK (length(trim(venue)) > 0),

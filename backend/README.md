@@ -15,6 +15,24 @@ Start the development API:
 python3 -m uvicorn backend.main:app --reload
 ```
 
+Load the demo Events, Event Templates, Team Members, participants, and volunteer
+records into SQLite:
+
+```sh
+python3 -m backend.seed
+```
+
+Run the React frontend in another terminal:
+
+```sh
+npm run dev
+```
+
+Vite proxies `/api/*` to FastAPI at `http://127.0.0.1:8000`. Set
+`VITE_API_BASE_URL` if the API is hosted elsewhere. The normal Events page is
+API-backed; the original in-memory prototype remains available at
+`?page=events&prototype=operations`.
+
 Useful URLs:
 
 - API health: <http://127.0.0.1:8000/api/v1/health>

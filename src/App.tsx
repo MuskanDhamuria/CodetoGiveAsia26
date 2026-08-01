@@ -4,6 +4,7 @@ import EventCollectionPrototype from "./EventCollectionPrototype";
 import EventCreationPrototype from "./EventCreationPrototype";
 import EventTaskHierarchyPrototype from "./EventTaskHierarchyPrototype";
 import EventOperationsMvp from "./EventOperationsMvp";
+import AdminEventsPage from "./AdminEventsPage";
 import VolunteerDirectory from "./VolunteerDirectory";
 
 export type Page = "home" | "dashboard" | "events" | "volunteers" | "ai";
@@ -571,7 +572,7 @@ function EventCard({
 function EventsPage({ initialEventIndex }: { initialEventIndex: number | null }) {
   const prototype = new URLSearchParams(window.location.search).get("prototype");
   if (!prototype) {
-    return <EventOperationsMvp />;
+    return <AdminEventsPage />;
   }
   if (prototype === "event-collection") {
     return <EventCollectionPrototype />;

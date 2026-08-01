@@ -91,11 +91,14 @@ def event_detail(db, event_id: int) -> EventDetail:
 
 @router.post("/events", response_model=EventDetail, status_code=201)
 def create_event(payload: EventCreate, db: Connection) -> EventDetail:
-    template = db.execute(
-        "SELECT 1 FROM event_templates WHERE id = ?", (payload.event_template_id,)
-    ).fetchone()
-    if template is None:
-        raise HTTPException(404, f"Event template {payload.event_template_id} was not found")
+    if payload.event_template_id is not None:
+        template = db.execute(
+            "SELECT 1 FROM event_templates WHERE id = ?", (payload.event_template_id,)
+        ).fetchone()
+        if template is None:
+            raise HTTPException(
+                404, f"Event template {payload.event_template_id} was not found"
+            )
 
     with db:
         event = db.execute(
@@ -110,13 +113,17 @@ def create_event(payload: EventCreate, db: Connection) -> EventDetail:
                 payload.event_date.isoformat(),
             ),
         ).fetchone()
-        template_tasks = db.execute(
-            """
-            SELECT * FROM template_tasks
-            WHERE event_template_id = ? ORDER BY position
-            """,
-            (payload.event_template_id,),
-        ).fetchall()
+        template_tasks = (
+            db.execute(
+                """
+                SELECT * FROM template_tasks
+                WHERE event_template_id = ? ORDER BY position
+                """,
+                (payload.event_template_id,),
+            ).fetchall()
+            if payload.event_template_id is not None
+            else []
+        )
         for template_task in template_tasks:
             due_at = (
                 payload.event_date + timedelta(days=template_task["relative_due_days"])

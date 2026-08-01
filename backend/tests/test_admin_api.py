@@ -56,6 +56,21 @@ class AdminApiTest(unittest.TestCase):
             "Publish the call for volunteers",
         )
 
+    def test_organizer_starts_event_from_scratch(self) -> None:
+        response = self.client.post(
+            "/api/v1/events",
+            json={
+                "event_template_id": None,
+                "name": "Scratch event",
+                "venue": "Community Hall",
+                "event_date": "2026-09-01",
+            },
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertIsNone(response.json()["event_template_id"])
+        self.assertEqual(response.json()["tasks"], [])
+
     def test_organizer_manages_event_and_task_lifecycle(self) -> None:
         event = self.create_event()
         event_id = event["id"]

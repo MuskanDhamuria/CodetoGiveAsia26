@@ -791,6 +791,10 @@ button {
 }
 
 .navbar {
+  -webkit-backdrop-filter: saturate(1.2) blur(16px);
+  backdrop-filter: saturate(1.2) blur(16px);
+  background: rgba(255, 255, 255, 0.72);
+  border-bottom: 1px solid rgba(10, 10, 10, 0.06);
   left: 0;
   padding: 19px 36px;
   position: fixed;

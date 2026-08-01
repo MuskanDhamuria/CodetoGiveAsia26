@@ -3053,3 +3053,213 @@ button {
     position: relative;
   }
 }
+
+/* Event roster (volunteer segment — Feature B) */
+.volunteer-roster-block {
+  display: grid;
+  gap: 16px;
+  margin-bottom: 28px;
+}
+
+.event-roster {
+  display: grid;
+  gap: 18px;
+}
+
+.event-roster-picker {
+  align-items: end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.event-roster-picker .search-field {
+  min-width: 320px;
+}
+
+.event-roster-meta {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+  margin: 0 0 10px;
+}
+
+.event-roster-meta em {
+  font-style: normal;
+  text-transform: capitalize;
+}
+
+.event-roster-error {
+  background: #fdecec;
+  border: 1px solid #f5c2c2;
+  border-radius: 8px;
+  color: #a11;
+  font-size: 13px;
+  font-weight: 600;
+  margin: 0;
+  padding: 12px 14px;
+}
+
+.event-roster-loading {
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.roster-table {
+  min-width: 640px;
+}
+
+.roster-empty,
+.roster-muted {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.roster-lead {
+  color: #b8860b;
+  font-size: 12px;
+  font-weight: 800;
+  margin-left: 8px;
+}
+
+.roster-att {
+  border-radius: 9999px;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+  padding: 6px 10px;
+}
+
+.roster-att-yes {
+  background: #e6f4ec;
+  color: #1b7a45;
+}
+
+.roster-att-no {
+  background: #fdecec;
+  color: #b3261e;
+}
+
+.roster-att-pending {
+  background: #f0f0f0;
+  color: var(--muted);
+}
+
+.roster-status-approved {
+  background: #e6f4ec;
+  color: #1b7a45;
+}
+
+.roster-status-requested {
+  background: #fef4e5;
+  color: #a15c00;
+}
+
+.roster-status-rejected {
+  background: #fdecec;
+  color: #b3261e;
+}
+
+/* Pending requests queue (volunteer segment — Feature A) */
+.sr-only {
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  height: 1px;
+  overflow: hidden;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
+}
+
+.event-roster-notice {
+  background: #e6f4ec;
+  border: 1px solid #b7dfc7;
+  border-radius: 8px;
+  color: #1b7a45;
+  font-size: 13px;
+  font-weight: 700;
+  margin: 0;
+  padding: 12px 14px;
+}
+
+.roster-requests-card {
+  border-color: #f0d9a8;
+}
+
+.roster-requests {
+  display: grid;
+  gap: 10px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.roster-request {
+  align-items: center;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: space-between;
+  padding: 12px 14px;
+}
+
+.roster-request-who {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.roster-request-who strong {
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.roster-request-who .roster-muted {
+  font-size: 12px;
+}
+
+.roster-request-actions {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.roster-role-select select {
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 10px;
+}
+
+.roster-approve,
+.roster-reject {
+  border: 0;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 800;
+  padding: 9px 14px;
+  transition: opacity 0.15s ease;
+}
+
+.roster-approve {
+  background: #1b7a45;
+  color: #fff;
+}
+
+.roster-reject {
+  background: #f0f0f0;
+  color: #b3261e;
+}
+
+.roster-approve:disabled,
+.roster-reject:disabled {
+  cursor: default;
+  opacity: 0.55;
+}

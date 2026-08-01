@@ -4,6 +4,7 @@ import EventCollectionPrototype from "./EventCollectionPrototype";
 import EventCreationPrototype from "./EventCreationPrototype";
 import EventTaskHierarchyPrototype from "./EventTaskHierarchyPrototype";
 import EventOperationsMvp from "./EventOperationsMvp";
+import VolunteerDirectory from "./VolunteerDirectory";
 
 export type Page = "home" | "dashboard" | "events" | "volunteers" | "ai";
 
@@ -734,231 +735,19 @@ function VolunteerAvailabilityCalendar() {
   );
 }
 
-function VolunteersPage({
-  initialVolunteerIndex,
-  onInviteToEvent,
-  onMessageVolunteer,
-}: {
-  initialVolunteerIndex: number | null;
-  onInviteToEvent: () => void;
-  onMessageVolunteer: () => void;
-}) {
-  const [search, setSearch] = useState("");
-  const [selectedIndex, setSelectedIndex] = useState<number | null>(
-    initialVolunteerIndex,
-  );
-  const selectedVolunteer =
-    selectedIndex === null ? null : volunteers[selectedIndex];
-  const filteredVolunteers = volunteers.filter((volunteer) =>
-    volunteer.name.toLowerCase().includes(search.toLowerCase()),
-  );
-
+function VolunteersPage() {
   return (
     <section className="volunteers-page">
       <div className="dashboard-shell">
         <header className="section-hero">
           <p>Volunteers</p>
-          <h1>Volunteer CRM</h1>
+          <h1>Volunteer directory</h1>
           <span>
-            Search, segment and match volunteers to the right roles for every
-            event.
+            Every volunteer in the database. Filter by event to see who is
+            taking part.
           </span>
         </header>
-
-        <section className="crm-toolbar" aria-label="Volunteer controls">
-          <label className="search-field">
-            <span>Search</span>
-            <input
-              placeholder="Search volunteers"
-              type="search"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-            />
-          </label>
-          <div className="filter-grid">
-            {["Skills", "Languages", "Availability", "Experience"].map(
-              (filter) => (
-                <label key={filter}>
-                  <span>{filter}</span>
-                  <select defaultValue="All">
-                    <option>All</option>
-                    <option>High Match</option>
-                    <option>Available</option>
-                  </select>
-                </label>
-              ),
-            )}
-          </div>
-        </section>
-
-        <section className="volunteer-table-card">
-          <div className="section-heading">
-            <h2>Volunteer Table</h2>
-            <span>{filteredVolunteers.length} volunteers</span>
-          </div>
-          <div className="volunteer-table-wrap">
-            <table className="volunteer-table">
-              <thead>
-                <tr>
-                  <th>Volunteer</th>
-                  <th>Skills</th>
-                  <th>Availability</th>
-                  <th>Previous Events</th>
-                  <th>Volunteer Hours</th>
-                  <th>Status</th>
-                  <th>AI Match Score</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredVolunteers.map((volunteer) => {
-                  const originalIndex = volunteers.findIndex(
-                    (item) => item.name === volunteer.name,
-                  );
-
-                  return (
-                    <tr
-                      key={volunteer.name}
-                      onClick={() => setSelectedIndex(originalIndex)}
-                    >
-                      <td>
-                        <div className="volunteer-name">
-                          <img src={volunteer.photo} alt="" />
-                          <span>{volunteer.name}</span>
-                        </div>
-                      </td>
-                      <td>{volunteer.skills.slice(0, 2).join(", ")}</td>
-                      <td>{volunteer.availability}</td>
-                      <td>{volunteer.previousEvents}</td>
-                      <td>{volunteer.hours}</td>
-                      <td>
-                        <span className="table-status">{volunteer.status}</span>
-                      </td>
-                      <td>
-                        <strong>{volunteer.matchScore}%</strong>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </section>
-
-        {selectedVolunteer && (
-          <div
-            className="workspace-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="volunteer-profile-title"
-          >
-            <button
-              className="workspace-backdrop"
-              type="button"
-              aria-label="Close volunteer profile"
-              onClick={() => setSelectedIndex(null)}
-            />
-            <section className="volunteer-profile">
-              <div className="profile-header">
-                <div className="profile-identity">
-                  <img src={selectedVolunteer.photo} alt="" />
-                  <div>
-                    <p>Volunteer Profile</p>
-                    <h1 id="volunteer-profile-title">
-                      {selectedVolunteer.name}
-                    </h1>
-                  </div>
-                </div>
-                <button type="button" onClick={() => setSelectedIndex(null)}>
-                  Close
-                </button>
-              </div>
-
-              <div className="profile-grid">
-                <section className="profile-panel">
-                  <h2>Contact Details</h2>
-                  <dl className="profile-details">
-                    <div>
-                      <dt>Email</dt>
-                      <dd>{selectedVolunteer.email}</dd>
-                    </div>
-                    <div>
-                      <dt>Phone</dt>
-                      <dd>{selectedVolunteer.phone}</dd>
-                    </div>
-                    <div>
-                      <dt>Emergency Contact</dt>
-                      <dd>{selectedVolunteer.emergency}</dd>
-                    </div>
-                    <div>
-                      <dt>Languages</dt>
-                      <dd>{selectedVolunteer.languages.join(", ")}</dd>
-                    </div>
-                  </dl>
-                </section>
-
-                <section className="profile-panel">
-                  <h2>Skills</h2>
-                  <div className="skill-list">
-                    {[
-                      "First Aid",
-                      "Registration",
-                      "Photography",
-                      "Logistics",
-                      "Crowd Control",
-                    ].map((skill) => (
-                      <span
-                        className={
-                          selectedVolunteer.skills.includes(skill)
-                            ? "matched"
-                            : ""
-                        }
-                        key={skill}
-                      >
-                        {skill}
-                      </span>
-                    ))}
-                  </div>
-                </section>
-
-                <section className="profile-panel">
-                  <h2>Volunteer History</h2>
-                  <div className="history-grid">
-                    {selectedVolunteer.history.map((event) => (
-                      <article key={event}>
-                        <strong>{event}</strong>
-                        <span>Completed</span>
-                      </article>
-                    ))}
-                  </div>
-                </section>
-
-                <section className="profile-panel">
-                  <VolunteerAvailabilityCalendar />
-                </section>
-              </div>
-
-              <section className="profile-panel recommendations-panel">
-                <div>
-                  <p>AI Recommendations</p>
-                  <h2>Perfect for</h2>
-                </div>
-                <div className="recommendation-list">
-                  {volunteerRecommendations.map((recommendation) => (
-                    <span key={recommendation}>{recommendation}</span>
-                  ))}
-                </div>
-                <div className="profile-actions">
-                  <button type="button" onClick={onInviteToEvent}>
-                    Invite to Event
-                  </button>
-                  <button type="button" onClick={onMessageVolunteer}>
-                    Message Volunteer
-                  </button>
-                </div>
-              </section>
-            </section>
-          </div>
-        )}
+        <VolunteerDirectory />
       </div>
     </section>
   );
@@ -1026,17 +815,7 @@ export default function App() {
                 initialEventIndex={openEventIndex}
               />
             )}
-            {activePage === "volunteers" && (
-              <VolunteersPage
-                key={`volunteers-${openVolunteerIndex ?? "list"}`}
-                initialVolunteerIndex={openVolunteerIndex}
-                onInviteToEvent={() => {
-                  setOpenEventIndex(0);
-                  navigate("events");
-                }}
-                onMessageVolunteer={() => undefined}
-              />
-            )}
+            {activePage === "volunteers" && <VolunteersPage />}
             {activePage === "ai" && <PlaceholderPage title="AI Copilot" />}
           </div>
           <AiCopilot activePage={activePage} />

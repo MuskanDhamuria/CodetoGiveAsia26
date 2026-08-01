@@ -2,7 +2,25 @@
 
 This document is the proposed HTTP API between the React frontend and the
 FastAPI backend. It is based on the current SQLite schema and the product plan.
-It defines routes only; it does not implement them.
+
+## Current implementation status
+
+The organizer/admin backend currently implements:
+
+- Event-template CRUD and cloning, including ordered template tasks/subtasks.
+- Event CRUD, filtering, closing/reopening, rescheduling, and atomic workflow
+  generation from a template.
+- Event-task and subtask CRUD, ordering, status transitions, deadlines, and
+  internal team-member assignment.
+- Team-member CRUD and assigned-task queries.
+- Participant CRUD, event registration, RSVP, attendance, and event history.
+- Dashboard summary, upcoming deadlines, calendar events, and per-event
+  progress summaries.
+
+Volunteer routes remain owned by the volunteer feature module. The organizer
+implementation does not change the event volunteer-signup endpoints. Routes in
+the “Proposed future endpoints” section still require schema/product decisions
+and are not implemented.
 
 ## Conventions
 
@@ -73,33 +91,48 @@ router module:
 backend/
 ├── main.py
 ├── database.py
-└── api/
-    ├── router.py
-    └── routes/
-        ├── health.py
-        ├── event_templates.py
-        ├── events.py
-        ├── team_members.py
-        ├── participants.py
-        ├── volunteers.py
-        ├── roles.py
-        └── dashboard.py
+├── api/
+│   ├── router.py
+│   └── routes/
+│       ├── health.py
+│       ├── event_templates.py
+│       ├── events.py
+│       ├── team_members.py
+│       ├── participants.py
+│       ├── volunteers.py
+│       ├── roles.py
+│       └── dashboard.py
+└── schema/
+    ├── common.py
+    ├── health.py
+    ├── event_templates.py
+    ├── events.py
+    ├── team_members.py
+    └── participants.py
 ```
 
-Every feature module declares its own `APIRouter`, path prefix, tags, endpoint
-functions, and request/response models. `backend/api/router.py` imports and
-includes those feature routers. `backend/main.py` includes only that central
-router, so teammates do not all need to edit the application entry point.
+Every route module declares its own `APIRouter`, path prefix, tags, and endpoint
+functions. Its Pydantic request/response models belong in the matching
+`backend/schema/` module; shared constrained types and enums belong in
+`backend/schema/common.py`. `backend/api/router.py` imports and includes the
+feature routers. `backend/main.py` includes only that central router, so
+teammates do not all need to edit the application entry point.
+
+`volunteers.py` is a temporary exception: its existing Pydantic models remain
+in the route module until the volunteer feature owner moves them separately.
+Do not move or modify those schemas as part of organizer/admin work.
 
 Example feature module:
 
 ```python
 from fastapi import APIRouter
 
+from backend.schema.events import EventSummary
+
 router = APIRouter(prefix="/events", tags=["events"])
 
-@router.get("")
-def list_events():
+@router.get("", response_model=list[EventSummary])
+def list_events() -> list[EventSummary]:
     ...
 ```
 
@@ -193,7 +226,9 @@ Create event body:
 `event_date` rather than merged into a datetime, so date-only filtering/
 sorting/calendar-matching is unaffected.
 
-Creating an event should copy the selected template's tasks and subtasks into
+`event_template_id` may be `null` when the organizer chooses **Start from
+scratch**. That creates an Event with an empty Task plan. Otherwise, creating an
+event copies the selected template's tasks and subtasks into
 `event_tasks` and `event_subtasks`. It should calculate every `due_at` from the
 event date and `relative_due_days`. Later edits to the template must not change
 already-created events.
@@ -201,7 +236,7 @@ already-created events.
 | Method | Path | Parameters/body | Description |
 | --- | --- | --- | --- |
 | `GET` | `/events` | Query: `status?`, `date_from?`, `date_to?`, `template_id?`, `q?`, `limit`, `offset`, `sort=event_date`, `order=asc|desc` | List events for the event list or calendar. `q` searches name and venue. |
-| `POST` | `/events` | Body: create event fields above | Create an event and instantiate its template workflow atomically. |
+| `POST` | `/events` | Body: create event fields above; `event_template_id` may be `null` | Create an Event from a template or start from an empty Task plan. |
 | `GET` | `/events/{event_id}` | Query: `include=tasks,subtasks,counts` (optional) | Get event details. Optional includes prevent multiple frontend requests. |
 | `PATCH` | `/events/{event_id}` | Body: `name?`, `venue?`, `event_date?`, `status?` | Update event details. Changing the date does not silently move task deadlines; use the reschedule endpoint for that. |
 | `DELETE` | `/events/{event_id}` | Path: `event_id` | Permanently delete an event and dependent tasks/signups. The UI should require confirmation. |

@@ -24,7 +24,9 @@ export default function MyEventsList() {
     getMyEvents(participant.participantId)
       .then((data) => {
         if (!cancelled) {
-          setEvents(data.items);
+          // The endpoint returns full RSVP/attendance history; only show
+          // events the participant is currently signed up for.
+          setEvents(data.items.filter((event) => event.rsvp_status));
           setStatus("ready");
         }
       })

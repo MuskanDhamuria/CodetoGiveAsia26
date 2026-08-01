@@ -67,7 +67,7 @@ export default defineConfig(({ mode }) => {
       strictPort: true,
       watch: { ignored: ['**/.figma/**'] },
       proxy: {
-        '/api': 'http://localhost:8000',
+        '/api': 'http://127.0.0.1:8000',
       },
     },
     preview: {

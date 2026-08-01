@@ -34,7 +34,8 @@ describe("Event Operations MVP primary organizer journey", () => {
 
     const styles = readFileSync("src/EventOperationsMvp.css", "utf8")
     expect(styles).toMatch(/\.event-operations-kanban\s*\{[^}]*display:\s*grid/)
-    expect(styles).toMatch(/\.event-operations-kanban\s*\{[^}]*grid-template-columns:\s*repeat\(3,/)
+    expect(styles).toMatch(/\.event-operations-kanban\s*\{[^}]*grid-template-columns:\s*repeat\(3,\s*minmax\(240px,\s*1fr\)\)/)
+    expect(styles).not.toMatch(/\.event-operations-kanban\s*\{[^}]*grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)/)
 
     await user.click(screen.getByRole("button", { name: /Back to Events/ }))
     expect(screen.getByRole("heading", { name: "Event portfolio" })).toBeTruthy()

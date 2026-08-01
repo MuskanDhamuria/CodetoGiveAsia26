@@ -31,14 +31,14 @@ class PublicRsvpEndpointTest(unittest.TestCase):
                 "name": "Wellness Morning",
                 "venue": "Tampines Hub",
                 "event_date": "2099-01-01",
-                "event_time": "09:00",
+                "start_time": "09:00",
                 "status": "open",
             }
             fields.update(event_overrides)
             event_id = connection.execute(
                 """
-                INSERT INTO events (event_template_id, name, venue, event_date, event_time, status)
-                VALUES (:event_template_id, :name, :venue, :event_date, :event_time, :status)
+                INSERT INTO events (event_template_id, name, venue, event_date, start_time, status)
+                VALUES (:event_template_id, :name, :venue, :event_date, :start_time, :status)
                 RETURNING id
                 """,
                 fields,

@@ -1,13 +1,21 @@
-import { useState } from "react";
-import { Routes, Route } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import AiCopilot from "./AiCopilot";
 import EventCollectionPrototype from "./EventCollectionPrototype";
 import EventCreationPrototype from "./EventCreationPrototype";
 import EventTaskHierarchyPrototype from "./EventTaskHierarchyPrototype";
 import EventOperationsMvp from "./EventOperationsMvp";
 import ParticipantApp from "./participant/ParticipantApp";
+import AdminEventsPage from "./AdminEventsPage";
+import { adminApi, type AdminApi, type DashboardSummary, type EventDetail, type UpcomingDeadline } from "./admin-api";
+import VolunteerDirectory from "./VolunteerDirectory";
+import VolunteerSignup from "./VolunteerSignup";
+import PublicEventsPortal from "./PublicEventsPortal";
+import VolunteerRegister from "./VolunteerRegister";
+import VolunteerLogin from "./VolunteerLogin";
+import VolunteerDashboard from "./VolunteerDashboard";
 
-export type Page = "home" | "dashboard" | "events" | "volunteers" | "ai";
+export type Page = "home" | "dashboard" | "events" | "volunteers" | "ai" | "signup" | "community" | "volunteer-register" | "volunteer-login" | "volunteer-dashboard";
 
 const navLinks: { label: string; page: Page }[] = [
   { label: "Dashboard", page: "dashboard" },
@@ -21,42 +29,39 @@ const pageLabels: Record<Page, string> = {
   events: "Events",
   volunteers: "Volunteers",
   ai: "AI Copilot",
+  signup: "Volunteer Sign-Up",
+  community: "Community Events",
+  "volunteer-register": "Volunteer Registration",
+  "volunteer-login": "Volunteer Sign In",
+  "volunteer-dashboard": "Volunteer Dashboard",
 };
 
-function readInitialPage(): Page {
+function readInitialPage(pathname = window.location.pathname): Page {
+  if (pathname === "/admin" || pathname === "/admin/") {
+    return "home";
+  }
+
+  if (pathname.startsWith("/admin/")) {
+    const adminPage = pathname.split("/")[2];
+    return adminPage === "dashboard" || adminPage === "events" || adminPage === "volunteers" || adminPage === "ai"
+      ? adminPage
+      : "home";
+  }
+
+  if (pathname === "/community") return "community";
+  if (pathname === "/signup") return "signup";
+  if (pathname === "/volunteer-register") return "volunteer-register";
+  if (pathname === "/volunteer-login") return "volunteer-login";
+  if (pathname === "/volunteer-dashboard") return "volunteer-dashboard";
+
   const page = new URLSearchParams(window.location.search).get("page");
-  return page === "dashboard" || page === "events" || page === "volunteers" || page === "ai"
+  return page === "dashboard" || page === "events" || page === "volunteers" || page === "ai" || page === "signup" || page === "community" || page === "volunteer-register" || page === "volunteer-login" || page === "volunteer-dashboard"
     ? page
     : "home";
 }
 
 const heroImage =
   "https://images.higgs.ai/?default=1&output=webp&url=https%3A%2F%2Fd8j0ntlcm91z4.cloudfront.net%2Fuser_38xzZboKViGWJOttwIXH07lWA1P%2Fhf_20260626_041422_4a459e05-abce-4150-9fb7-4ededc423cd1.png&w=1280&q=85";
-
-const kpis = [
-  { label: "Active Events", value: "6", helper: "Running this month" },
-  { label: "Upcoming Events", value: "14", helper: "Next 30 days" },
-  { label: "Total Volunteers", value: "312", helper: "Across all events" },
-  { label: "Pending Volunteer Confirmations", value: "27", helper: "Awaiting replies" },
-];
-
-const calendarEvents: Record<number, string[]> = {
-  3: ["Health Fair"],
-  7: ["Beach Cleanup"],
-  12: ["Food Drive"],
-  15: ["Volunteer Training"],
-  18: ["Health Fair"],
-  22: ["Town Hall"],
-  26: ["Orientation"],
-  28: ["Impact Night"],
-};
-
-const deadlines = [
-  { label: "Health Fair volunteer slots close", date: "Jul 3" },
-  { label: "Beach Cleanup briefing pack due", date: "Jul 5" },
-  { label: "Food Drive venue confirmation", date: "Jul 10" },
-  { label: "Workshop registration closes", date: "Jul 13" },
-];
 
 const activities = [
   "John Tan accepted invitation",
@@ -402,19 +407,59 @@ function KpiCard({
   );
 }
 
-function Calendar() {
+export function EventCalendar({
+  events,
+  onOpenWorkspace,
+}: {
+  events: EventDetail[];
+  onOpenWorkspace: (eventId: number) => void;
+}) {
   const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-  const leadingBlanks = 1;
+  const [visibleMonth, setVisibleMonth] = useState(() => {
+    const initialDate = (events.find((event) => event.status === "open") ?? events[0])?.event_date;
+    return initialDate
+      ? new Date(`${initialDate.slice(0, 7)}-01T00:00:00Z`)
+      : new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1));
+  });
+  const [hasPositionedInitialMonth, setHasPositionedInitialMonth] = useState(events.length > 0);
+  const [selectedEventId, setSelectedEventId] = useState<number | null>(null);
+  const year = visibleMonth.getUTCFullYear();
+  const month = visibleMonth.getUTCMonth();
+  const leadingBlanks = (new Date(Date.UTC(year, month, 1)).getUTCDay() + 6) % 7;
+  const daysInMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
   const cells = [
     ...Array.from({ length: leadingBlanks }, () => null),
-    ...Array.from({ length: 31 }, (_, index) => index + 1),
+    ...Array.from({ length: daysInMonth }, (_, index) => index + 1),
   ];
+  const monthEvents = useMemo(() => {
+    const grouped = new Map<number, EventDetail[]>();
+    for (const event of events) {
+      const [eventYear, eventMonth, eventDay] = event.event_date.split("-").map(Number);
+      if (eventYear !== year || eventMonth !== month + 1) continue;
+      grouped.set(eventDay, [...(grouped.get(eventDay) ?? []), event]);
+    }
+    return grouped;
+  }, [events, month, year]);
+  const selectedEvent = events.find((event) => event.id === selectedEventId);
+
+  useEffect(() => {
+    if (!events.length || hasPositionedInitialMonth) return;
+    const nextEvent = events.find((event) => event.status === "open") ?? events[0];
+    setVisibleMonth(new Date(`${nextEvent.event_date.slice(0, 7)}-01T00:00:00Z`));
+    setHasPositionedInitialMonth(true);
+  }, [events, hasPositionedInitialMonth]);
+
+  function moveMonth(offset: number) {
+    setSelectedEventId(null);
+    setVisibleMonth(new Date(Date.UTC(year, month + offset, 1)));
+  }
 
   return (
     <div className="calendar">
       <div className="calendar-top">
-        <h3>July 2026</h3>
-        <span>Monthly Calendar</span>
+        <button aria-label="Previous month" type="button" onClick={() => moveMonth(-1)}>←</button>
+        <h3>{new Intl.DateTimeFormat("en-SG", { month: "long", year: "numeric", timeZone: "UTC" }).format(visibleMonth)}</h3>
+        <button aria-label="Next month" type="button" onClick={() => moveMonth(1)}>→</button>
       </div>
       <div className="calendar-grid calendar-days">
         {days.map((day) => (
@@ -427,23 +472,102 @@ function Calendar() {
             {day && (
               <>
                 <strong>{day}</strong>
-                {calendarEvents[day]?.map((event) => (
-                  <span key={event}>{event}</span>
+                {monthEvents.get(day)?.map((event) => (
+                  <button
+                    aria-label={event.name}
+                    className={`calendar-event-button ${event.status}`}
+                    key={event.id}
+                    type="button"
+                    onClick={() => setSelectedEventId(event.id)}
+                  >
+                    {event.name}
+                  </button>
                 ))}
               </>
             )}
           </div>
         ))}
       </div>
+      {selectedEvent && (
+        <section
+          aria-label={selectedEvent.name}
+          aria-modal="false"
+          className="calendar-event-preview"
+          role="dialog"
+        >
+          <header>
+            <span className={`calendar-preview-status ${selectedEvent.status}`}>{selectedEvent.status}</span>
+            <button aria-label="Close Event preview" type="button" onClick={() => setSelectedEventId(null)}>×</button>
+          </header>
+          <h4>{selectedEvent.name}</h4>
+          <dl>
+            <div><dt>Date</dt><dd>{new Intl.DateTimeFormat("en-SG", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }).format(new Date(`${selectedEvent.event_date}T00:00:00Z`))}</dd></div>
+            <div><dt>Venue</dt><dd>{selectedEvent.venue}</dd></div>
+          </dl>
+          <p>{selectedEvent.tasks.filter((task) => task.status === "done").length} of {selectedEvent.tasks.length} Tasks completed</p>
+          <button className="calendar-preview-open" type="button" onClick={() => onOpenWorkspace(selectedEvent.id)}>Open workspace</button>
+        </section>
+      )}
     </div>
   );
 }
 
-function DashboardPage({
+export function DashboardPage({
   onQuickAction,
+  onOpenEvent,
+  api = adminApi,
 }: {
   onQuickAction: (action: FlowAction) => void;
+  onOpenEvent: (eventId: number) => void;
+  api?: AdminApi;
 }) {
+  const [dashboardEvents, setDashboardEvents] = useState<EventDetail[]>([]);
+  const [calendarError, setCalendarError] = useState("");
+  const [summary, setSummary] = useState<DashboardSummary | null>(null);
+  const [summaryError, setSummaryError] = useState("");
+  const [dashboardDeadlines, setDashboardDeadlines] = useState<UpcomingDeadline[]>([]);
+  const [deadlinesLoading, setDeadlinesLoading] = useState(true);
+  const [deadlinesError, setDeadlinesError] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    api.listEvents()
+      .then((events) => {
+        if (active) setDashboardEvents(events);
+      })
+      .catch(() => {
+        if (active) setCalendarError("Unable to load Events.");
+      });
+    api.getDashboardSummary()
+      .then((data) => {
+        if (active) setSummary(data);
+      })
+      .catch(() => {
+        if (active) setSummaryError("Unable to load dashboard summary.");
+      });
+    api.listUpcomingDeadlines()
+      .then((items) => {
+        if (active) setDashboardDeadlines(items);
+      })
+      .catch(() => {
+        if (active) setDeadlinesError("Unable to load upcoming deadlines.");
+      })
+      .finally(() => {
+        if (active) setDeadlinesLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [api]);
+
+  const dashboardKpis = summary ? [
+    { label: "Upcoming Events", value: String(summary.upcoming_events), helper: "Scheduled from today" },
+    { label: "Total Volunteers", value: String(summary.total_volunteers), helper: "Across all Events" },
+    { label: "Pending Confirmations", value: String(summary.pending_volunteer_confirmations), helper: "Awaiting review" },
+    { label: "Overdue Tasks", value: String(summary.overdue_tasks), helper: "Needs attention" },
+    { label: "Tasks Due Soon", value: String(summary.tasks_due_soon), helper: "Within 14 days" },
+  ] : [];
+
   return (
     <section className="dashboard-page">
       <div className="dashboard-shell">
@@ -453,26 +577,32 @@ function DashboardPage({
           <span>Here's what's happening across your events today.</span>
         </header>
 
-        <div className="kpi-grid">
-          {kpis.map((kpi) => (
+        <div aria-label="Dashboard summary" className="kpi-grid dashboard-kpi-strip">
+          {dashboardKpis.map((kpi) => (
             <KpiCard key={kpi.label} {...kpi} />
           ))}
+          {!summary && !summaryError && Array.from({ length: 5 }, (_, index) => <article aria-label="Loading metric" className="kpi-card dashboard-kpi-loading" key={index}><span>Loading…</span></article>)}
         </div>
+        {summaryError && <p className="dashboard-data-error" role="alert">{summaryError}</p>}
 
         <div className="dashboard-main-grid">
           <div className="dashboard-card calendar-card">
-            <Calendar />
+            <EventCalendar events={dashboardEvents} onOpenWorkspace={onOpenEvent} />
+            {calendarError && <p role="alert">{calendarError}</p>}
           </div>
           <aside className="dashboard-side">
             <div className="dashboard-card">
               <h2>Upcoming Deadlines</h2>
               <div className="deadline-list">
-                {deadlines.map((deadline) => (
-                  <div className="deadline-item" key={deadline.label}>
-                    <span>{deadline.label}</span>
-                    <strong>{deadline.date}</strong>
-                  </div>
+                {dashboardDeadlines.map((deadline) => (
+                  <button aria-label={`${deadline.name} for ${deadline.event_name}`} className="deadline-item deadline-button" key={deadline.id} type="button" onClick={() => onOpenEvent(deadline.event_id)}>
+                    <span><strong>{deadline.name}</strong><small>{deadline.event_name}</small></span>
+                    <time dateTime={deadline.due_at}>{new Intl.DateTimeFormat("en-SG", { day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(`${deadline.due_at.slice(0, 10)}T00:00:00Z`))}</time>
+                  </button>
                 ))}
+                {deadlinesLoading && <p role="status">Loading deadlines…</p>}
+                {!deadlinesLoading && !deadlinesError && !dashboardDeadlines.length && <p>No Tasks due in the next 14 days.</p>}
+                {deadlinesError && <p className="dashboard-data-error" role="alert">{deadlinesError}</p>}
               </div>
             </div>
             <div className="dashboard-card">
@@ -572,7 +702,7 @@ function EventCard({
 function EventsPage({ initialEventIndex }: { initialEventIndex: number | null }) {
   const prototype = new URLSearchParams(window.location.search).get("prototype");
   if (!prototype) {
-    return <EventOperationsMvp />;
+    return <AdminEventsPage initialEventId={initialEventIndex} />;
   }
   if (prototype === "event-collection") {
     return <EventCollectionPrototype />;
@@ -736,231 +866,19 @@ function VolunteerAvailabilityCalendar() {
   );
 }
 
-function VolunteersPage({
-  initialVolunteerIndex,
-  onInviteToEvent,
-  onMessageVolunteer,
-}: {
-  initialVolunteerIndex: number | null;
-  onInviteToEvent: () => void;
-  onMessageVolunteer: () => void;
-}) {
-  const [search, setSearch] = useState("");
-  const [selectedIndex, setSelectedIndex] = useState<number | null>(
-    initialVolunteerIndex,
-  );
-  const selectedVolunteer =
-    selectedIndex === null ? null : volunteers[selectedIndex];
-  const filteredVolunteers = volunteers.filter((volunteer) =>
-    volunteer.name.toLowerCase().includes(search.toLowerCase()),
-  );
-
+function VolunteersPage() {
   return (
     <section className="volunteers-page">
       <div className="dashboard-shell">
         <header className="section-hero">
           <p>Volunteers</p>
-          <h1>Volunteer CRM</h1>
+          <h1>Volunteer directory</h1>
           <span>
-            Search, segment and match volunteers to the right roles for every
-            event.
+            Every volunteer in the database. Filter by event to see who is
+            taking part.
           </span>
         </header>
-
-        <section className="crm-toolbar" aria-label="Volunteer controls">
-          <label className="search-field">
-            <span>Search</span>
-            <input
-              placeholder="Search volunteers"
-              type="search"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-            />
-          </label>
-          <div className="filter-grid">
-            {["Skills", "Languages", "Availability", "Experience"].map(
-              (filter) => (
-                <label key={filter}>
-                  <span>{filter}</span>
-                  <select defaultValue="All">
-                    <option>All</option>
-                    <option>High Match</option>
-                    <option>Available</option>
-                  </select>
-                </label>
-              ),
-            )}
-          </div>
-        </section>
-
-        <section className="volunteer-table-card">
-          <div className="section-heading">
-            <h2>Volunteer Table</h2>
-            <span>{filteredVolunteers.length} volunteers</span>
-          </div>
-          <div className="volunteer-table-wrap">
-            <table className="volunteer-table">
-              <thead>
-                <tr>
-                  <th>Volunteer</th>
-                  <th>Skills</th>
-                  <th>Availability</th>
-                  <th>Previous Events</th>
-                  <th>Volunteer Hours</th>
-                  <th>Status</th>
-                  <th>AI Match Score</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredVolunteers.map((volunteer) => {
-                  const originalIndex = volunteers.findIndex(
-                    (item) => item.name === volunteer.name,
-                  );
-
-                  return (
-                    <tr
-                      key={volunteer.name}
-                      onClick={() => setSelectedIndex(originalIndex)}
-                    >
-                      <td>
-                        <div className="volunteer-name">
-                          <img src={volunteer.photo} alt="" />
-                          <span>{volunteer.name}</span>
-                        </div>
-                      </td>
-                      <td>{volunteer.skills.slice(0, 2).join(", ")}</td>
-                      <td>{volunteer.availability}</td>
-                      <td>{volunteer.previousEvents}</td>
-                      <td>{volunteer.hours}</td>
-                      <td>
-                        <span className="table-status">{volunteer.status}</span>
-                      </td>
-                      <td>
-                        <strong>{volunteer.matchScore}%</strong>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </section>
-
-        {selectedVolunteer && (
-          <div
-            className="workspace-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="volunteer-profile-title"
-          >
-            <button
-              className="workspace-backdrop"
-              type="button"
-              aria-label="Close volunteer profile"
-              onClick={() => setSelectedIndex(null)}
-            />
-            <section className="volunteer-profile">
-              <div className="profile-header">
-                <div className="profile-identity">
-                  <img src={selectedVolunteer.photo} alt="" />
-                  <div>
-                    <p>Volunteer Profile</p>
-                    <h1 id="volunteer-profile-title">
-                      {selectedVolunteer.name}
-                    </h1>
-                  </div>
-                </div>
-                <button type="button" onClick={() => setSelectedIndex(null)}>
-                  Close
-                </button>
-              </div>
-
-              <div className="profile-grid">
-                <section className="profile-panel">
-                  <h2>Contact Details</h2>
-                  <dl className="profile-details">
-                    <div>
-                      <dt>Email</dt>
-                      <dd>{selectedVolunteer.email}</dd>
-                    </div>
-                    <div>
-                      <dt>Phone</dt>
-                      <dd>{selectedVolunteer.phone}</dd>
-                    </div>
-                    <div>
-                      <dt>Emergency Contact</dt>
-                      <dd>{selectedVolunteer.emergency}</dd>
-                    </div>
-                    <div>
-                      <dt>Languages</dt>
-                      <dd>{selectedVolunteer.languages.join(", ")}</dd>
-                    </div>
-                  </dl>
-                </section>
-
-                <section className="profile-panel">
-                  <h2>Skills</h2>
-                  <div className="skill-list">
-                    {[
-                      "First Aid",
-                      "Registration",
-                      "Photography",
-                      "Logistics",
-                      "Crowd Control",
-                    ].map((skill) => (
-                      <span
-                        className={
-                          selectedVolunteer.skills.includes(skill)
-                            ? "matched"
-                            : ""
-                        }
-                        key={skill}
-                      >
-                        {skill}
-                      </span>
-                    ))}
-                  </div>
-                </section>
-
-                <section className="profile-panel">
-                  <h2>Volunteer History</h2>
-                  <div className="history-grid">
-                    {selectedVolunteer.history.map((event) => (
-                      <article key={event}>
-                        <strong>{event}</strong>
-                        <span>Completed</span>
-                      </article>
-                    ))}
-                  </div>
-                </section>
-
-                <section className="profile-panel">
-                  <VolunteerAvailabilityCalendar />
-                </section>
-              </div>
-
-              <section className="profile-panel recommendations-panel">
-                <div>
-                  <p>AI Recommendations</p>
-                  <h2>Perfect for</h2>
-                </div>
-                <div className="recommendation-list">
-                  {volunteerRecommendations.map((recommendation) => (
-                    <span key={recommendation}>{recommendation}</span>
-                  ))}
-                </div>
-                <div className="profile-actions">
-                  <button type="button" onClick={onInviteToEvent}>
-                    Invite to Event
-                  </button>
-                  <button type="button" onClick={onMessageVolunteer}>
-                    Message Volunteer
-                  </button>
-                </div>
-              </section>
-            </section>
-          </div>
-        )}
+        <VolunteerDirectory />
       </div>
     </section>
   );
@@ -975,30 +893,57 @@ function PlaceholderPage({ title }: { title: string }) {
   );
 }
 
-export default function App() {
-  return (
-    <Routes>
-      <Route path="/participant/*" element={<ParticipantApp />} />
-      <Route path="*" element={<LegacyApp />} />
-    </Routes>
-  );
-}
-
-function LegacyApp() {
-  const [activePage, setActivePage] = useState<Page>(readInitialPage);
+function AdminPanel() {
+  const location = useLocation();
+  const routerNavigate = useNavigate();
+  const isAdminRoute = location.pathname === "/admin" || location.pathname.startsWith("/admin/");
+  const [activePage, setActivePage] = useState<Page>(() => readInitialPage(location.pathname));
   const [openEventIndex, setOpenEventIndex] = useState<number | null>(null);
   const [openVolunteerIndex, setOpenVolunteerIndex] = useState<number | null>(
     null,
   );
 
+  useEffect(() => {
+    setActivePage(readInitialPage(location.pathname));
+  }, [location.pathname]);
+
   function navigate(page: Page) {
+    if (isAdminRoute && (page === "home" || page === "dashboard" || page === "events" || page === "volunteers" || page === "ai")) {
+      routerNavigate(page === "home" ? "/admin" : `/admin/${page}`);
+      if (page !== "events") setOpenEventIndex(null);
+      if (page !== "volunteers") setOpenVolunteerIndex(null);
+      return;
+    }
+
+    const publicRoutes: Partial<Record<Page, string>> = {
+      home: "/admin",
+      community: "/community",
+      signup: "/signup",
+      "volunteer-register": "/volunteer-register",
+      "volunteer-login": "/volunteer-login",
+      "volunteer-dashboard": "/volunteer-dashboard",
+    };
+    const route = publicRoutes[page];
+    if (route) {
+      routerNavigate(route);
+      return;
+    }
+
     setActivePage(page);
-    const url = new URL(window.location.href);
-    if (page === "home") url.searchParams.delete("page");
-    else url.searchParams.set("page", page);
-    window.history.replaceState({}, "", url);
     if (page !== "events") setOpenEventIndex(null);
     if (page !== "volunteers") setOpenVolunteerIndex(null);
+  }
+
+  function navigateToSignup(eventId?: number) {
+    const search = new URLSearchParams();
+    if (eventId !== undefined) search.set("event", String(eventId));
+    routerNavigate(`/signup${search.toString() ? `?${search}` : ""}`);
+  }
+
+  function navigateToVolunteerDashboard(eventId?: number) {
+    const search = new URLSearchParams();
+    if (eventId !== undefined) search.set("focusEvent", String(eventId));
+    routerNavigate(`/volunteer-dashboard${search.toString() ? `?${search}` : ""}`);
   }
 
   function handleQuickAction(action: FlowAction) {
@@ -1016,6 +961,37 @@ function LegacyApp() {
 
   }
 
+  function openEventWorkspace(eventId: number) {
+    setOpenEventIndex(eventId);
+    navigate("events");
+  }
+
+  if (activePage === "signup") {
+    return <VolunteerSignup />;
+  }
+
+  if (activePage === "volunteer-register") {
+    return <VolunteerRegister onRegistered={() => navigateToVolunteerDashboard()} onLogin={() => navigate("volunteer-login")} />;
+  }
+
+  if (activePage === "volunteer-login") {
+    return <VolunteerLogin onLoggedIn={() => navigateToVolunteerDashboard()} onRegister={() => navigate("volunteer-register")} />;
+  }
+
+  if (activePage === "volunteer-dashboard") {
+    return <VolunteerDashboard onBack={() => navigate("community")} onSignIn={() => navigate("volunteer-login")} />;
+  }
+
+  if (activePage === "community") {
+    return (
+      <PublicEventsPortal
+        onVolunteerSignup={() => navigate("volunteer-register")}
+        onVolunteerDashboard={navigateToVolunteerDashboard}
+        onEventSignup={navigateToSignup}
+      />
+    );
+  }
+
   return (
     <main className={activePage === "home" ? "" : "product-app"}>
       <Navbar
@@ -1029,7 +1005,7 @@ function LegacyApp() {
         <div className="product-frame">
           <div className="product-page-content">
             {activePage === "dashboard" && (
-              <DashboardPage onQuickAction={handleQuickAction} />
+              <DashboardPage onQuickAction={handleQuickAction} onOpenEvent={openEventWorkspace} />
             )}
             {activePage === "events" && (
               <EventsPage
@@ -1037,17 +1013,7 @@ function LegacyApp() {
                 initialEventIndex={openEventIndex}
               />
             )}
-            {activePage === "volunteers" && (
-              <VolunteersPage
-                key={`volunteers-${openVolunteerIndex ?? "list"}`}
-                initialVolunteerIndex={openVolunteerIndex}
-                onInviteToEvent={() => {
-                  setOpenEventIndex(0);
-                  navigate("events");
-                }}
-                onMessageVolunteer={() => undefined}
-              />
-            )}
+            {activePage === "volunteers" && <VolunteersPage />}
             {activePage === "ai" && <PlaceholderPage title="AI Copilot" />}
           </div>
           <AiCopilot activePage={activePage} />
@@ -1055,4 +1021,42 @@ function LegacyApp() {
       )}
     </main>
   );
+}
+
+export default function App() {
+  return (
+    <Routes>
+      <Route path="/participant/*" element={<ParticipantApp />} />
+      <Route path="/" element={<LegacyRouteRedirect />} />
+      <Route path="/admin" element={<AdminPanel />} />
+      <Route path="/admin/*" element={<AdminPanel />} />
+      <Route path="/community" element={<AdminPanel />} />
+      <Route path="/signup" element={<AdminPanel />} />
+      <Route path="/volunteer-register" element={<AdminPanel />} />
+      <Route path="/volunteer-login" element={<AdminPanel />} />
+      <Route path="/volunteer-dashboard" element={<AdminPanel />} />
+      <Route path="*" element={<LegacyRouteRedirect />} />
+    </Routes>
+  );
+}
+
+function LegacyRouteRedirect() {
+  const location = useLocation();
+  const params = new URLSearchParams(location.search);
+  const page = params.get("page");
+  const routes: Record<string, string> = {
+    dashboard: "/admin/dashboard",
+    events: "/admin/events",
+    volunteers: "/admin/volunteers",
+    ai: "/admin/ai",
+    community: "/community",
+    signup: "/signup",
+    "volunteer-register": "/volunteer-register",
+    "volunteer-login": "/volunteer-login",
+    "volunteer-dashboard": "/volunteer-dashboard",
+  };
+  const target = routes[page ?? ""] ?? "/admin";
+  params.delete("page");
+  const search = params.toString();
+  return <Navigate to={`${target}${search ? `?${search}` : ""}`} replace />;
 }

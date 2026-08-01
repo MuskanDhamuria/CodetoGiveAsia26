@@ -15,6 +15,24 @@ Start the development API:
 python3 -m uvicorn backend.main:app --reload
 ```
 
+Load the demo Events, Event Templates, Team Members, participants, and volunteer
+records into SQLite:
+
+```sh
+python3 -m backend.seed
+```
+
+Run the React frontend in another terminal:
+
+```sh
+npm run dev
+```
+
+Vite proxies `/api/*` to FastAPI at `http://127.0.0.1:8000`. Set
+`VITE_API_BASE_URL` if the API is hosted elsewhere. The normal Events page is
+API-backed; the original in-memory prototype remains available at
+`?page=events&prototype=operations`.
+
 Useful URLs:
 
 - API health: <http://127.0.0.1:8000/api/v1/health>
@@ -55,3 +73,8 @@ to do that consistently.
 `backend/main.py` configures the application and should stay small.
 Feature endpoints belong in separate modules under `backend/api/routes/` and are
 composed by `backend/api/router.py`.
+
+Pydantic request and response models belong in the matching module under
+`backend/schema/`; reusable constrained fields and enums live in
+`backend/schema/common.py`. The volunteer route is temporarily exempt so its
+feature owner can migrate it independently.

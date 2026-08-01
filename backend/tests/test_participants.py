@@ -31,14 +31,14 @@ class ParticipantsEndpointTest(unittest.TestCase):
                 "name": "Wellness Morning",
                 "venue": "Tampines Hub",
                 "event_date": "2099-01-01",
-                "event_time": "09:00",
+                "start_time": "09:00",
                 "status": "open",
             }
             fields.update(event_overrides)
             event_id = connection.execute(
                 """
-                INSERT INTO events (event_template_id, name, venue, event_date, event_time, status)
-                VALUES (:event_template_id, :name, :venue, :event_date, :event_time, :status)
+                INSERT INTO events (event_template_id, name, venue, event_date, start_time, status)
+                VALUES (:event_template_id, :name, :venue, :event_date, :start_time, :status)
                 RETURNING id
                 """,
                 fields,
@@ -198,7 +198,7 @@ class ParticipantsEndpointTest(unittest.TestCase):
 
         self.client.post(
             f"/api/v1/events/{rsvped_event_id}/participants",
-            json={"participant_id": participant["id"]},
+            json={"participant_id": participant["id"], "rsvp_status": True},
         )
 
         response = self.client.get(f"/api/v1/participants/{participant['id']}/events")
@@ -210,7 +210,7 @@ class ParticipantsEndpointTest(unittest.TestCase):
         self.assertTrue(body["items"][0]["rsvp_status"])
 
     def test_participant_events_includes_event_time(self) -> None:
-        event_id = self.insert_template_and_event(event_time="09:00")
+        event_id = self.insert_template_and_event(start_time="09:00")
         participant = self.client.post(
             "/api/v1/participants", json={"name": "Bob", "contact_number": "+6598765432"}
         ).json()

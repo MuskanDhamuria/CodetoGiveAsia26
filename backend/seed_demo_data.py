@@ -68,7 +68,7 @@ def seed(database_path: str | Path = DEFAULT_DATABASE_PATH) -> None:
             connection.executemany(
                 """
                 INSERT INTO events
-                    (event_template_id, name, venue, description, event_date, event_time, status)
+                    (event_template_id, name, venue, description, event_date, start_time, status)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                 [(template_id, *event) for event in DEMO_EVENTS],

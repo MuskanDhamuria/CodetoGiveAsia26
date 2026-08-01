@@ -21,9 +21,13 @@ class CompletedEventReport(BaseModel):
     name: str
     date: str
     venue: str
+    template_name: str
+    is_skills_workshop: bool
     report_status: Literal["Complete", "Incomplete"]
     attendees: int
     volunteers: int
+    participant_names: list[str]
+    volunteer_names: list[str]
     partners: list[str]
     generated_caption: str
 
@@ -190,21 +194,30 @@ def completed_reports(request: Request) -> list[CompletedEventReport]:
                 events.name,
                 events.event_date,
                 events.venue,
+                event_templates.name AS template_name,
                 COALESCE(event_reports.status, 'incomplete') AS report_status,
                 COALESCE(event_reports.generated_caption, '') AS generated_caption,
                 COUNT(DISTINCT participations.id) AS attendees,
                 COUNT(DISTINCT volunteer_signups.id) AS volunteers,
-                GROUP_CONCAT(DISTINCT event_partners.name) AS partners
+                GROUP_CONCAT(DISTINCT event_partners.name) AS partners,
+                GROUP_CONCAT(DISTINCT participants.name) AS participant_names,
+                GROUP_CONCAT(DISTINCT volunteers.name) AS volunteer_names
             FROM events
+            JOIN event_templates
+                ON event_templates.id = events.event_template_id
             LEFT JOIN event_reports
                 ON event_reports.event_id = events.id
             LEFT JOIN participations
                 ON participations.event_id = events.id
                 AND COALESCE(participations.attendance, 1) = 1
+            LEFT JOIN participants
+                ON participants.id = participations.participant_id
             LEFT JOIN volunteer_signups
                 ON volunteer_signups.event_id = events.id
                 AND volunteer_signups.status = 'approved'
                 AND COALESCE(volunteer_signups.attendance, 1) = 1
+            LEFT JOIN volunteers
+                ON volunteers.id = volunteer_signups.volunteer_id
             LEFT JOIN event_partners
                 ON event_partners.event_id = events.id
             WHERE events.status = 'closed'
@@ -216,6 +229,12 @@ def completed_reports(request: Request) -> list[CompletedEventReport]:
     reports: list[CompletedEventReport] = []
     for row in rows:
         partners = [partner for partner in (row["partners"] or "").split(",") if partner]
+        participant_names = [
+            name for name in (row["participant_names"] or "").split(",") if name
+        ]
+        volunteer_names = [
+            name for name in (row["volunteer_names"] or "").split(",") if name
+        ]
         generated_caption = row["generated_caption"] or build_caption(
             row["name"],
             row["attendees"],
@@ -228,11 +247,20 @@ def completed_reports(request: Request) -> list[CompletedEventReport]:
                 name=row["name"],
                 date=row["event_date"],
                 venue=row["venue"],
+                template_name=row["template_name"],
+                is_skills_workshop=(
+                    "skill" in row["name"].lower()
+                    or "workshop" in row["name"].lower()
+                    or "skill" in row["template_name"].lower()
+                    or "workshop" in row["template_name"].lower()
+                ),
                 report_status="Complete"
                 if row["report_status"] == "complete"
                 else "Incomplete",
                 attendees=row["attendees"],
                 volunteers=row["volunteers"],
+                participant_names=participant_names,
+                volunteer_names=volunteer_names,
                 partners=partners,
                 generated_caption=generated_caption,
             )

@@ -32,6 +32,7 @@ const navLinks: { label: string; page: Page }[] = [
   { label: "Dashboard", page: "dashboard" },
   { label: "Events", page: "events" },
   { label: "Volunteers", page: "volunteers" },
+  { label: "Post-event", page: "reports" },
 ];
 
 const pageLabels: Record<Page, string> = {
@@ -39,7 +40,7 @@ const pageLabels: Record<Page, string> = {
   dashboard: "Dashboard",
   events: "Events",
   volunteers: "Volunteers",
-  reports: "Reports",
+  reports: "Post-event",
   ai: "AI Copilot",
   signup: "Volunteer Sign-Up",
   community: "Community Events",
@@ -233,9 +234,13 @@ type CompletedEvent = {
   name: string;
   date: string;
   venue: string;
+  templateName?: string;
+  isSkillsWorkshop: boolean;
   reportStatus: "Complete" | "Incomplete";
   attendees: number;
   volunteers: number;
+  participantNames: string[];
+  volunteerNames: string[];
   fundsRaised?: string;
   beneficiaries?: number;
   workshops?: number;
@@ -251,15 +256,19 @@ type CompletedEventReportResponse = {
   name: string;
   date: string;
   venue: string;
+  template_name: string;
+  is_skills_workshop: boolean;
   report_status: "Complete" | "Incomplete";
   attendees: number;
   volunteers: number;
+  participant_names: string[];
+  volunteer_names: string[];
   partners: string[];
   generated_caption: string;
 };
 
 const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000/api/v1";
+  import.meta.env.VITE_API_BASE_URL ?? "/api/v1";
 
 type UploadedPhoto = {
   id: string;
@@ -1304,21 +1313,266 @@ function ReportEventCard({
   );
 }
 
+function CertificateGenerationPanel({
+  events,
+  selectedEvent,
+  onSelectEvent,
+}: {
+  events: CompletedEvent[];
+  selectedEvent: CompletedEvent | null;
+  onSelectEvent: (eventName: string) => void;
+}) {
+  type CertificateType = "participants" | "volunteers";
+  const [certificateTypesByEvent, setCertificateTypesByEvent] = useState<
+    Record<number, CertificateType>
+  >({});
+  const [sentCertificates, setSentCertificates] = useState<
+    Record<string, boolean>
+  >({});
+  const getCertificateOptions = (event: CompletedEvent): CertificateType[] =>
+    event.isSkillsWorkshop ? ["participants", "volunteers"] : ["volunteers"];
+  const getCertificateType = (event: CompletedEvent): CertificateType => {
+    const savedType = certificateTypesByEvent[event.id];
+    const options = getCertificateOptions(event);
+    return savedType && options.includes(savedType) ? savedType : options[0];
+  };
+  const activeEvent =
+    selectedEvent ?? events[0] ?? null;
+  const activeCertificateType = activeEvent
+    ? getCertificateType(activeEvent)
+    : "volunteers";
+  const recipientNames =
+    activeCertificateType === "participants"
+      ? activeEvent?.participantNames ?? []
+      : activeEvent?.volunteerNames ?? [];
+  const receiverName = recipientNames[0] ?? "Receiver Name";
+  const issuer = "Passion to Serve";
+  const certificateTitle =
+    activeCertificateType === "participants"
+      ? "Certificate of Completion"
+      : "Certificate of Appreciation";
+  const activeCertificateKey = activeEvent
+    ? `${activeEvent.id}-${activeCertificateType}`
+    : "";
+  const hasSentActiveCertificates =
+    Boolean(activeCertificateKey && sentCertificates[activeCertificateKey]);
+  const certificateEntries = events.flatMap((event) =>
+    getCertificateOptions(event).map((certificateType) => {
+      const key = `${event.id}-${certificateType}`;
+      const recipientNames =
+        certificateType === "participants"
+          ? event.participantNames
+          : event.volunteerNames;
+      return {
+        certificateType,
+        event,
+        key,
+        recipientNames,
+        sent: Boolean(sentCertificates[key]),
+      };
+    }),
+  );
+  const sentCertificateEntries = certificateEntries.filter((entry) => entry.sent);
+  const unsentCertificateEntries = certificateEntries.filter(
+    (entry) => !entry.sent,
+  );
+
+  function selectCertificateType(
+    event: CompletedEvent,
+    certificateType: CertificateType,
+  ) {
+    setCertificateTypesByEvent((current) => ({
+      ...current,
+      [event.id]: certificateType,
+    }));
+    onSelectEvent(event.name);
+  }
+
+  function toggleSentCertificates() {
+    if (!activeCertificateKey) return;
+
+    setSentCertificates((current) => ({
+      ...current,
+      [activeCertificateKey]: !current[activeCertificateKey],
+    }));
+  }
+
+  function renderCertificateEntry({
+    certificateType,
+    event,
+    key,
+    recipientNames,
+  }: (typeof certificateEntries)[number]) {
+    const label =
+      certificateType === "participants" ? "Participants" : "Volunteers";
+    return (
+      <article
+        className={`certificate-event-card ${
+          activeEvent?.name === event.name &&
+          activeCertificateType === certificateType
+            ? "selected"
+            : ""
+        }`}
+        key={key}
+      >
+        <button
+          className="certificate-event-main"
+          type="button"
+          onClick={() => selectCertificateType(event, certificateType)}
+        >
+          <div>
+            <h3>{event.name}</h3>
+            <p>
+              {event.date} - {event.venue}
+            </p>
+          </div>
+          <dl>
+            <div>
+              <dt>Receiver Type</dt>
+              <dd>{label}</dd>
+            </div>
+            <div>
+              <dt>Receivers</dt>
+              <dd>{recipientNames.length}</dd>
+            </div>
+          </dl>
+        </button>
+      </article>
+    );
+  }
+
+  return (
+    <div className="certificate-layout">
+      <aside className="report-event-list" aria-label="Certificate events">
+        <section>
+          <div className="section-heading compact">
+            <h2>Certificates Unsent</h2>
+            <span>{unsentCertificateEntries.length} batches</span>
+          </div>
+          <div className="certificate-event-stack">
+            {unsentCertificateEntries.length > 0 ? (
+              unsentCertificateEntries.map(renderCertificateEntry)
+            ) : (
+              <p className="certificate-list-empty">No unsent certificates</p>
+            )}
+          </div>
+        </section>
+
+        <section>
+          <div className="section-heading compact">
+            <h2>Certificates Sent</h2>
+            <span>{sentCertificateEntries.length} batches</span>
+          </div>
+          <div className="certificate-event-stack">
+            {sentCertificateEntries.length > 0 ? (
+              sentCertificateEntries.map(renderCertificateEntry)
+            ) : (
+              <p className="certificate-list-empty">No sent certificates</p>
+            )}
+          </div>
+        </section>
+      </aside>
+
+      <section className="certificate-panel">
+        <div className="certificate-header">
+          <div>
+            <p>Certificate generation</p>
+            <h2>
+              {activeEvent
+                ? activeEvent.name
+                : "No completed events found"}
+            </h2>
+            <span>
+              {activeCertificateType === "participants"
+                ? "Generate skills enhancement certificates for participants using attendance records from the database."
+                : "Generate appreciation certificates for volunteers across all completed events."}
+            </span>
+          </div>
+          <button
+            className={hasSentActiveCertificates ? "sent" : ""}
+            type="button"
+            disabled={!activeEvent || recipientNames.length === 0}
+            onClick={toggleSentCertificates}
+          >
+            {hasSentActiveCertificates
+              ? "Unsend Certificates"
+              : "Send Certificates"}
+          </button>
+        </div>
+
+        <div className="certificate-stats">
+          <article>
+            <span>
+              {activeCertificateType === "participants"
+                ? "Eligible Participants"
+                : "Eligible Volunteers"}
+            </span>
+            <strong>{recipientNames.length}</strong>
+          </article>
+          <article>
+            <span>Template</span>
+            <strong>
+              {activeCertificateType === "participants"
+                ? "Skills Enhancement"
+                : "Volunteer Appreciation"}
+            </strong>
+          </article>
+          <article>
+            <span>Issuer</span>
+            <strong>{issuer}</strong>
+          </article>
+        </div>
+
+        <section className="certificate-recipient-list">
+          <h3>Receivers</h3>
+          <div>
+            {recipientNames.length > 0 ? (
+              recipientNames.map((name) => <span key={name}>{name}</span>)
+            ) : (
+              <span>No eligible receivers</span>
+            )}
+          </div>
+        </section>
+
+        <div className="certificate-preview">
+          <div>
+            <p>{certificateTitle}</p>
+            <h3>{receiverName}</h3>
+            <span>
+              {activeCertificateType === "participants"
+                ? "has successfully completed"
+                : "is recognized for volunteering at"}
+            </span>
+            <strong>{activeEvent?.name ?? "Completed Event"}</strong>
+            <dl>
+              <div>
+                <dt>Date</dt>
+                <dd>{activeEvent?.date ?? "YYYY-MM-DD"}</dd>
+              </div>
+              <div>
+                <dt>Issuer</dt>
+                <dd>{issuer}</dd>
+              </div>
+            </dl>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function ReportsPage() {
-  const [reportEvents, setReportEvents] = useState<CompletedEvent[]>(
-    completedEvents.map((event) => ({ ...event })),
-  );
+  const [reportEvents, setReportEvents] = useState<CompletedEvent[]>([]);
   const [isLoadingReports, setIsLoadingReports] = useState(true);
-  const [reportsSource, setReportsSource] = useState<"database" | "demo">(
-    "demo",
+  const [reportsError, setReportsError] = useState<string | null>(null);
+  const [postEventMode, setPostEventMode] = useState<
+    "reports" | "certificates"
+  >("reports");
+  const [completeReportNames, setCompleteReportNames] = useState<Set<string>>(
+    () => new Set(),
   );
-  const [completeReportNames, setCompleteReportNames] = useState(
-    () =>
-      new Set(
-        completedEvents
-          .filter((event) => event.reportStatus === "Complete")
-          .map((event) => event.name),
-      ),
+  const [selectedEventName, setSelectedEventName] = useState<string | null>(
+    null,
   );
   const incompleteEvents = reportEvents.filter(
     (event) => !completeReportNames.has(event.name),
@@ -1326,14 +1580,12 @@ function ReportsPage() {
   const completeEvents = reportEvents.filter(
     (event) => completeReportNames.has(event.name),
   );
-  const [selectedEventName, setSelectedEventName] = useState(
-    incompleteEvents[0]?.name ?? completedEvents[0].name,
-  );
   const selectedEvent =
-    reportEvents.find((event) => event.name === selectedEventName) ??
-    reportEvents[0];
+    reportEvents.find((event) => event.name === selectedEventName) ?? null;
 
   useEffect(() => {
+    setIsLoadingReports(true);
+    setReportsError(null);
     fetch(`${API_BASE_URL}/reports/completed`)
       .then((response) => {
         if (!response.ok) {
@@ -1342,42 +1594,44 @@ function ReportsPage() {
         return response.json() as Promise<CompletedEventReportResponse[]>;
       })
       .then((reports) => {
-        if (reports.length === 0) {
-          setReportsSource("demo");
-          return;
-        }
-
         const eventsFromDatabase = reports.map((report) => ({
           id: report.id,
           name: report.name,
           date: report.date,
           venue: report.venue,
+          templateName: report.template_name,
+          isSkillsWorkshop: report.is_skills_workshop,
           reportStatus: report.report_status,
           attendees: report.attendees,
           volunteers: report.volunteers,
+          participantNames: report.participant_names,
+          volunteerNames: report.volunteer_names,
           partners: report.partners,
           photos: ["Uploaded event photo"],
           nextAction: "Generate publicity caption",
           generatedCaption: report.generated_caption,
         }));
         setReportEvents(eventsFromDatabase);
-        setCompleteReportNames(
-          new Set(
-            eventsFromDatabase
-              .filter((event) => event.reportStatus === "Complete")
-              .map((event) => event.name),
-          ),
+        setCompleteReportNames(new Set(
+          eventsFromDatabase
+            .filter((event) => event.reportStatus === "Complete")
+            .map((event) => event.name),
+        ),
         );
-        setSelectedEventName(eventsFromDatabase[0].name);
-        setReportsSource("database");
+        setSelectedEventName(eventsFromDatabase[0]?.name ?? null);
       })
       .catch(() => {
-        setReportsSource("demo");
+        setReportEvents([]);
+        setCompleteReportNames(new Set());
+        setSelectedEventName(null);
+        setReportsError("Unable to load completed events from the database.");
       })
       .finally(() => setIsLoadingReports(false));
   }, []);
 
   function markSelectedReportComplete() {
+    if (!selectedEvent) return;
+
     setCompleteReportNames((current) => {
       const next = new Set(current);
       next.add(selectedEvent.name);
@@ -1400,66 +1654,98 @@ function ReportsPage() {
     <section className="reports-page">
       <div className="dashboard-shell">
         <header className="section-hero">
-          <p>Reports</p>
-          <h1>Post-event publicity</h1>
+          <p>Post-event</p>
+          <h1>Reports & Certificates</h1>
           <span>
-            Select a completed event to generate review-ready social media and
-            impact material.
+            Switch between report generation and certificate generation for
+            completed events.
           </span>
-          <small>
-            {isLoadingReports
-              ? "Loading completed events from database..."
-              : reportsSource === "database"
-                ? "Connected to database"
-                : "Using demo report data until the API has completed events"}
-          </small>
+          {isLoadingReports && (
+            <small>Loading completed events from database...</small>
+          )}
+          {reportsError && <small>{reportsError}</small>}
         </header>
 
-        <div className="reports-layout">
-          <aside className="report-event-list" aria-label="Completed events">
-            <section>
-              <div className="section-heading compact">
-                <h2>Report Incomplete</h2>
-                <span>{incompleteEvents.length} events</span>
-              </div>
-              <div className="report-event-stack">
-                {incompleteEvents.map((event) => (
-                  <ReportEventCard
-                    event={event}
-                    isReportComplete={completeReportNames.has(event.name)}
-                    isSelected={selectedEvent.name === event.name}
-                    key={event.name}
-                    onSelect={() => setSelectedEventName(event.name)}
-                  />
-                ))}
-              </div>
-            </section>
-
-            <section>
-              <div className="section-heading compact">
-                <h2>Report Complete</h2>
-                <span>{completeEvents.length} events</span>
-              </div>
-              <div className="report-event-stack">
-                {completeEvents.map((event) => (
-                  <ReportEventCard
-                    event={event}
-                    isReportComplete={completeReportNames.has(event.name)}
-                    isSelected={selectedEvent.name === event.name}
-                    key={event.name}
-                    onSelect={() => setSelectedEventName(event.name)}
-                  />
-                ))}
-              </div>
-            </section>
-          </aside>
-
-          <PublicityPack
-            event={selectedEvent}
-            isReportComplete={completeReportNames.has(selectedEvent.name)}
-            onMarkComplete={markSelectedReportComplete}
-          />
+        <div className="post-event-tabs" aria-label="Post-event tools">
+          <button
+            className={postEventMode === "reports" ? "active" : ""}
+            type="button"
+            onClick={() => setPostEventMode("reports")}
+          >
+            Report Generation
+          </button>
+          <button
+            className={postEventMode === "certificates" ? "active" : ""}
+            type="button"
+            onClick={() => setPostEventMode("certificates")}
+          >
+            Certificate Generation
+          </button>
         </div>
+
+        {reportEvents.length === 0 && !isLoadingReports ? (
+          <section className="report-empty-state">
+            <h2>No completed events found</h2>
+            <p>
+              Close events in the database to make them appear here for
+              post-event report generation.
+            </p>
+          </section>
+        ) : postEventMode === "certificates" ? (
+          <CertificateGenerationPanel
+            events={reportEvents}
+            selectedEvent={selectedEvent}
+            onSelectEvent={setSelectedEventName}
+          />
+        ) : (
+          <div className="reports-layout">
+            <aside className="report-event-list" aria-label="Completed events">
+              <section>
+                <div className="section-heading compact">
+                  <h2>Report Incomplete</h2>
+                  <span>{incompleteEvents.length} events</span>
+                </div>
+                <div className="report-event-stack">
+                  {incompleteEvents.map((event) => (
+                    <ReportEventCard
+                      event={event}
+                      isReportComplete={completeReportNames.has(event.name)}
+                      isSelected={selectedEvent?.name === event.name}
+                      key={event.id}
+                      onSelect={() => setSelectedEventName(event.name)}
+                    />
+                  ))}
+                </div>
+              </section>
+
+              <section>
+                <div className="section-heading compact">
+                  <h2>Report Complete</h2>
+                  <span>{completeEvents.length} events</span>
+                </div>
+                <div className="report-event-stack">
+                  {completeEvents.map((event) => (
+                    <ReportEventCard
+                      event={event}
+                      isReportComplete={completeReportNames.has(event.name)}
+                      isSelected={selectedEvent?.name === event.name}
+                      key={event.id}
+                      onSelect={() => setSelectedEventName(event.name)}
+                    />
+                  ))}
+                </div>
+              </section>
+            </aside>
+
+            {selectedEvent && (
+              <PublicityPack
+                event={selectedEvent}
+                isReportComplete={completeReportNames.has(selectedEvent.name)}
+                onMarkComplete={markSelectedReportComplete}
+              />
+            )}
+          </div>
+        )}
       </div>
     </section>
   );

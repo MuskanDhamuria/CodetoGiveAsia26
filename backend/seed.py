@@ -161,38 +161,6 @@ def seed(db) -> None:
             (distribution_template_id, name, offset, category, position),
         )
 
-    db.execute(
-        """
-        INSERT OR IGNORE INTO event_templates (name, description, is_built_in, beneficiary_id)
-        VALUES (?, ?, 1, ?)
-        """,
-        ("Skill Enhancement", "Coordinate a practical learning session for migrant workers.", migrant_workers_id),
-    )
-    skill_template_id = db.execute(
-        "SELECT id FROM event_templates WHERE name = 'Skill Enhancement'"
-    ).fetchone()[0]
-    skill_tasks = [
-        ("Align the team on holding the event", -56, "planning"),
-        ("Coordinate course administration", -49, "planning"),
-        ("Confirm a venue with suitable infrastructure", -42, "planning"),
-        ("Notify beneficiary migrant workers", -21, "planning"),
-        ("Promote the event on social media", -21, "planning"),
-        ("Recruit volunteers", -14, "planning"),
-        ("Run the skill-enhancement session", 0, "execution"),
-        ("Send volunteer certificates", 3, "post_execution"),
-        ("Send volunteer acknowledgements", 3, "post_execution"),
-        ("Share the event recap on social media", 7, "post_execution"),
-    ]
-    for position, (name, offset, category) in enumerate(skill_tasks):
-        db.execute(
-            """
-            INSERT OR IGNORE INTO template_tasks
-                (event_template_id, name, relative_due_days, category, position)
-            VALUES (?, ?, ?, ?, ?)
-            """,
-            (skill_template_id, name, offset, category, position),
-        )
-
     def create_event(template_id: int, template_tasks, name, venue, event_date, status):
         template_description = db.execute(
             "SELECT description FROM event_templates WHERE id = ?", (template_id,)

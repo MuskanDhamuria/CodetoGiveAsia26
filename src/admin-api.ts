@@ -72,6 +72,12 @@ export type CreateEventInput = Pick<
   EventDetail,
   "event_template_id" | "name" | "venue" | "event_date"
 >
+export type CreateTemplateInput = Pick<EventTemplate, "name" | "description"> & {
+  beneficiary_id?: number | null
+}
+export type CreateTemplateTaskInput = Pick<TemplateTask, "name" | "body" | "relative_due_days" | "category"> & {
+  position?: number
+}
 
 export type UpdateEventInput = Partial<Pick<EventDetail, "name" | "venue">>
 export type RescheduleEventInput = {
@@ -127,6 +133,9 @@ type EventSummary = Pick<
 
 export interface AdminApi {
   listEventTemplates(): Promise<EventTemplate[]>
+  createEventTemplate(input: CreateTemplateInput): Promise<EventTemplate>
+  createTemplateTask(templateId: number, input: CreateTemplateTaskInput): Promise<TemplateTask>
+  createTemplateSubtask(templateId: number, taskId: number, input: { title: string; position?: number }): Promise<TemplateSubtask>
   listEvents(): Promise<EventDetail[]>
   createEvent(input: CreateEventInput): Promise<EventDetail>
   updateEvent(eventId: number, changes: UpdateEventInput): Promise<EventDetail>
@@ -171,6 +180,21 @@ export const adminApi: AdminApi = {
         request<EventTemplate>(`/event-templates/${template.id}`),
       ),
     )
+  },
+
+  createEventTemplate(input) {
+    return request<EventTemplate>("/event-templates", { method: "POST", body: JSON.stringify(input) }).then(async (template) => {
+      const detail = await request<EventTemplate>(`/event-templates/${template.id}`)
+      return detail
+    })
+  },
+
+  createTemplateTask(templateId, input) {
+    return request<TemplateTask>(`/event-templates/${templateId}/tasks`, { method: "POST", body: JSON.stringify(input) })
+  },
+
+  createTemplateSubtask(templateId, taskId, input) {
+    return request<TemplateSubtask>(`/event-templates/${templateId}/tasks/${taskId}/subtasks`, { method: "POST", body: JSON.stringify(input) })
   },
 
   async listEvents() {

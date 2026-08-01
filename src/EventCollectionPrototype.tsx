@@ -120,6 +120,7 @@ type VariantProps = {
   onSelect: (event: EventCollectionItem) => void;
   onShowClosed: () => void;
   onView: (view: View) => void;
+  openOnSelect: boolean;
 };
 
 function VariantA({ events, view, month, showClosed, onMonth, onNewEvent, onOpen, onShowClosed, onView }: VariantProps) {
@@ -173,7 +174,7 @@ function VariantB({ events, month, showClosed, onMonth, onNewEvent, onOpen, onSh
   );
 }
 
-function VariantC({ events, view, month, showClosed, selected, onMonth, onNewEvent, onOpen, onSelect, onShowClosed, onView }: VariantProps) {
+function VariantC({ events, view, month, showClosed, selected, onMonth, onNewEvent, onOpen, onSelect, onShowClosed, onView, openOnSelect }: VariantProps) {
   return (
     <div className="collection-variant collection-variant-c">
       <header className="portfolio-header">
@@ -187,7 +188,7 @@ function VariantC({ events, view, month, showClosed, selected, onMonth, onNewEve
           <section className="portfolio-index">
             <header><span>{events.length} events</span><span>Earliest first</span></header>
             {events.map((event) => (
-              <button className={selected.name === event.name ? "active" : ""} type="button" key={event.name} onClick={() => onSelect(event)}>
+              <button aria-label={`Open ${event.name}`} className={selected.name === event.name ? "active" : ""} type="button" key={event.name} onClick={() => { onSelect(event); if (openOnSelect) onOpen(event); }}>
                 <time><strong>{event.day}</strong>{event.date.split(" ")[1]}</time>
                 <span><strong>{event.name}</strong><small>{event.venue}</small></span>
                 <EventStatus status={event.status} />
@@ -211,16 +212,20 @@ export default function EventCollectionPrototype({
   events: liveEvents,
   onNewEvent,
   onOpen,
+  initialShowClosed = false,
+  openOnSelect = false,
 }: {
   events?: EventCollectionItem[];
   onNewEvent?: () => void;
   onOpen?: (event: EventCollectionItem) => void;
+  initialShowClosed?: boolean;
+  openOnSelect?: boolean;
 }) {
   const params = new URLSearchParams(window.location.search);
   const initialVariant = params.get("variant");
   const variant: Variant = initialVariant === "A" || initialVariant === "B" || initialVariant === "C" ? initialVariant : "C";
   const [view, setView] = useState<View>(variant === "B" ? "calendar" : "list");
-  const [showClosed, setShowClosed] = useState(false);
+  const [showClosed, setShowClosed] = useState(initialShowClosed);
   const [month, setMonth] = useState(8);
   const sourceEvents = liveEvents ?? prototypeEvents;
   const [selected, setSelected] = useState(sourceEvents[0]);
@@ -266,6 +271,7 @@ export default function EventCollectionPrototype({
     onSelect: setSelected,
     onShowClosed: () => setShowClosed((value) => !value),
     onView: setView,
+    openOnSelect,
   };
 
   return (

@@ -10,6 +10,44 @@ afterEach(cleanup)
 
 
 describe("API-backed organizer events", () => {
+  it("updates the selected event panel without opening the workspace", async () => {
+    const events: EventDetail[] = [
+      { id: 4, event_template_id: null, name: "First event", venue: "Hall A", event_date: "2027-09-01", status: "open", created_at: "", updated_at: "", tasks: [] },
+      { id: 5, event_template_id: null, name: "Second event", venue: "Hall B", event_date: "2027-09-02", status: "open", created_at: "", updated_at: "", tasks: [] },
+    ]
+    const api = {
+      listEventTemplates: vi.fn().mockResolvedValue([]),
+      listEvents: vi.fn().mockResolvedValue(events),
+      listTeamMembers: vi.fn().mockResolvedValue([]),
+    } as unknown as AdminApi
+    const user = userEvent.setup()
+
+    render(<AdminEventsPage api={api} />)
+    await user.click(await screen.findByRole("button", { name: "Open Second event" }))
+
+    expect(screen.getByRole("heading", { name: "Second event" })).toBeTruthy()
+    expect(screen.queryByRole("button", { name: "Back to Events" })).toBeNull()
+  })
+
+  it("uses the event portfolio presentation from the prototype collection", async () => {
+    const event: EventDetail = {
+      id: 4, event_template_id: null, name: "Wellness session", venue: "Hall",
+      event_date: "2027-09-01", status: "open", created_at: "", updated_at: "", tasks: [],
+    }
+    const api = {
+      listEventTemplates: vi.fn().mockResolvedValue([]),
+      listEvents: vi.fn().mockResolvedValue([event]),
+      listTeamMembers: vi.fn().mockResolvedValue([]),
+    } as unknown as AdminApi
+
+    render(<AdminEventsPage api={api} />)
+    await screen.findByRole("heading", { name: "Event portfolio" })
+
+    expect(document.querySelector(".collection-variant-c .portfolio-header")).toBeTruthy()
+    expect(document.querySelector(".collection-variant-c .portfolio-split")).toBeTruthy()
+    expect(document.querySelector(".event-collection-header")).toBeNull()
+  })
+
   it("shows Event and Subtask completion in the workspace", async () => {
     const event: EventDetail = {
       id: 4, event_template_id: null, name: "Wellness session", venue: "Hall",
@@ -30,7 +68,7 @@ describe("API-backed organizer events", () => {
     const user = userEvent.setup()
 
     render(<AdminEventsPage api={api} />)
-    await user.click(await screen.findByRole("button", { name: "Open Wellness session" }))
+    await user.click(await screen.findByRole("button", { name: /Open event workspace/ }))
 
     expect(screen.getByText("1 of 2 Tasks complete")).toBeTruthy()
     expect(screen.getByRole("progressbar", { name: "Event completion" }).getAttribute("aria-valuenow")).toBe("50")
@@ -61,7 +99,7 @@ describe("API-backed organizer events", () => {
     const user = userEvent.setup()
 
     render(<AdminEventsPage api={api} />)
-    await user.click(await screen.findByRole("button", { name: "Open Wellness session" }))
+    await user.click(await screen.findByRole("button", { name: /Open event workspace/ }))
     await user.click(screen.getByText("Prepare room"))
 
     expect(screen.getByText("Task preview")).toBeTruthy()
@@ -88,7 +126,7 @@ describe("API-backed organizer events", () => {
     const user = userEvent.setup()
 
     render(<AdminEventsPage api={api} />)
-    await user.click(await screen.findByRole("button", { name: "Open Wellness session" }))
+    await user.click(await screen.findByRole("button", { name: /Open event workspace/ }))
     await user.click(screen.getByRole("button", { name: "Edit details" }))
     const name = screen.getByLabelText("Event name")
     await user.clear(name)
@@ -114,7 +152,7 @@ describe("API-backed organizer events", () => {
     const user = userEvent.setup()
 
     render(<AdminEventsPage api={api} />)
-    await user.click(await screen.findByRole("button", { name: "Open Wellness session" }))
+    await user.click(await screen.findByRole("button", { name: /Open event workspace/ }))
     await user.click(screen.getByRole("button", { name: "Reschedule" }))
     fireEvent.change(screen.getByLabelText("New Event date"), { target: { value: "2027-09-08" } })
     expect((screen.getByLabelText(/shift task deadlines/i) as HTMLInputElement).checked).toBe(true)
@@ -136,7 +174,7 @@ describe("API-backed organizer events", () => {
     const user = userEvent.setup()
 
     render(<AdminEventsPage api={api} />)
-    await user.click(await screen.findByRole("button", { name: "Open Wellness session" }))
+    await user.click(await screen.findByRole("button", { name: /Open event workspace/ }))
     await user.click(screen.getByRole("button", { name: "Delete Event" }))
     const confirm = screen.getByRole("button", { name: "Delete permanently" }) as HTMLButtonElement
     expect(confirm.disabled).toBe(true)
@@ -164,7 +202,7 @@ describe("API-backed organizer events", () => {
     const user = userEvent.setup()
 
     render(<AdminEventsPage api={api} />)
-    await user.click(await screen.findByRole("button", { name: "Open Wellness session" }))
+    await user.click(await screen.findByRole("button", { name: /Open event workspace/ }))
     await user.click(screen.getByRole("button", { name: "Add Task" }))
     await user.type(screen.getByLabelText("Task name"), "Prepare room")
     await user.type(screen.getByLabelText("Description"), "Set out chairs")
@@ -234,7 +272,7 @@ describe("API-backed organizer events", () => {
       venue: "Community Hall",
       event_date: "2027-09-01",
     })
-    expect(await screen.findByText("Scratch event")).toBeTruthy()
+    expect(await screen.findByRole("heading", { name: "Scratch event" })).toBeTruthy()
   })
 
   it("operates an event task through the API", async () => {
@@ -270,10 +308,10 @@ describe("API-backed organizer events", () => {
     const user = userEvent.setup()
 
     const { container } = render(<AdminEventsPage api={api} />)
-    await screen.findByText("Wellness session")
+    await screen.findByRole("heading", { name: "Wellness session" })
     const eventList = container.querySelector(".event-operations-template-list")!
     expect(window.getComputedStyle(eventList).display).not.toBe("none")
-    await user.click(await screen.findByRole("button", { name: "Open Wellness session" }))
+    await user.click(await screen.findByRole("button", { name: /Open event workspace/ }))
     await user.click(screen.getByRole("button", { name: "Start task" }))
 
     expect(updateEventTask).toHaveBeenCalledWith(4, 11, { status: "ongoing" })
@@ -313,7 +351,7 @@ describe("API-backed organizer events", () => {
     const user = userEvent.setup()
 
     render(<AdminEventsPage api={api} />)
-    await user.click(await screen.findByRole("button", { name: "Open Wellness session" }))
+    await user.click(await screen.findByRole("button", { name: /Open event workspace/ }))
     const taskCard = screen.getByText("Book venue").closest("article")!
     const inProgressColumn = screen.getByRole("heading", { name: "In progress 0" }).closest("section")!
 
@@ -355,7 +393,7 @@ describe("API-backed organizer events", () => {
     const user = userEvent.setup()
 
     render(<AdminEventsPage api={api} />)
-    await user.click(await screen.findByRole("button", { name: "Open Yoga at Tampines Hub" }))
+    await user.click(await screen.findByRole("button", { name: /Open event workspace/ }))
 
     const workspace = screen.getByRole("region", { name: "Yoga at Tampines Hub" })
     const backButton = screen.getByRole("button", { name: "Back to Events" })
@@ -370,5 +408,50 @@ describe("API-backed organizer events", () => {
     expect(screen.getByText("Task preview")).toBeTruthy()
     expect((screen.getByLabelText("Task name") as HTMLInputElement).readOnly).toBe(true)
     expect(screen.queryByRole("button", { name: "Edit Task" })).toBeNull()
+  })
+
+  it("saves a custom template and makes it a selectable starting point", async () => {
+    const createdTemplate = { id: 8, name: "Custom workflow", description: "Reusable", is_built_in: false, created_at: "", updated_at: "", tasks: [], roles: [] }
+    const createdTask = { id: 80, event_template_id: 8, name: "Welcome volunteers", body: "", relative_due_days: -7, category: "planning" as const, position: 0, subtasks: [] }
+    const api = {
+      listEventTemplates: vi.fn().mockResolvedValue([]), listEvents: vi.fn().mockResolvedValue([]), listTeamMembers: vi.fn().mockResolvedValue([]),
+      createEventTemplate: vi.fn().mockResolvedValue(createdTemplate), createTemplateTask: vi.fn().mockResolvedValue(createdTask), createTemplateSubtask: vi.fn(),
+    } as unknown as AdminApi
+    const user = userEvent.setup()
+
+    render(<AdminEventsPage api={api} />)
+    await screen.findByRole("heading", { name: "Event portfolio" })
+    await user.click(screen.getByRole("button", { name: /new event/i }))
+    await user.click(screen.getByRole("button", { name: /create custom template/i }))
+    await user.type(screen.getByLabelText("Template name"), "Custom workflow")
+    await user.type(screen.getByLabelText("Task title 1"), "Welcome volunteers")
+    await user.click(screen.getByRole("button", { name: "Save Event Template" }))
+
+    expect(api.createEventTemplate).toHaveBeenCalledWith({ name: "Custom workflow", description: "" })
+    expect(api.createTemplateTask).toHaveBeenCalledWith(8, expect.objectContaining({ name: "Welcome volunteers", relative_due_days: 0 }))
+    expect(screen.getByRole("button", { name: /Custom workflow/ })).toBeTruthy()
+  })
+
+  it("switches between the first and next five tasks in plan review", async () => {
+    const tasks = Array.from({ length: 10 }, (_, index) => ({ id: index + 1, event_template_id: 2, name: `Task ${index + 1}`, body: "", relative_due_days: 0, category: "planning" as const, position: index, subtasks: [] }))
+    const template = { id: 2, name: "Distribution", description: "", is_built_in: true, created_at: "", updated_at: "", tasks, roles: [] }
+    const api = { listEventTemplates: vi.fn().mockResolvedValue([template]), listEvents: vi.fn().mockResolvedValue([]), listTeamMembers: vi.fn().mockResolvedValue([]) } as unknown as AdminApi
+    const user = userEvent.setup()
+
+    render(<AdminEventsPage api={api} />)
+    await screen.findByRole("heading", { name: "Event portfolio" })
+    await user.click(screen.getByRole("button", { name: /new event/i }))
+    await user.click(screen.getByRole("button", { name: /Distribution/ }))
+    await user.click(screen.getByRole("button", { name: "Continue" }))
+    await user.type(screen.getByLabelText("Event name"), "Community event")
+    fireEvent.change(screen.getByLabelText("Event date"), { target: { value: "2027-09-01" } })
+    await user.type(screen.getByLabelText("Venue"), "Hall")
+    await user.click(screen.getByRole("button", { name: "Continue" }))
+
+    expect(screen.getByText("Task 1")).toBeTruthy()
+    expect(screen.queryByText("Task 6")).toBeNull()
+    await user.click(screen.getByRole("button", { name: "Next 5" }))
+    expect(screen.getByText("Task 6")).toBeTruthy()
+    expect(screen.queryByText("Task 1")).toBeNull()
   })
 })

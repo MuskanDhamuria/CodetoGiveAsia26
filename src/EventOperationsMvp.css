@@ -45,6 +45,7 @@
 .event-creation-overlay { background: rgba(12, 27, 18, .58); display: grid; inset: 0; overflow: auto; padding: 32px; place-items: center; position: fixed; z-index: 10; }
 .product-app .event-creation-overlay { right: var(--copilot-sidebar-width); }
 .event-creation-dialog { background: #fff; border-radius: 16px; box-shadow: 0 24px 80px rgba(0,0,0,.25); max-width: 900px; overflow: hidden; width: 100%; }
+.event-creation-dialog { position: relative; }
 .event-creation-dialog > header { align-items: start; border-bottom: 1px solid #e4e8e4; display: flex; justify-content: space-between; padding: 26px 32px 18px; }.event-creation-dialog header p { color: #44765b; font-size: .78rem; font-weight: 800; letter-spacing: .08em; margin: 0; text-transform: uppercase; }.event-creation-dialog h2 { margin: 4px 0 0; }.event-creation-close { background: transparent; border: 0; cursor: pointer; font-size: 28px; }
 .event-creation-steps { border-bottom: 1px solid #e4e8e4; display: flex; justify-content: space-between; list-style: none; margin: 0; padding: 16px 32px; }.event-creation-steps li { align-items: center; color: #9aa39b; display: flex; font-size: .82rem; font-weight: 800; gap: 8px; }.event-creation-steps li > span { border: 1px solid currentColor; border-radius: 50%; display: grid; height: 24px; place-items: center; width: 24px; }.event-creation-steps .active, .event-creation-steps .done { color: #246b45; }.event-creation-steps .active > span { background: #246b45; border-color: #246b45; color: #fff; }.event-creation-steps .done > span { background: #e8f2e9; }
 .event-creation-body { display: grid; gap: 14px; max-height: 65vh; overflow: auto; padding: 28px 32px; }.event-creation-body h3, .event-creation-body p { margin: 0; }.event-creation-body > p { color: #5e6961; }.event-creation-body label { display: grid; font-weight: 700; gap: 6px; }.event-creation-body input, .event-creation-body select { border: 1px solid #b9c9bd; border-radius: 7px; font: inherit; padding: 9px; }.event-creation-body input[aria-invalid="true"] { border-color: #b3261e; }
@@ -177,3 +178,14 @@
 .api-delete-task-confirm span { flex: 1; font-size: .82rem; font-weight: 700; min-width: 190px; }
 @media (max-width: 1100px) { .api-event-workspace-body { grid-template-columns: 1fr; }.api-event-progress-panel { position: static; }.api-event-progress-panel dl { grid-template-columns: repeat(3, minmax(0, 1fr)); }.api-event-progress-panel dl > div { background: #fff; border-radius: 7px; padding: 8px; } }
 @media (max-width: 760px) { .api-event-header-actions { justify-content: flex-start; }.api-task-fields { grid-template-columns: 1fr; }.api-task-body-field { grid-column: auto; }.api-subtask-row { grid-template-columns: auto minmax(0, 1fr); }.api-subtask-row button { grid-column: 2; }.api-add-subtask { grid-template-columns: 1fr; } }
+
+.event-creation-template-actions { display: flex; flex-wrap: wrap; gap: 16px; }
+.event-creation-plan-pager { align-items: center; background: #f8fbf8; border-top: 1px solid #e4e9e4; display: flex; gap: 12px; justify-content: space-between; padding: 11px 16px; }
+.event-creation-plan-pager button { background: #edf4ee; border: 1px solid #c9d8cb; border-radius: 7px; color: #215d3a; cursor: pointer; font-size: .76rem; font-weight: 800; padding: 7px 9px; }
+.event-creation-plan-pager button:disabled { cursor: not-allowed; opacity: .45; }
+.event-creation-plan-pager span { color: #5e6961; font-size: .76rem; }
+.event-template-builder { background: rgba(12, 27, 18, .32); display: grid; inset: 0; overflow: auto; padding: 20px; place-items: center; position: absolute; z-index: 2; }
+.event-template-builder-card { background: #fff; border-radius: 13px; box-shadow: 0 18px 60px rgba(0,0,0,.24); max-width: 760px; overflow: hidden; width: 100%; }
+.event-template-builder-card > header { align-items: start; border-bottom: 1px solid #e4e8e4; display: flex; justify-content: space-between; padding: 22px 26px 16px; }
+.event-template-builder-card > header p { color: #44765b; font-size: .78rem; font-weight: 800; letter-spacing: .08em; margin: 0; text-transform: uppercase; }
+.event-template-builder-card > header h2 { margin: 4px 0 0; }

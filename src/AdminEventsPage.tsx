@@ -8,6 +8,7 @@ import {
   type TaskCategory,
   type TeamMember,
 } from "./admin-api"
+import EventCollectionPrototype, { type EventCollectionItem } from "./EventCollectionPrototype"
 import "./EventOperationsMvp.css"
 
 
@@ -16,6 +17,27 @@ type Draft = {
   name: string
   event_date: string
   venue: string
+}
+
+type CreationTaskEdit = {
+  name: string
+  due_at: string
+  category: TaskCategory
+}
+
+type CreationScratchTask = {
+  id: number
+  name: string
+  due_at: string
+  category: TaskCategory
+}
+
+type CustomTemplateTaskDraft = {
+  id: number
+  name: string
+  relative_due_days: string
+  category: TaskCategory
+  subtasks: string
 }
 
 const emptyDraft: Draft = {
@@ -52,6 +74,11 @@ function formatDate(value: string) {
   }).format(new Date(`${value}T00:00:00Z`))
 }
 
+function eventCompletion(event: EventDetail) {
+  const done = event.tasks.filter((task) => task.status === "done").length
+  return { done, total: event.tasks.length }
+}
+
 export default function AdminEventsPage({ api = adminApi, initialEventId = null }: { api?: AdminApi; initialEventId?: number | null }) {
   const [templates, setTemplates] = useState<EventTemplate[]>([])
   const [events, setEvents] = useState<EventDetail[]>([])
@@ -61,6 +88,16 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
   const [showCreator, setShowCreator] = useState(false)
   const [creationStep, setCreationStep] = useState(1)
   const [draft, setDraft] = useState<Draft>(emptyDraft)
+  const [creationTaskAssignees, setCreationTaskAssignees] = useState<Record<number, string>>({})
+  const [creationTaskEdits, setCreationTaskEdits] = useState<Record<number, CreationTaskEdit>>({})
+  const [editingCreationTaskId, setEditingCreationTaskId] = useState<number | null>(null)
+  const [scratchTasks, setScratchTasks] = useState<CreationScratchTask[]>([])
+  const [showTemplateBuilder, setShowTemplateBuilder] = useState(false)
+  const [customTemplateName, setCustomTemplateName] = useState("")
+  const [customTemplateDescription, setCustomTemplateDescription] = useState("")
+  const [customTemplateTasks, setCustomTemplateTasks] = useState<CustomTemplateTaskDraft[]>([])
+  const [savingTemplate, setSavingTemplate] = useState(false)
+  const [reviewPage, setReviewPage] = useState(0)
   const [creating, setCreating] = useState(false)
   const [openEventId, setOpenEventId] = useState<number | null>(initialEventId)
   const [draggedTaskId, setDraggedTaskId] = useState<number | null>(null)
@@ -102,7 +139,32 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
     () => templates.find((template) => template.id === draft.event_template_id),
     [draft.event_template_id, templates],
   )
+  const reviewTasks = selectedTemplate?.tasks.slice(reviewPage * 5, reviewPage * 5 + 5) ?? []
+  const reviewPageCount = selectedTemplate ? Math.ceil(selectedTemplate.tasks.length / 5) : 0
   const openEvent = events.find((event) => event.id === openEventId)
+  const collectionEvents = useMemo<EventCollectionItem[]>(
+    () => events.map((event) => {
+      const completed = eventCompletion(event)
+      const date = new Date(`${event.event_date}T00:00:00Z`)
+      const status = event.status === "closed"
+        ? "Closed"
+        : completed.total > 0 && completed.done === completed.total
+          ? "On track"
+          : "Planning"
+      return {
+        id: String(event.id),
+        name: event.name,
+        date: formatDate(event.event_date),
+        day: date.getUTCDate(),
+        venue: event.venue,
+        status,
+        progress: completed.total ? Math.round((completed.done / completed.total) * 100) : 0,
+        tasksDone: completed.done,
+        tasksTotal: completed.total,
+      }
+    }),
+    [events],
+  )
   const editingTask = openEvent && typeof editingTaskId === "number"
     ? openEvent.tasks.find((task) => task.id === editingTaskId)
     : undefined
@@ -111,11 +173,65 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
     ? Math.round((completedTaskCount / openEvent.tasks.length) * 100)
     : 0
 
+  function openCollectionEvent(event: EventDetail) {
+    setOpenEventId(event.id)
+  }
+
   function openCreator() {
     setDraft(emptyDraft)
     setCreationStep(1)
+    setCreationTaskAssignees({})
+    setCreationTaskEdits({})
+    setEditingCreationTaskId(null)
+    setScratchTasks([])
+    setShowTemplateBuilder(false)
+    setReviewPage(0)
     setError("")
     setShowCreator(true)
+  }
+
+  function openTemplateBuilder() {
+    setCustomTemplateName("")
+    setCustomTemplateDescription("")
+    setCustomTemplateTasks([{ id: Date.now(), name: "", relative_due_days: "0", category: "planning", subtasks: "" }])
+    setError("")
+    setShowTemplateBuilder(true)
+  }
+
+  async function saveCustomTemplate() {
+    if (!customTemplateName.trim()) {
+      setError("Enter a template name.")
+      return
+    }
+    if (!customTemplateTasks.length || customTemplateTasks.some((task) => !task.name.trim() || task.relative_due_days.trim() === "")) {
+      setError("Add at least one complete Task definition.")
+      return
+    }
+    if (!api.createEventTemplate || !api.createTemplateTask || !api.createTemplateSubtask) {
+      setError("Custom templates are not available from this API.")
+      return
+    }
+    setSavingTemplate(true)
+    setError("")
+    try {
+      const created = await api.createEventTemplate({ name: customTemplateName.trim(), description: customTemplateDescription.trim() })
+      const createdTasks = await Promise.all(customTemplateTasks.map((task, position) => api.createTemplateTask!(created.id, {
+        name: task.name.trim(), body: "", relative_due_days: Number(task.relative_due_days), category: task.category, position,
+      }).then(async (createdTask) => {
+        const subtasks = task.subtasks.split(",").map((title) => title.trim()).filter(Boolean)
+        await Promise.all(subtasks.map((title, subtaskPosition) => api.createTemplateSubtask!(created.id, createdTask.id, { title, position: subtaskPosition })))
+        return createdTask
+      })))
+      const savedTemplate = { ...created, tasks: createdTasks, roles: created.roles ?? [] }
+      setTemplates((current) => [...current, savedTemplate].sort((a, b) => Number(b.is_built_in) - Number(a.is_built_in) || a.name.localeCompare(b.name)))
+      setDraft((current) => ({ ...current, event_template_id: created.id }))
+      setShowTemplateBuilder(false)
+      setMessage("Custom Event Template saved. It is selected for this Event.")
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Unable to save the custom Event Template.")
+    } finally {
+      setSavingTemplate(false)
+    }
   }
 
   function continueCreation() {
@@ -129,6 +245,7 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
         return
       }
       setError("")
+      setReviewPage(0)
       setCreationStep(3)
     }
   }
@@ -137,12 +254,37 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
     setCreating(true)
     setError("")
     try {
-      const event = await api.createEvent({
+      let event = await api.createEvent({
         event_template_id: draft.event_template_id ?? null,
         name: draft.name.trim(),
         venue: draft.venue.trim(),
         event_date: draft.event_date,
       })
+      if (draft.event_template_id === null && scratchTasks.length) {
+        const createdTasks = await Promise.all(scratchTasks.map((task, position) => api.createEventTask(event.id, {
+          name: task.name.trim(),
+          body: "",
+          due_at: task.due_at || draft.event_date,
+          category: task.category,
+          position,
+        })))
+        event = { ...event, tasks: createdTasks }
+      }
+      const changedTasks = event.tasks.flatMap((task) => {
+        const assignee = creationTaskAssignees[task.id]
+        const edit = creationTaskEdits[task.id]
+        const changes = {
+          ...(assignee !== undefined ? { team_member_id: assignee ? Number(assignee) : null } : {}),
+          ...(edit && edit.name !== task.name ? { name: edit.name.trim() } : {}),
+          ...(edit && edit.due_at !== task.due_at ? { due_at: edit.due_at } : {}),
+          ...(edit && edit.category !== task.category ? { category: edit.category } : {}),
+        }
+        return Object.keys(changes).length ? [{ task, changes }] : []
+      })
+      if (changedTasks.length) {
+        const updatedTasks = await Promise.all(changedTasks.map(({ task, changes }) => api.updateEventTask(event.id, task.id, changes)))
+        event = { ...event, tasks: event.tasks.map((task) => updatedTasks.find((updated) => updated.id === task.id) ?? task) }
+      }
       setEvents((current) => [...current, event].sort((a, b) => a.event_date.localeCompare(b.event_date)))
       setShowCreator(false)
       setMessage(
@@ -165,7 +307,7 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
       setEvents((current) => current.map((item) => item.id === event.id
         ? { ...item, tasks: item.tasks.map((candidate) => candidate.id === updated.id ? updated : candidate) }
         : item))
-      setMessage(`Task ${status === "ongoing" ? "started" : status === "done" ? "completed" : "reopened"}: ${task.name}`)
+      setMessage("")
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Unable to update Task.")
     }
@@ -403,11 +545,11 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
   return (
     <section className="events-page">
       <div className={`dashboard-shell event-operations-page api-event-operations-page${openEvent ? " workspace-open" : ""}`}>
-        <header className="section-hero">
+        {openEvent && <header className="section-hero">
           <p>Event operations</p>
           <h1>Event portfolio</h1>
           <span>Plan reusable workflows or begin with an empty Event.</span>
-        </header>
+        </header>}
         <p aria-live="polite" className="event-operations-feedback">
           {message || error}
         </p>
@@ -547,45 +689,17 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
           </section>
         </>
         ) : <>
-        <div className="event-operations-collection-heading">
-          <div>
-            <h2>Events</h2>
-            <span>{events.length} scheduled Events</span>
-          </div>
-          <button type="button" onClick={openCreator}>New Event</button>
-        </div>
-        <div className="event-operations-template-list">
-          {events.map((event) => (
-            <article key={event.id}>
-              <div>
-                <strong>{event.name}</strong>
-                <span>{formatDate(event.event_date)} · {event.venue}</span>
-                <p>{event.tasks.length} Tasks · {event.status === "closed" ? "Closed" : "Open"}</p>
-              </div>
-              <button aria-label={`Open ${event.name}`} type="button" onClick={() => setOpenEventId(event.id)}>Open workspace</button>
-            </article>
-          ))}
-          {!events.length && <p>No Events yet. Create the first one.</p>}
-        </div>
-
-        <section className="event-operations-library" aria-labelledby="api-template-title">
-          <div>
-            <p>Event Templates</p>
-            <h2 id="api-template-title">Reusable workflows</h2>
-            <span>Loaded from the organizer API.</span>
-          </div>
-        </section>
-        <div className="event-operations-template-list">
-          {templates.map((template) => (
-            <article key={template.id}>
-              <div>
-                <strong>{template.name}</strong>
-                <span>{template.is_built_in ? "Built-in" : "Custom"} · {template.tasks.length} Tasks</span>
-                <p>{template.description}</p>
-              </div>
-            </article>
-          ))}
-        </div>
+        <EventCollectionPrototype
+          events={collectionEvents}
+          initialShowClosed
+          onNewEvent={openCreator}
+          onOpen={(event) => {
+            const apiEvent = events.find((candidate) => String(candidate.id) === event.id)
+            if (apiEvent) openCollectionEvent(apiEvent)
+          }}
+        />
+        <section className="event-operations-library" aria-labelledby="api-template-title"><div><p>Event Templates</p><h2 id="api-template-title">Reusable workflows</h2><span>Loaded from the organizer API.</span></div></section>
+        <div className="event-operations-template-list">{templates.map((template) => <article key={template.id}><div><strong>{template.name}</strong><span>{template.is_built_in ? "Built-in" : "Custom"} · {template.tasks.length} Tasks</span><p>{template.description}</p></div></article>)}</div>
         </>}
 
         {showCreator && (
@@ -602,22 +716,20 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
               </ol>
               {creationStep === 1 && (
                 <div className="event-creation-body">
-                  <header><p>Step 1 of 3</p><h2>Choose how to begin</h2><span>Use a proven workflow or build the Task plan yourself.</span></header>
+                  <header><p>Step 1 of 3</p><h2>Start with a reusable Event Template</h2><span>You can tailor the plan after it is generated.</span></header>
                   <div className="event-creation-templates">
-                    <button aria-label="Start from scratch" className={draft.event_template_id === null ? "selected" : ""} type="button" onClick={() => setDraft({ ...draft, event_template_id: null })}>
-                      <span>Empty plan</span><strong>Start from scratch</strong><small>Create the Event now and add Tasks in its workspace.</small><em>0 Tasks</em>
-                    </button>
                     {templates.map((template) => (
-                      <button className={draft.event_template_id === template.id ? "selected" : ""} key={template.id} type="button" onClick={() => setDraft({ ...draft, event_template_id: template.id })}>
-                        <span>{template.is_built_in ? "Built-in" : "Custom"}</span><strong>{template.name}</strong><small>{template.description}</small><em>{template.tasks.length} Tasks</em>
+                      <button className={draft.event_template_id === template.id ? "selected" : ""} key={template.id} type="button" onClick={() => { setDraft({ ...draft, event_template_id: template.id }); setReviewPage(0) }}>
+                        <span>{template.is_built_in ? "Built-in" : "Custom"}</span><strong>{template.name}</strong><small>{template.description}</small><em>{template.tasks.length} Tasks · {template.tasks.length ? `${Math.max(...template.tasks.map((task) => Math.abs(task.relative_due_days)))}-day horizon` : "No Tasks"}</em>
                       </button>
                     ))}
                   </div>
+                  <div className="event-creation-template-actions"><button className="event-creation-link" type="button" onClick={openTemplateBuilder}>＋ Create custom template</button><button aria-label="Start from scratch" className="event-creation-link" type="button" onClick={() => { setDraft({ ...draft, event_template_id: null }); setReviewPage(0) }}>＋ Start from scratch</button></div>
                 </div>
               )}
               {creationStep === 2 && (
                 <div className="event-creation-body">
-                  <header><p>Step 2 of 3</p><h2>Give this Event its details</h2><span>{selectedTemplate?.name ?? "An empty plan"} will be used as the starting point.</span></header>
+                  <header><p>Step 2 of 3</p><h2>Give this Event its details</h2><span>{selectedTemplate?.name ?? "An empty plan"} will supply the Task structure.</span></header>
                   <div className="event-creation-fields">
                     <label>Event name<input value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} /></label>
                     <label>Event date<input type="date" value={draft.event_date} onChange={(event) => setDraft({ ...draft, event_date: event.target.value })} /></label>
@@ -625,12 +737,27 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
                   </div>
                 </div>
               )}
+              {creationStep === 3 && draft.event_template_id === null && scratchTasks.length === 0 && <p className="event-creation-empty-plan-note">No Tasks yet</p>}
               {creationStep === 3 && (
                 <div className="event-creation-body">
-                  <header><p>Step 3 of 3</p><h2>Review the plan</h2><span>{selectedTemplate?.name ?? "Started from scratch"}</span></header>
-                  {selectedTemplate?.tasks.length ? (
-                    <div className="event-creation-plan">{selectedTemplate.tasks.slice(0, 5).map((task) => <article className="event-creation-plan-task" key={task.id}><strong>{task.name}</strong><small>{task.relative_due_days} days relative to Event</small></article>)}</div>
-                  ) : <p>No Tasks yet</p>}
+                  <header><p>Step 3 of 3</p><h2>Review the copied plan</h2><span>Edits affect this Event only.</span></header>
+                  {draft.event_template_id === null ? <div className="event-creation-scratch-plan"><div className="event-creation-plan-summary"><span>Empty plan</span><strong>{scratchTasks.length} Tasks added</strong><small>Add the work that needs to happen before and after the Event.</small></div>{scratchTasks.map((task, index) => <fieldset className="event-creation-task" key={task.id}><label>Task title<input value={task.name} onChange={(event) => setScratchTasks((current) => current.map((item) => item.id === task.id ? { ...item, name: event.target.value } : item))} /></label><label>Phase<select value={task.category} onChange={(event) => setScratchTasks((current) => current.map((item) => item.id === task.id ? { ...item, category: event.target.value as TaskCategory } : item))}><option value="planning">Planning</option><option value="execution">Execution</option><option value="post_execution">Post-execution</option></select></label><label>Days relative to Event date<input type="number" value={draft.event_date && task.due_at ? Math.round((Date.parse(`${task.due_at}T00:00:00Z`) - Date.parse(`${draft.event_date}T00:00:00Z`)) / 86400000) : 0} onChange={(event) => setScratchTasks((current) => current.map((item) => item.id === task.id ? { ...item, due_at: draft.event_date ? new Date(Date.parse(`${draft.event_date}T00:00:00Z`) + Number(event.target.value || 0) * 86400000).toISOString().slice(0, 10) : "" } : item))} /></label><button type="button" onClick={() => setScratchTasks((current) => current.filter((item) => item.id !== task.id))}>Remove</button><small>Task {index + 1}</small></fieldset>)}<button className="event-creation-add-task" type="button" onClick={() => setScratchTasks((current) => [...current, { id: Date.now(), name: "New Task", due_at: draft.event_date, category: "planning" }])}>＋ Add Task definition</button></div> : selectedTemplate?.tasks.length ? <div className="event-creation-plan"><div className="event-creation-plan-summary"><span>Auto-generated plan</span><strong>Tasks {reviewPage * 5 + 1}–{Math.min((reviewPage + 1) * 5, selectedTemplate.tasks.length)} of {selectedTemplate.tasks.length}</strong><small>Deadlines stay relative to {draft.event_date ? formatDate(draft.event_date) : "the Event date"}</small></div>{reviewTasks.map((task) => { const defaultDue = draft.event_date ? new Date(Date.parse(`${draft.event_date}T00:00:00Z`) + task.relative_due_days * 86400000).toISOString().slice(0, 10) : ""; const edit = creationTaskEdits[task.id] ?? { name: task.name, due_at: defaultDue, category: task.category }; const isEditing = editingCreationTaskId === task.id; return <article className={`event-creation-plan-task ${isEditing ? "editing" : ""}`} key={task.id}><span className={`event-creation-phase ${edit.category === "execution" ? "execution" : ""}`}>{edit.category === "post_execution" ? "Post-execution" : edit.category[0].toUpperCase() + edit.category.slice(1)}</span>{isEditing ? <div className="event-creation-plan-fields"><label>Task<input value={edit.name} onChange={(event) => setCreationTaskEdits((current) => ({ ...current, [task.id]: { ...edit, name: event.target.value } }))} /></label><label>Phase<select value={edit.category} onChange={(event) => setCreationTaskEdits((current) => ({ ...current, [task.id]: { ...edit, category: event.target.value as TaskCategory } }))}><option value="planning">Planning</option><option value="execution">Execution</option><option value="post_execution">Post-execution</option></select></label><label>Deadline<input type="date" value={edit.due_at} onChange={(event) => setCreationTaskEdits((current) => ({ ...current, [task.id]: { ...edit, due_at: event.target.value } }))} /></label></div> : <div><strong>{edit.name}</strong><small>{edit.due_at || "Set an Event date first"} · {task.relative_due_days === 0 ? "Event day" : `${Math.abs(task.relative_due_days)} days ${task.relative_due_days < 0 ? "before" : "after"} Event`}</small></div>}<select aria-label={`Assignee for ${edit.name}`} value={creationTaskAssignees[task.id] ?? ""} onChange={(event) => setCreationTaskAssignees((current) => ({ ...current, [task.id]: event.target.value }))}><option value="">Unassigned</option>{teamMembers.map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}</select><button type="button" aria-label={`${isEditing ? "Done editing" : "Edit"} ${edit.name}`} onClick={() => setEditingCreationTaskId(isEditing ? null : task.id)}>{isEditing ? "Done editing" : "Edit"}</button></article>})}</div> : <p>No Tasks yet</p>}
+                  {reviewPageCount > 1 && <div className="event-creation-plan-pager"><button type="button" disabled={reviewPage === 0} onClick={() => setReviewPage((page) => page - 1)}>Previous 5</button><span>Showing {reviewPage * 5 + 1}–{Math.min((reviewPage + 1) * 5, selectedTemplate?.tasks.length ?? 0)}</span><button type="button" disabled={reviewPage === reviewPageCount - 1} onClick={() => setReviewPage((page) => page + 1)}>Next 5</button></div>}
+                </div>
+              )}
+              {showTemplateBuilder && (
+                <div className="event-template-builder" role="dialog" aria-labelledby="custom-template-title">
+                  <div className="event-template-builder-card">
+                    <header><div><p>Custom Event Template</p><h2 id="custom-template-title">Build a reusable workflow</h2></div><button aria-label="Close custom template builder" className="event-creation-close" type="button" onClick={() => setShowTemplateBuilder(false)}>×</button></header>
+                    <div className="event-creation-body">
+                      <label>Template name<input value={customTemplateName} onChange={(event) => setCustomTemplateName(event.target.value)} placeholder="e.g. Community outreach" /></label>
+                      <label>Description<input value={customTemplateDescription} onChange={(event) => setCustomTemplateDescription(event.target.value)} /></label>
+                      <h3>Task definitions</h3>
+                      {customTemplateTasks.map((task, index) => <fieldset className="event-creation-task" key={task.id}><label>Task title<input aria-label={`Task title ${index + 1}`} value={task.name} onChange={(event) => setCustomTemplateTasks((current) => current.map((item) => item.id === task.id ? { ...item, name: event.target.value } : item))} /></label><label>Phase<select value={task.category} onChange={(event) => setCustomTemplateTasks((current) => current.map((item) => item.id === task.id ? { ...item, category: event.target.value as TaskCategory } : item))}><option value="planning">Planning</option><option value="execution">Execution</option><option value="post_execution">Post-execution</option></select></label><label>Days relative to Event date<input aria-label={`Days relative to Event date ${index + 1}`} type="number" value={task.relative_due_days} onChange={(event) => setCustomTemplateTasks((current) => current.map((item) => item.id === task.id ? { ...item, relative_due_days: event.target.value } : item))} /></label><label>Subtasks (comma separated)<input value={task.subtasks} onChange={(event) => setCustomTemplateTasks((current) => current.map((item) => item.id === task.id ? { ...item, subtasks: event.target.value } : item))} /></label><button type="button" onClick={() => setCustomTemplateTasks((current) => current.filter((item) => item.id !== task.id))}>Remove</button></fieldset>)}
+                      <button className="event-creation-add-task" type="button" onClick={() => setCustomTemplateTasks((current) => [...current, { id: Date.now(), name: "", relative_due_days: "0", category: "planning", subtasks: "" }])}>＋ Add Task definition</button>
+                    </div>
+                    <footer><button type="button" onClick={() => setShowTemplateBuilder(false)}>Cancel</button><button type="button" disabled={savingTemplate} onClick={saveCustomTemplate}>{savingTemplate ? "Saving…" : "Save Event Template"}</button></footer>
+                  </div>
                 </div>
               )}
               <footer>

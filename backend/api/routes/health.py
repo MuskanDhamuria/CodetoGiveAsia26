@@ -2,24 +2,14 @@
 
 import sqlite3
 from pathlib import Path
-from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Request, status
-from pydantic import BaseModel
 
 from backend.database import connect
+from backend.schema.health import DatabaseHealthResponse, HealthResponse
 
 
 router = APIRouter(prefix="/health", tags=["health"])
-
-
-class HealthResponse(BaseModel):
-    status: Literal["ok"]
-
-
-class DatabaseHealthResponse(HealthResponse):
-    database: Literal["ok"]
-
 
 @router.get("", response_model=HealthResponse, summary="Check API health")
 def health() -> HealthResponse:

@@ -55,3 +55,8 @@ to do that consistently.
 `backend/main.py` configures the application and should stay small.
 Feature endpoints belong in separate modules under `backend/api/routes/` and are
 composed by `backend/api/router.py`.
+
+Pydantic request and response models belong in the matching module under
+`backend/schema/`; reusable constrained fields and enums live in
+`backend/schema/common.py`. The volunteer route is temporarily exempt so its
+feature owner can migrate it independently.

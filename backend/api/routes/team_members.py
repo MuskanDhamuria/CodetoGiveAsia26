@@ -6,34 +6,16 @@ import sqlite3
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
-from pydantic import BaseModel, StringConstraints
 
 from backend.api.routes._common import Connection, Pagination, list_envelope
+from backend.schema.team_members import (
+    TeamMemberCreate,
+    TeamMemberOut,
+    TeamMemberUpdate,
+)
 
 
 router = APIRouter(prefix="/team-members", tags=["team members"])
-NonEmptyText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
-
-
-class TeamMemberCreate(BaseModel):
-    name: NonEmptyText
-    email: NonEmptyText
-    is_active: bool = True
-
-
-class TeamMemberUpdate(BaseModel):
-    name: NonEmptyText | None = None
-    email: NonEmptyText | None = None
-    is_active: bool | None = None
-
-
-class TeamMemberOut(BaseModel):
-    id: int
-    name: str
-    email: str
-    is_active: bool
-    created_at: str
-    updated_at: str
 
 
 def member_model(row: sqlite3.Row) -> TeamMemberOut:

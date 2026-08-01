@@ -6,7 +6,6 @@ import sqlite3
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
-from pydantic import BaseModel, StringConstraints
 
 from backend.api.routes._common import (
     Connection,
@@ -14,49 +13,16 @@ from backend.api.routes._common import (
     as_bool,
     list_envelope,
 )
+from backend.schema.participants import (
+    ParticipantCreate,
+    ParticipantOut,
+    ParticipantUpdate,
+    ParticipationCreate,
+    ParticipationOut,
+    ParticipationUpdate,
+)
 
 router = APIRouter(tags=["participants"])
-NonEmptyText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
-
-
-class ParticipantCreate(BaseModel):
-    name: NonEmptyText
-    contact_number: str | None = None
-    email: str | None = None
-
-
-class ParticipantUpdate(BaseModel):
-    name: NonEmptyText | None = None
-    contact_number: str | None = None
-    email: str | None = None
-
-
-class ParticipantOut(BaseModel):
-    id: int
-    name: str
-    contact_number: str | None
-    email: str | None
-    created_at: str
-    updated_at: str
-
-
-class ParticipationCreate(BaseModel):
-    participant_id: int
-    rsvp_status: bool = False
-
-
-class ParticipationUpdate(BaseModel):
-    rsvp_status: bool | None = None
-    attendance: bool | None = None
-
-
-class ParticipationOut(BaseModel):
-    participant_id: int
-    name: str
-    contact_number: str | None
-    email: str | None
-    rsvp_status: bool
-    attendance: bool | None
 
 
 def participant_model(row: sqlite3.Row) -> ParticipantOut:

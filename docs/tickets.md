@@ -1072,3 +1072,189 @@ Not building `get_event_template` (single-template detail) in this pass —
 `list_event_templates` alone resolves the observed problem (name → id
 lookup); a detail-fetch tool is a TICKET-8-style future candidate if a
 concrete need for template task-lists in chat shows up later.
+
+</details>
+
+---
+
+## TICKET-13: AI tool — view tasks for an event
+
+**Priority:** Medium
+**Area:** new `backend/ai_tools/` tool, reuses `backend/api/routes/events.py`
+
+### Scope
+
+New tool `list_event_tasks`, wrapping the existing
+`events.list_event_tasks` handler (`GET /events/{event_id}/tasks`) —
+supports the same filters the handler already does: `category`, `status`,
+`team_member_id`, `due_before`, `due_after`, pagination. Thin wrapper, no
+new logic, same pattern as every existing tool.
+
+Note `get_event` already embeds a full task list on `EventDetail` — this
+tool's value is filtering (e.g. "what's still incomplete on the beach
+cleanup?") without the model having to fetch and filter the whole event
+itself.
+
+### Depends on / affects
+
+None. Independent of TICKET-14/15 below, though useful alongside them (an
+organizer asking "what needs doing" naturally leads into "assign this" or
+"mark that done").
+
+---
+
+## TICKET-14: AI tool — allocate a task to a team member
+
+**Priority:** Medium
+**Area:** new `backend/ai_tools/` tool, reuses `backend/api/routes/events.py`
+
+### Scope correction: team members, not volunteers
+
+The proposal that prompted this backlog said "allocate tasks to
+volunteers." `CONTEXT.md`'s glossary is explicit that this is a category
+error in this codebase: **Team Member** is "an internal organizer who can
+be assigned responsibility for an Event Task"; **Volunteer** "does not
+make someone eligible for internal Task assignment" (`_Avoid_: Team
+Member, assignee` is listed directly under Volunteer). Task assignment
+only ever targets `team_member_id`, never a volunteer — there is no
+handler anywhere that assigns a task to a volunteer, so a tool that tried
+would have nothing real to wrap. Scoping this ticket to team members only.
+
+### Scope
+
+New tool `assign_event_task`, wrapping the existing `update_event_task`
+handler (`PATCH /events/{event_id}/tasks/{task_id}`) constrained to just
+the `team_member_id` field — reuses the handler's existing active-member
+validation rather than reimplementing it. A more general `update_event_task`
+tool exposing every field on `EventTaskUpdate` is a plausible follow-up but
+not this ticket's scope; keeping this one narrow (assignment only) matches
+how `cancel_event` was kept separate from a general `update_event`.
+
+### Depends on / affects
+
+Pairs naturally with TICKET-13 (see what's unassigned, then assign it) and
+TICKET-16 (an organizer may want to check a team member's current load
+before assigning more — out of scope here, see TICKET-16's note).
+
+---
+
+## TICKET-15: AI tool — mark a task's status (start / complete / reopen)
+
+**Priority:** Medium
+**Area:** new `backend/ai_tools/` tool(s), reuses `backend/api/routes/events.py`
+
+### Scope
+
+`TaskStatus` is `"incomplete" | "ongoing" | "done"`
+(`backend/schema/common.py`). Three dedicated handlers already exist and
+are the more natural mapping than a raw status field: `start_task`
+(`POST .../tasks/{task_id}/start`), `complete_task`
+(`POST .../tasks/{task_id}/complete`), `reopen_task`
+(`POST .../tasks/{task_id}/reopen`), all built on a shared
+`set_task_status` helper. Wrap these as one tool
+(`update_task_status(event_id, task_id, status)` dispatching to whichever
+handler matches) or three separate tools (`start_task`/`complete_task`/
+`reopen_task`) — pick whichever keeps `backend/ai_tools/specs.py`'s
+tool-name list clearest to the model; either way, no new validation logic,
+every check already lives in the handlers.
+
+### Depends on / affects
+
+Same pairing as TICKET-13/14 — an organizer flow like "what's overdue on
+the Health Fair? mark the venue booking done" chains TICKET-13 then this
+ticket naturally.
+
+---
+
+## TICKET-16: AI tool — view volunteers
+
+**Priority:** Medium
+**Area:** new `backend/ai_tools/` tool, reuses `backend/api/routes/volunteers.py`
+
+### Scope
+
+New tool `list_volunteers`, wrapping the existing `volunteers.list_volunteers`
+handler (`GET /volunteers`) — filters already supported: `signup_status`,
+`skill_id`, `role_id`, `q`, pagination. Returns name/contact/skills/signup
+counts per the existing `VolunteerListItem` response shape.
+
+Not building a `get_volunteer` (single-volunteer detail) tool in this
+pass, matching TICKET-12's precedent of shipping the list tool alone
+first — add the detail tool later if a concrete need for it (e.g. reading
+one volunteer's full skill/history) shows up in practice.
+
+### Note: this is read-only, not the volunteer-signup workflow
+
+TICKET-8's audit-update section separately flagged `list_event_signups`/
+`approve_event_signup`/`reject_event_signup` (state-changing) as
+high-value future candidates. This ticket is deliberately scoped to
+read-only volunteer visibility only — the signup-approval workflow is
+still unscoped and should stay its own ticket if picked up, given
+approve/reject are real state changes that (per TICKET-6's precedent)
+likely deserve a draft-and-confirm treatment rather than firing
+immediately from a chat turn.
+
+---
+
+## TICKET-17: AI tool — upcoming deadlines across all events
+
+**Priority:** Medium
+**Area:** new `backend/ai_tools/` tool, reuses `backend/api/routes/dashboard.py`
+
+### Scope
+
+New tool `list_upcoming_deadlines`, wrapping the existing
+`dashboard.upcoming_deadlines` handler
+(`GET /dashboard/upcoming-deadlines`) — params already supported: `days`
+(default 14), `team_member_id`, `limit`. Returns per-task rows (event
+name, task name, due date, category, status, assignee) for non-done tasks
+due within the window, already ordered by `due_at`. This is the
+"across all tasks, all events" visibility the initiative proposal asked
+for — every existing task/event-scoped tool (TICKET-13, `get_event`) is
+scoped to one event at a time.
+
+### Depends on / affects
+
+This is the data source TICKET-18 (task prioritization) reasons over —
+land this one first.
+
+---
+
+## TICKET-18: Task prioritization — prompt guidance, not a new tool
+
+**Priority:** Low
+**Area:** `backend/api/routes/ai_assistant.py` (system prompt), no new
+backend endpoint
+
+### Why this isn't a tool ticket
+
+Audited whether a "prioritize my tasks" capability needs new backend
+logic: it doesn't, and building one would violate this codebase's
+thin-wrapper-only rule for AI tools. No endpoint computes an overdue flag
+or priority score per task — `dashboard.event_summary`'s `overdue` count
+is an aggregate, not something a single task carries. The raw ingredients
+(`due_at`, `status`, `category`) are already fully exposed by TICKET-17's
+`list_upcoming_deadlines` and TICKET-13's `list_event_tasks`. Ranking them
+is reasoning over already-returned data, which is exactly what the model
+is for — inventing a server-side `/tasks/prioritized` endpoint just to
+pre-sort what the model could sort itself would be scope creep the
+proposal never asked for.
+
+### Scope
+
+Once TICKET-17 ships, extend `SYSTEM_PROMPT`
+(`backend/api/routes/ai_assistant.py`) with explicit guidance: when asked
+what to prioritize, call `list_upcoming_deadlines` (and/or
+`list_event_tasks` for a single-event question), then reason over
+due date proximity, status, and category to suggest an order — stating
+its reasoning rather than just dumping a re-sorted list, and never
+silently dropping tasks the organizer didn't ask to exclude. This belongs
+alongside TICKET-7's broader prompt-iteration work (adversarial testing,
+eval conversations) rather than as a standalone prompt change — fold it
+into that ticket's scope when TICKET-7 is picked up instead of doing a
+one-off edit here first.
+
+### Depends on / affects
+
+Depends on TICKET-17 (needs the cross-event data source to reason over).
+Should land as part of TICKET-7, not before it.

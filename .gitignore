@@ -12,6 +12,8 @@ logs/
 *.sqlite
 *.sqlite3
 *.db
+__pycache__/
+*.py[cod]
 .claude-replay.*
 .tmp-*
 .scratch/

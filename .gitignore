@@ -9,6 +9,9 @@ vite.config.*.timestamp-*
 *-debug.log*
 logs/
 *.log
+*.sqlite
+*.sqlite3
+*.db
 .claude-replay.*
 .tmp-*
 .scratch/

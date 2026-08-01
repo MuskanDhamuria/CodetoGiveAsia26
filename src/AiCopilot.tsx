@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Page } from "./App";
 
 const pageContext: Record<Page, string> = {
@@ -17,40 +17,47 @@ const pageInsight: Record<Page, string> = {
   ai: "Tell me the outcome you want and I’ll build a reviewable plan.",
 };
 
-function Composer({
-  draft,
-  onChange,
-  onSend,
-}: {
-  draft: string;
-  onChange: (value: string) => void;
-  onSend: () => void;
-}) {
-  return (
-    <form
-      className="copilot-composer"
-      onSubmit={(event) => {
-        event.preventDefault();
-        onSend();
-      }}
-    >
-      <textarea
-        aria-label="Message Passion AI"
-        placeholder="Ask Passion AI…"
-        rows={1}
-        value={draft}
-        onChange={(event) => onChange(event.target.value)}
-      />
-      <button type="submit" aria-label="Send message">
-        ↑
-      </button>
-    </form>
-  );
-}
+const recommendedActions = [
+  { title: "Send 5 reminders", action: "Review recipients" },
+  { title: "Fill registration gaps", action: "View matches" },
+  { title: "Prepare weekly summary", action: "Generate draft" },
+];
 
 export default function AiCopilot({ activePage }: { activePage: Page }) {
+  const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState("");
   const [goal, setGoal] = useState("");
+  const fabRef = useRef<HTMLButtonElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const wasOpenRef = useRef(false);
+
+  // The FAB and the close button aren't mounted at the same time (each only
+  // renders for its own `open` state), so focus has to move after the swap
+  // commits rather than inline in the click handler that toggles `open`.
+  useEffect(() => {
+    if (open) {
+      wasOpenRef.current = true;
+      closeButtonRef.current?.focus();
+    } else if (wasOpenRef.current) {
+      wasOpenRef.current = false;
+      fabRef.current?.focus();
+    }
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") close();
+    }
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [open]);
+
+  function close() {
+    setOpen(false);
+  }
 
   function loadGoal(nextGoal: string) {
     setGoal(nextGoal);
@@ -64,63 +71,88 @@ export default function AiCopilot({ activePage }: { activePage: Page }) {
   }
 
   return (
-    <aside className="copilot-sidebar" aria-label="AI Copilot">
-      <header className="copilot-brief-header">
-        <div>
-          <p>Workspace intelligence</p>
-          <h2>{pageContext[activePage]} brief</h2>
-        </div>
-        <div className="copilot-ai-mark">AI</div>
-      </header>
+    <>
+      {!open && (
+        <button
+          ref={fabRef}
+          type="button"
+          className="copilot-fab"
+          aria-expanded={open}
+          aria-controls="ai-copilot-panel"
+          onClick={() => setOpen(true)}
+        >
+          <span>AI</span>
+          Ask Passion AI
+        </button>
+      )}
 
-      <div className="copilot-brief-body">
-        <section className="copilot-priority-card">
-          <span>Needs your attention</span>
-          <h3>{pageInsight[activePage]}</h3>
-          <button type="button" onClick={() => loadGoal("Resolve this for me")}>
-            Resolve with AI
+      {open && <div className="copilot-backdrop" onClick={close} />}
+
+      <aside
+        id="ai-copilot-panel"
+        role="dialog"
+        aria-modal={open}
+        aria-hidden={!open}
+        aria-label="AI Copilot"
+        className={`copilot-panel${open ? " open" : ""}`}
+      >
+        <header className="copilot-header">
+          <div>
+            <p>{pageContext[activePage]}</p>
+            <h2>AI Copilot</h2>
+          </div>
+          <button ref={closeButtonRef} type="button" onClick={close} aria-label="Close AI Copilot">
+            Close
           </button>
-        </section>
+        </header>
 
-        <section className="copilot-action-stack">
-          <div className="copilot-section-label">
-            <strong>Recommended actions</strong>
-            <span>3 ready</span>
-          </div>
-          {[
-            ["Send 5 reminders", "Review recipients"],
-            ["Fill registration gaps", "View matches"],
-            ["Prepare weekly summary", "Generate draft"],
-          ].map(([title, action], index) => (
-            <button key={title} type="button" onClick={() => loadGoal(title)}>
-              <span>{String(index + 1).padStart(2, "0")}</span>
-              <strong>{title}</strong>
-              <em>{action} →</em>
-            </button>
+        <div className="copilot-context">
+          <strong>Needs your attention</strong>
+          <p>{pageInsight[activePage]}</p>
+        </div>
+
+        <div className="copilot-chat">
+          {recommendedActions.map(({ title, action }) => (
+            <article key={title} className="suggestion-card">
+              <p>{title}</p>
+              <button type="button" onClick={() => loadGoal(title)}>
+                {action}
+              </button>
+            </article>
           ))}
-        </section>
 
-        <section className="copilot-approval-queue">
-          <div className="copilot-section-label">
-            <strong>Approval queue</strong>
-            <span>1 item</span>
-          </div>
-          <article>
-            <div>
-              <span>Broadcast draft</span>
-              <strong>Health Fair reminder</strong>
-            </div>
-            <button type="button">Review</button>
+          <article className="suggestion-card">
+            <p>Broadcast draft: Health Fair reminder</p>
+            <button type="button" onClick={() => loadGoal("Review Health Fair reminder broadcast")}>
+              Review
+            </button>
           </article>
-        </section>
 
-        {goal && <p className="copilot-active-goal">Preparing: {goal}</p>}
-      </div>
+          {goal && (
+            <div className="copilot-message">
+              <p>Preparing: {goal}</p>
+            </div>
+          )}
+        </div>
 
-      <div className="copilot-brief-composer">
-        <span>What outcome do you need?</span>
-        <Composer draft={draft} onChange={setDraft} onSend={sendGoal} />
-      </div>
-    </aside>
+        <form
+          className="copilot-composer"
+          onSubmit={(event) => {
+            event.preventDefault();
+            sendGoal();
+          }}
+        >
+          <input
+            aria-label="Message Passion AI"
+            placeholder="Ask Passion AI…"
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+          />
+          <button type="submit" aria-label="Send message">
+            ↑
+          </button>
+        </form>
+      </aside>
+    </>
   );
 }

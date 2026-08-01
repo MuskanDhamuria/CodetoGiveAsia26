@@ -993,7 +993,7 @@ function AdminPanel() {
   }
 
   return (
-    <main className={activePage === "home" ? "" : "product-app"}>
+    <main>
       <Navbar
         activePage={activePage}
         onNavigate={navigate}
@@ -1002,22 +1002,20 @@ function AdminPanel() {
         <LandingPage onGetStarted={() => navigate("dashboard")} />
       )}
       {activePage !== "home" && (
-        <div className="product-frame">
-          <div className="product-page-content">
-            {activePage === "dashboard" && (
-              <DashboardPage onQuickAction={handleQuickAction} onOpenEvent={openEventWorkspace} />
-            )}
-            {activePage === "events" && (
-              <EventsPage
-                key={`events-${openEventIndex ?? "list"}`}
-                initialEventIndex={openEventIndex}
-              />
-            )}
-            {activePage === "volunteers" && <VolunteersPage />}
-            {activePage === "ai" && <PlaceholderPage title="AI Copilot" />}
-          </div>
+        <>
+          {activePage === "dashboard" && (
+            <DashboardPage onQuickAction={handleQuickAction} onOpenEvent={openEventWorkspace} />
+          )}
+          {activePage === "events" && (
+            <EventsPage
+              key={`events-${openEventIndex ?? "list"}`}
+              initialEventIndex={openEventIndex}
+            />
+          )}
+          {activePage === "volunteers" && <VolunteersPage />}
+          {activePage === "ai" && <PlaceholderPage title="AI Copilot" />}
           <AiCopilot activePage={activePage} />
-        </div>
+        </>
       )}
     </main>
   );

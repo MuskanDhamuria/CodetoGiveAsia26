@@ -2535,6 +2535,16 @@ button {
   width: 34px;
 }
 
+.copilot-backdrop {
+  background: rgba(10, 10, 10, 0.32);
+  bottom: 0;
+  left: 0;
+  position: fixed;
+  right: 0;
+  top: 0;
+  z-index: 155;
+}
+
 .copilot-panel {
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(250, 251, 253, 0.98)),
@@ -2721,282 +2731,13 @@ button {
   padding: 0 16px;
 }
 
-.copilot-workflow-panel { background: #fbfbf9; }
-.copilot-workflow-header { align-items: flex-start; border-bottom: 1px solid rgba(10, 10, 10, .09); display: flex; justify-content: space-between; padding: 24px; }
-.copilot-workflow-header p, .copilot-eyebrow, .copilot-page-context span { color: #737373; font-size: 10px; font-weight: 800; letter-spacing: .1em; margin: 0 0 8px; text-transform: uppercase; }
-.copilot-workflow-header h2 { font-size: 31px; letter-spacing: -.065em; line-height: .9; margin: 0; }
-.copilot-workflow-header button { background: #ecece7; border-radius: 999px; font-size: 12px; font-weight: 800; padding: 9px 12px; }
-.copilot-page-context { align-items: baseline; border-bottom: 1px solid rgba(10, 10, 10, .09); display: flex; gap: 8px; padding: 12px 24px; }
-.copilot-page-context span { margin: 0; }.copilot-page-context strong { font-size: 13px; letter-spacing: -.02em; }
-.copilot-workflow-body { align-content: start; display: grid; flex: 1; gap: 22px; overflow: auto; padding: 24px; }.copilot-workflow-body h3 { font-size: 25px; letter-spacing: -.055em; line-height: 1.04; margin: 0; }
-.copilot-steps { display: grid; gap: 16px; list-style: none; margin: 0; padding: 0; }.copilot-steps li { display: grid; gap: 12px; grid-template-columns: 26px 1fr; }.copilot-steps li > span { align-items: center; background: #0a0a0a; border-radius: 50%; color: #fff; display: flex; font-size: 11px; font-weight: 800; height: 26px; justify-content: center; }.copilot-steps li strong { font-size: 14px; letter-spacing: -.02em; }.copilot-steps li p { color: #666; font-size: 13px; line-height: 1.4; margin: 4px 0 0; }
-.copilot-prompts { display: grid; gap: 9px; }.copilot-prompts button { background: #fff; border: 1px solid rgba(10, 10, 10, .12); border-radius: 10px; display: flex; font-size: 13px; font-weight: 700; justify-content: space-between; letter-spacing: -.02em; padding: 14px; text-align: left; }.copilot-prompts button:hover { background: #0a0a0a; color: #fff; }
-.copilot-workflow-composer { border-top: 1px solid rgba(10, 10, 10, .1); display: flex; gap: 8px; padding: 16px 20px 20px; }.copilot-workflow-composer input { background: #fff; border: 1px solid rgba(10, 10, 10, .12); border-radius: 999px; flex: 1; font: inherit; font-size: 13px; font-weight: 600; min-width: 0; outline: 0; padding: 12px 14px; }.copilot-workflow-composer button { background: #0a0a0a; border-radius: 999px; color: #fff; font-size: 12px; font-weight: 800; padding: 0 15px; }
-
-.product-app {
-  --copilot-sidebar-width: 430px;
-}
-
-.product-app .navbar {
-  right: var(--copilot-sidebar-width);
-}
-
-.product-frame {
-  align-items: start;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) var(--copilot-sidebar-width);
-  min-height: 100vh;
-}
-
-.product-page-content {
-  min-width: 0;
-}
-
-.copilot-sidebar {
-  background: #f3f3ef;
-  border-left: 1px solid rgba(10, 10, 10, 0.1);
-  display: flex;
-  flex-direction: column;
-  height: 100vh;
-  min-width: 0;
-  overflow: hidden;
-  position: sticky;
-  top: 0;
-  z-index: 130;
-}
-
-.copilot-brief-header {
-  align-items: center;
-  background: #fff;
-  border-bottom: 1px solid rgba(10, 10, 10, 0.1);
-  display: flex;
-  justify-content: space-between;
-  padding: 24px;
-}
-
-.copilot-brief-header p {
-  color: #737373;
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.1em;
-  margin: 0 0 5px;
-  text-transform: uppercase;
-}
-
-.copilot-brief-header h2 {
-  font-size: 28px;
-  letter-spacing: -0.055em;
-  line-height: 1;
-  margin: 0;
-}
-
-.copilot-ai-mark {
-  align-items: center;
-  background: #0a0a0a;
-  border-radius: 9px;
-  color: #fff;
-  display: flex;
-  font-family: "Source Serif 4", serif;
-  font-size: 16px;
-  font-style: italic;
-  font-weight: 700;
-  height: 36px;
-  justify-content: center;
-  width: 36px;
-}
-
-.copilot-brief-body {
-  display: grid;
-  flex: 1;
-  gap: 14px;
-  overflow: auto;
-  padding: 18px;
-}
-
-.copilot-priority-card {
-  background: #142a20;
-  border-radius: 14px;
-  color: #fff;
-  padding: 20px;
-}
-
-.copilot-priority-card > span {
-  color: #a8d8b7;
-  font-size: 9px;
-  font-weight: 800;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-}
-
-.copilot-priority-card h3 {
-  font-family: "Source Serif 4", serif;
-  font-size: 25px;
-  font-weight: 500;
-  letter-spacing: -0.035em;
-  line-height: 1.12;
-  margin: 22px 0 28px;
-}
-
-.copilot-priority-card button {
-  background: #d9f8df;
-  border-radius: 999px;
-  color: #142a20;
-  font-size: 11px;
-  font-weight: 800;
-  padding: 10px 13px;
-}
-
-.copilot-action-stack,
-.copilot-approval-queue {
-  background: #fff;
-  border: 1px solid rgba(10, 10, 10, 0.08);
-  border-radius: 12px;
-  min-width: 0;
-  overflow: hidden;
-}
-
-.copilot-section-label {
-  align-items: center;
-  display: flex;
-  justify-content: space-between;
-  padding: 14px 15px 11px;
-}
-
-.copilot-section-label strong {
-  font-size: 12px;
-  letter-spacing: -0.02em;
-}
-
-.copilot-section-label span {
-  color: #777;
-  font-size: 10px;
-  font-weight: 700;
-}
-
-.copilot-action-stack > button {
-  align-items: center;
-  background: #fff;
-  border-top: 1px solid rgba(10, 10, 10, 0.07);
-  display: grid;
-  gap: 10px;
-  grid-template-columns: 26px minmax(0, 1fr) minmax(0, 1fr);
-  min-width: 0;
-  padding: 13px 15px;
-  text-align: left;
-  width: 100%;
-}
-
-.copilot-action-stack > button > span {
-  color: #999;
-  font-size: 9px;
-  font-weight: 800;
-}
-
-.copilot-action-stack > button strong {
-  font-size: 12px;
-  min-width: 0;
-}
-
-.copilot-action-stack > button em {
-  color: #56705e;
-  font-size: 10px;
-  font-style: normal;
-  font-weight: 800;
-  min-width: 0;
-  overflow-wrap: anywhere;
-  text-align: right;
-}
-
-.copilot-approval-queue article {
-  align-items: center;
-  border-top: 1px solid rgba(10, 10, 10, 0.07);
-  display: flex;
-  justify-content: space-between;
-  padding: 13px 15px;
-}
-
-.copilot-approval-queue article span {
-  color: #888;
-  display: block;
-  font-size: 9px;
-  font-weight: 800;
-  margin-bottom: 4px;
-  text-transform: uppercase;
-}
-
-.copilot-approval-queue article strong {
-  font-size: 12px;
-}
-
-.copilot-approval-queue article button {
-  background: #efefe9;
-  border-radius: 999px;
-  font-size: 10px;
-  font-weight: 800;
-  padding: 9px 11px;
-}
-
-.copilot-active-goal {
-  background: #dceee1;
-  border-radius: 9px;
-  color: #244c31;
-  font-size: 11px;
-  font-weight: 700;
-  margin: 0;
-  padding: 11px;
-}
-
-.copilot-brief-composer {
-  background: #fff;
-  border-top: 1px solid rgba(10, 10, 10, 0.1);
-  padding: 13px 16px 16px;
-}
-
-.copilot-brief-composer > span {
-  color: #777;
-  display: block;
-  font-size: 9px;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  margin: 0 0 7px 4px;
-  text-transform: uppercase;
-}
-
-.copilot-brief-composer .copilot-composer {
-  align-items: flex-end;
-  background: #fff;
-  border: 0;
-  display: flex;
-  gap: 8px;
-  padding: 0;
-}
-
-.copilot-brief-composer .copilot-composer textarea {
-  background: #fff;
-  border: 1px solid rgba(10, 10, 10, 0.13);
-  border-radius: 999px;
-  flex: 1;
-  font: inherit;
-  font-size: 12px;
-  line-height: 1.4;
-  min-height: 42px;
-  outline: none;
-  padding: 12px 15px;
-  resize: none;
-  width: 100%;
-}
-
-.copilot-brief-composer .copilot-composer button {
-  align-items: center;
-  background: #0a0a0a;
-  border-radius: 9px;
-  color: #fff;
-  display: flex;
-  font-size: 17px;
-  height: 42px;
-  justify-content: center;
-  width: 42px;
-}
+/* Superseded workflow-wizard and sidebar-brief copilot designs removed —
+   see TICKET-10 in docs/tickets.md. The collapsible FAB + overlay panel
+   design above (.copilot-fab / .copilot-panel / .copilot-header /
+   .copilot-context / .copilot-chat / .copilot-message / .suggestion-card /
+   .copilot-composer) is the only live one; AiCopilot.tsx now renders as a
+   fixed overlay, so .product-app/.product-frame/.product-page-content's
+   grid-reservation layout is gone too. */
 
 @keyframes line-pulse {
   0% {
@@ -3181,23 +2922,8 @@ button {
     padding: 14px 16px 16px;
   }
 
-  .product-app {
-    --copilot-sidebar-width: 100%;
-  }
-
-  .product-app .navbar {
-    right: 0;
-  }
-
-  .product-frame {
-    grid-template-columns: 1fr;
-  }
-
-  .copilot-sidebar {
-    border-left: 0;
-    border-top: 1px solid rgba(10, 10, 10, 0.1);
-    height: 720px;
-    position: relative;
+  .copilot-backdrop {
+    display: none;
   }
 }
 

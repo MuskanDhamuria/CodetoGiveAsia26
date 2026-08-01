@@ -359,3 +359,40 @@ event directly (no `SignupForm`); the closed-event message rendering with
 no signup affordance for a visitor with no existing RSVP; and the
 generic-error state on the signup check (TICKET-11) rendering instead of
 silently showing "Sign up".
+
+---
+
+~~TICKET-17: Admin events calendar grid misaligns with its date headers on mobile once a day has events~~
+— **Done.** The bug was in `src/EventCollectionPrototype.tsx`'s calendar
+view (`.collection-calendar-days` / `.collection-calendar-grid`,
+`src/index.css`) — this is the component `App.tsx` actually mounts for the
+admin Events page, not `EventOperationsMvp.tsx`'s similarly-named
+`EventCalendar` (which is unused dead code for this route; `App.tsx` line
+718's `EventOperationsMvp` render path is for a different view). Root
+cause: the weekday header and day-cell grid were two separate sibling
+elements each independently declaring `grid-template-columns: repeat(7,
+1fr)`. `fr` tracks still respect each grid item's default `min-width:
+auto`, and nothing on the day cells or their event buttons reset that, so a
+long event name (e.g. "Clothes & Essentials Distribution") forced a
+cell's intrinsic minimum width past `1fr`, widening `.collection-calendar-grid`'s
+columns independently of `.collection-calendar-days`'s header row — with no
+events, all cells sat at the same content-free minimum and the rows
+coincidentally matched. Fixed by changing both grids to
+`repeat(7, minmax(0, 1fr))` and adding `min-width: 0` to the day cell and
+button, forcing every column to the shared track width regardless of
+content. That alone made columns line up but shrank cells so far on mobile
+that event-name text wrapped one letter per line; added a
+`max-width: 640px` block shrinking cell/button padding to recover usable
+width, and switched the event-name `<strong>` to single-line
+`overflow: hidden; text-overflow: ellipsis; white-space: nowrap` (the same
+pattern `EventOperationsMvp.css`'s dead calendar already used) instead of
+letting it wrap. Verified via the in-app browser at a 375px viewport:
+`.collection-calendar-days` and `.collection-calendar-grid` column
+`left` offsets now match exactly (`[49,89,128,168,207,247,286]`) both on
+an empty month and on a day cell with a long event name, which now
+ellipsizes to "C…" instead of blowing out its column.
+`EventCalendarView.tsx` (participant portal, TICKET-2) and
+`EventOperationsMvp.tsx`'s dead `EventCalendar` share the same
+weekday/grid-split structure — not touched here since neither is live on
+this bug's path, but worth a follow-up sweep if either turns out to have
+the same latent issue.

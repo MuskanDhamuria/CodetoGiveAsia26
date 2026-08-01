@@ -341,7 +341,7 @@
 .collection-calendar-days,
 .collection-calendar-grid {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
+  grid-template-columns: repeat(7, minmax(0, 1fr));
 }
 
 .collection-calendar-days {
@@ -359,6 +359,7 @@
   border-right: 1px solid #e5e7e1;
   border-top: 1px solid #e5e7e1;
   min-height: 122px;
+  min-width: 0;
   padding: 10px;
 }
 
@@ -380,6 +381,7 @@
   cursor: pointer;
   display: block;
   margin-top: 8px;
+  min-width: 0;
   padding: 8px;
   text-align: left;
   width: 100%;
@@ -393,12 +395,26 @@
 .collection-calendar-grid button strong {
   font-size: 11px;
   line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .collection-calendar-grid button small {
   color: #66806d;
   font-size: 9px;
   margin-top: 4px;
+}
+
+@media (max-width: 640px) {
+  .collection-calendar-grid > div {
+    min-height: 90px;
+    padding: 4px;
+  }
+
+  .collection-calendar-grid > div > button {
+    padding: 4px;
+  }
 }
 
 .collection-variant-b {

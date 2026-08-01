@@ -11,7 +11,8 @@ import sqlite3
 from pathlib import Path
 
 
-SCHEMA_PATH = Path(__file__).with_name("migrations") / "001_initial_schema.sql"
+MIGRATIONS_DIR = Path(__file__).with_name("migrations")
+SCHEMA_PATH = MIGRATIONS_DIR / "001_initial_schema.sql"
 DEFAULT_DATABASE_PATH = Path(__file__).with_name("data") / "passion_to_serve.sqlite3"
 
 
@@ -24,14 +25,27 @@ def connect(database_path: str | Path) -> sqlite3.Connection:
     return connection
 
 
+def _applied_migration_versions(connection: sqlite3.Connection) -> set[int]:
+    try:
+        rows = connection.execute("SELECT version FROM schema_migrations").fetchall()
+    except sqlite3.OperationalError:
+        return set()
+    return {row[0] for row in rows}
+
+
 def initialize_database(database_path: str | Path = DEFAULT_DATABASE_PATH) -> Path:
-    """Create the database and apply the initial schema idempotently."""
+    """Create the database and apply every migration idempotently, in order."""
 
     path = Path(database_path)
     path.parent.mkdir(parents=True, exist_ok=True)
 
     with connect(path) as connection:
-        connection.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
+        for migration_path in sorted(MIGRATIONS_DIR.glob("*.sql")):
+            version = int(migration_path.name.split("_", 1)[0])
+            applied = _applied_migration_versions(connection)
+            if version in applied:
+                continue
+            connection.executescript(migration_path.read_text(encoding="utf-8"))
 
     return path
 

@@ -43,17 +43,20 @@ export default function VolunteerDirectory() {
   const [search, setSearch] = useState("")
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [reloadKey, setReloadKey] = useState(0)
 
   useEffect(() => {
     setLoading(true)
+    setError(null)
     Promise.all([listVolunteers(), listEvents()])
       .then(([volunteerData, eventData]) => {
         setVolunteers(volunteerData.items)
         setEvents(eventData.items)
+        setError(null)
       })
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load volunteers."))
       .finally(() => setLoading(false))
-  }, [])
+  }, [reloadKey])
 
   useEffect(() => {
     if (eventFilter === ALL_EVENTS) {
@@ -98,7 +101,14 @@ export default function VolunteerDirectory() {
         </label>
       </section>
 
-      {error && <p className="event-roster-error">{error}</p>}
+      {error && (
+        <p className="event-roster-error">
+          {error}
+          <button type="button" className="roster-retry" onClick={() => setReloadKey((key) => key + 1)}>
+            Retry
+          </button>
+        </p>
+      )}
 
       <section className="volunteer-table-card">
         <div className="section-heading">

@@ -124,3 +124,15 @@ export function approveSignup(
 export function rejectSignup(eventId: number, signupId: number): Promise<Signup> {
   return postJson(`/events/${eventId}/volunteer-signups/${signupId}/reject`)
 }
+
+export type PublicSignupResult = {
+  signup: Signup
+  volunteer_created: boolean
+}
+
+export function publicSignup(
+  eventId: number,
+  body: { name: string; contact_number: string; email?: string; role_ids: number[] },
+): Promise<PublicSignupResult> {
+  return postJson(`/public/events/${eventId}/volunteer-signups`, body)
+}

@@ -3263,3 +3263,247 @@ button {
   cursor: default;
   opacity: 0.55;
 }
+
+.roster-retry {
+  background: #b3261e;
+  border: 0;
+  border-radius: 6px;
+  color: #fff;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 800;
+  margin-left: 12px;
+  padding: 5px 12px;
+}
+
+/* ------------------------------------------------------------------ */
+/* Public volunteer signup — styled to echo the Passion To Serve site */
+/* ------------------------------------------------------------------ */
+.pts-signup {
+  --pts-teal: #1aa3c4;
+  --pts-teal-dark: #147e99;
+  background: #ffffff;
+  color: #2b2b2b;
+  min-height: 100vh;
+  font-family: "Inter", "Segoe UI", system-ui, sans-serif;
+}
+
+.pts-signup-topbar {
+  align-items: center;
+  border-bottom: 1px solid #eef1f2;
+  display: flex;
+  justify-content: space-between;
+  padding: 18px 28px;
+}
+
+.pts-signup-logo {
+  color: var(--pts-teal);
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.pts-signup-tag {
+  color: #8a9499;
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.pts-signup-hero {
+  background: linear-gradient(135deg, #eaf7fb 0%, #f7fbfd 100%);
+  padding: 48px 28px;
+  text-align: center;
+}
+
+.pts-signup-hero h1 {
+  color: #1c2b30;
+  font-size: 34px;
+  font-weight: 800;
+  margin: 0 0 10px;
+}
+
+.pts-signup-hero p {
+  color: #5b6b71;
+  font-size: 16px;
+  margin: 0 auto;
+  max-width: 520px;
+}
+
+.pts-signup-main {
+  display: flex;
+  justify-content: center;
+  padding: 32px 20px 64px;
+}
+
+.pts-signup-card {
+  background: #ffffff;
+  border: 1px solid #e7ecee;
+  border-radius: 14px;
+  box-shadow: 0 8px 30px rgba(26, 163, 196, 0.08);
+  display: grid;
+  gap: 16px;
+  padding: 30px;
+  width: min(520px, 100%);
+}
+
+.pts-field {
+  display: grid;
+  gap: 6px;
+}
+
+.pts-field > span {
+  color: #33454b;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.pts-field > span em {
+  color: #9aa4a8;
+  font-style: normal;
+  font-weight: 600;
+}
+
+.pts-field input,
+.pts-field select {
+  border: 1px solid #d5dde0;
+  border-radius: 9px;
+  font-size: 15px;
+  padding: 11px 12px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.pts-field input:focus,
+.pts-field select:focus {
+  border-color: var(--pts-teal);
+  box-shadow: 0 0 0 3px rgba(26, 163, 196, 0.15);
+  outline: none;
+}
+
+.pts-signup-eventmeta {
+  color: #6b797e;
+  font-size: 13px;
+  font-weight: 600;
+  margin: -8px 0 0;
+}
+
+.pts-roles {
+  border: 1px solid #e7ecee;
+  border-radius: 10px;
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 16px;
+}
+
+.pts-roles legend {
+  color: #33454b;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 0 6px;
+}
+
+.pts-roles legend em {
+  color: #9aa4a8;
+  font-style: normal;
+  font-weight: 600;
+}
+
+.pts-role {
+  align-items: center;
+  color: #33454b;
+  display: flex;
+  font-size: 15px;
+  font-weight: 600;
+  gap: 10px;
+}
+
+.pts-role input {
+  accent-color: var(--pts-teal);
+  height: 17px;
+  width: 17px;
+}
+
+.pts-signup-submit {
+  background: var(--pts-teal);
+  border: 0;
+  border-radius: 9px;
+  color: #fff;
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 800;
+  padding: 13px;
+  transition: background 0.15s ease;
+}
+
+.pts-signup-submit:hover:not(:disabled) {
+  background: var(--pts-teal-dark);
+}
+
+.pts-signup-submit:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.pts-signup-note {
+  color: #9aa4a8;
+  font-size: 12px;
+  margin: 0;
+  text-align: center;
+}
+
+.pts-signup-error {
+  background: #fdecec;
+  border: 1px solid #f5c2c2;
+  border-radius: 9px;
+  color: #b3261e;
+  font-size: 13px;
+  font-weight: 600;
+  margin: 0;
+  padding: 11px 13px;
+}
+
+.pts-signup-success {
+  text-align: center;
+}
+
+.pts-signup-check {
+  align-items: center;
+  background: #e6f6ec;
+  border-radius: 50%;
+  color: #1b7a45;
+  display: flex;
+  font-size: 30px;
+  font-weight: 800;
+  height: 60px;
+  justify-content: center;
+  margin: 0 auto 6px;
+  width: 60px;
+}
+
+.pts-signup-success h2 {
+  color: #1c2b30;
+  font-size: 24px;
+  font-weight: 800;
+  margin: 0;
+}
+
+.pts-signup-success p {
+  color: #5b6b71;
+  font-size: 15px;
+  margin: 0;
+}
+
+.pts-signup-secondary {
+  background: #eef7fa;
+  border: 1px solid #cfe8ef;
+  border-radius: 9px;
+  color: var(--pts-teal-dark);
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 700;
+  justify-self: center;
+  margin-top: 6px;
+  padding: 10px 18px;
+}

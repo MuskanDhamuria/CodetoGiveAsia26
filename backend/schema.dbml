@@ -1,0 +1,190 @@
+// Passion to Serve — database schema (from migrations/001_initial_schema.sql)
+// Paste into https://dbdiagram.io to visualise.
+// Note: SQLite stores booleans as 0/1 and enums as CHECK'd TEXT; shown here as
+// int/varchar with the allowed values in each column's note.
+
+Table participants {
+  id integer [pk]
+  name varchar [not null]
+  contact_number varchar [unique]
+  email varchar [unique]
+  created_at varchar [not null]
+  updated_at varchar [not null]
+}
+
+Table volunteers {
+  id integer [pk]
+  name varchar [not null]
+  contact_number varchar [unique]
+  email varchar [unique]
+  signup_status varchar [not null, note: "pending | approved | rejected"]
+  created_at varchar [not null]
+  updated_at varchar [not null]
+}
+
+Table skills {
+  id integer [pk]
+  name varchar [not null, unique]
+}
+
+Table volunteer_skills {
+  volunteer_id integer [not null, ref: > volunteers.id]
+  skill_id integer [not null, ref: > skills.id]
+
+  indexes {
+    (volunteer_id, skill_id) [pk]
+  }
+}
+
+Table roles {
+  id integer [pk]
+  name varchar [not null]
+  category varchar [not null]
+  is_required integer [not null, note: "0/1"]
+
+  indexes {
+    (name, category) [unique]
+  }
+}
+
+Table volunteer_interests {
+  volunteer_id integer [not null, ref: > volunteers.id]
+  role_id integer [not null, ref: > roles.id]
+  is_lead integer [not null, note: "0/1"]
+
+  indexes {
+    (volunteer_id, role_id) [pk]
+  }
+}
+
+Table event_templates {
+  id integer [pk]
+  name varchar [not null]
+  description varchar [not null]
+  is_built_in integer [not null, note: "0/1"]
+  created_at varchar [not null]
+  updated_at varchar [not null]
+}
+
+Table template_roles {
+  id integer [pk]
+  event_template_id integer [not null, ref: > event_templates.id]
+  role_id integer [not null, ref: > roles.id]
+
+  indexes {
+    (event_template_id, role_id) [unique]
+  }
+}
+
+Table template_tasks {
+  id integer [pk]
+  event_template_id integer [not null, ref: > event_templates.id]
+  name varchar [not null]
+  body varchar [not null]
+  relative_due_days integer [not null]
+  category varchar [not null, note: "planning | execution | post_execution"]
+  position integer [not null]
+
+  indexes {
+    (event_template_id, position) [unique]
+  }
+}
+
+Table template_subtasks {
+  id integer [pk]
+  template_task_id integer [not null, ref: > template_tasks.id]
+  title varchar [not null]
+  position integer [not null]
+
+  indexes {
+    (template_task_id, position) [unique]
+  }
+}
+
+Table team_members {
+  id integer [pk]
+  name varchar [not null]
+  email varchar [not null, unique]
+  is_active integer [not null, note: "0/1"]
+  created_at varchar [not null]
+  updated_at varchar [not null]
+}
+
+Table events {
+  id integer [pk]
+  event_template_id integer [not null, ref: > event_templates.id]
+  name varchar [not null]
+  venue varchar [not null]
+  event_date varchar [not null]
+  status varchar [not null, note: "open | closed"]
+  created_at varchar [not null]
+  updated_at varchar [not null]
+}
+
+Table event_tasks {
+  id integer [pk]
+  team_member_id integer [ref: > team_members.id]
+  event_id integer [not null, ref: > events.id]
+  template_task_id integer [ref: > template_tasks.id]
+  name varchar [not null]
+  body varchar [not null]
+  due_at varchar [not null]
+  category varchar [not null, note: "planning | execution | post_execution"]
+  status varchar [not null, note: "incomplete | ongoing | done"]
+  position integer [not null]
+
+  indexes {
+    (event_id, position) [unique]
+  }
+}
+
+Table event_subtasks {
+  id integer [pk]
+  event_task_id integer [not null, ref: > event_tasks.id]
+  title varchar [not null]
+  position integer [not null]
+  completed integer [not null, note: "0/1"]
+
+  indexes {
+    (event_task_id, position) [unique]
+  }
+}
+
+Table participations {
+  id integer [pk]
+  event_id integer [not null, ref: > events.id]
+  participant_id integer [not null, ref: > participants.id]
+  rsvp_status integer [not null, note: "0/1"]
+  attendance integer [note: "0/1, null = not recorded"]
+
+  indexes {
+    (event_id, participant_id) [unique]
+  }
+}
+
+Table volunteer_signups {
+  id integer [pk]
+  event_id integer [not null, ref: > events.id]
+  volunteer_id integer [not null, ref: > volunteers.id]
+  status varchar [not null, note: "requested | approved | rejected"]
+  assigned_role_id integer [ref: > roles.id]
+  is_leader integer [not null, note: "0/1"]
+  attendance integer [note: "0/1, null = not recorded"]
+  created_at varchar [not null]
+  updated_at varchar [not null]
+
+  indexes {
+    (event_id, volunteer_id) [unique]
+  }
+}
+
+Table volunteer_signup_role_preferences {
+  signup_id integer [not null, ref: > volunteer_signups.id]
+  role_id integer [not null, ref: > roles.id]
+  priority integer [note: "> 0 or null"]
+
+  indexes {
+    (signup_id, role_id) [pk]
+    (signup_id, priority) [unique]
+  }
+}

@@ -2,7 +2,25 @@
 
 This document is the proposed HTTP API between the React frontend and the
 FastAPI backend. It is based on the current SQLite schema and the product plan.
-It defines routes only; it does not implement them.
+
+## Current implementation status
+
+The organizer/admin backend currently implements:
+
+- Event-template CRUD and cloning, including ordered template tasks/subtasks.
+- Event CRUD, filtering, closing/reopening, rescheduling, and atomic workflow
+  generation from a template.
+- Event-task and subtask CRUD, ordering, status transitions, deadlines, and
+  internal team-member assignment.
+- Team-member CRUD and assigned-task queries.
+- Participant CRUD, event registration, RSVP, attendance, and event history.
+- Dashboard summary, upcoming deadlines, calendar events, and per-event
+  progress summaries.
+
+Volunteer routes remain owned by the volunteer feature module. The organizer
+implementation does not change the event volunteer-signup endpoints. Routes in
+the “Proposed future endpoints” section still require schema/product decisions
+and are not implemented.
 
 ## Conventions
 
@@ -73,33 +91,48 @@ router module:
 backend/
 ├── main.py
 ├── database.py
-└── api/
-    ├── router.py
-    └── routes/
-        ├── health.py
-        ├── event_templates.py
-        ├── events.py
-        ├── team_members.py
-        ├── participants.py
-        ├── volunteers.py
-        ├── roles.py
-        └── dashboard.py
+├── api/
+│   ├── router.py
+│   └── routes/
+│       ├── health.py
+│       ├── event_templates.py
+│       ├── events.py
+│       ├── team_members.py
+│       ├── participants.py
+│       ├── volunteers.py
+│       ├── roles.py
+│       └── dashboard.py
+└── schema/
+    ├── common.py
+    ├── health.py
+    ├── event_templates.py
+    ├── events.py
+    ├── team_members.py
+    └── participants.py
 ```
 
-Every feature module declares its own `APIRouter`, path prefix, tags, endpoint
-functions, and request/response models. `backend/api/router.py` imports and
-includes those feature routers. `backend/main.py` includes only that central
-router, so teammates do not all need to edit the application entry point.
+Every route module declares its own `APIRouter`, path prefix, tags, and endpoint
+functions. Its Pydantic request/response models belong in the matching
+`backend/schema/` module; shared constrained types and enums belong in
+`backend/schema/common.py`. `backend/api/router.py` imports and includes the
+feature routers. `backend/main.py` includes only that central router, so
+teammates do not all need to edit the application entry point.
+
+`volunteers.py` is a temporary exception: its existing Pydantic models remain
+in the route module until the volunteer feature owner moves them separately.
+Do not move or modify those schemas as part of organizer/admin work.
 
 Example feature module:
 
 ```python
 from fastapi import APIRouter
 
+from backend.schema.events import EventSummary
+
 router = APIRouter(prefix="/events", tags=["events"])
 
-@router.get("")
-def list_events():
+@router.get("", response_model=list[EventSummary])
+def list_events() -> list[EventSummary]:
     ...
 ```
 

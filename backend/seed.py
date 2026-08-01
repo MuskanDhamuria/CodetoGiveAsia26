@@ -20,6 +20,10 @@ def seed(db) -> None:
         print("Database already has Events; skipping seed.")
         return
 
+    migrant_workers_id = db.execute(
+        "SELECT id FROM beneficiaries WHERE name = 'Migrant workers'"
+    ).fetchone()[0]
+
     role_ids = {
         name: db.execute(
             "INSERT INTO roles (name, category) VALUES (?, ?) RETURNING id",
@@ -79,10 +83,10 @@ def seed(db) -> None:
 
     wellness_template_id = db.execute(
         """
-        INSERT INTO event_templates (name, description, is_built_in)
-        VALUES (?, ?, 1) RETURNING id
+        INSERT INTO event_templates (name, description, is_built_in, beneficiary_id)
+        VALUES (?, ?, 1, ?) RETURNING id
         """,
-        ("Wellness – Yoga / Zumba / Meditation", "Run a focused wellbeing session for migrant workers."),
+        ("Wellness – Yoga / Zumba / Meditation", "Run a focused wellbeing session for migrant workers.", migrant_workers_id),
     ).fetchone()[0]
     for role_name in ["Wellness Instructor", "Setup Crew", "Registration", "Memory Capture"]:
         db.execute(
@@ -111,10 +115,10 @@ def seed(db) -> None:
 
     distribution_template_id = db.execute(
         """
-        INSERT INTO event_templates (name, description, is_built_in)
-        VALUES (?, ?, 1) RETURNING id
+        INSERT INTO event_templates (name, description, is_built_in, beneficiary_id)
+        VALUES (?, ?, 1, ?) RETURNING id
         """,
-        ("Distribution of pre-loved items", "Collect, sort, and distribute essential items."),
+        ("Distribution of pre-loved items", "Collect, sort, and distribute essential items.", migrant_workers_id),
     ).fetchone()[0]
     for role_name in ["Registration", "Sorting Crew", "Collection Driver", "Warehouse Liaison", "Memory Capture"]:
         db.execute(
@@ -146,10 +150,11 @@ def seed(db) -> None:
     def create_event(template_id: int, template_tasks, name, venue, event_date, status):
         event_id = db.execute(
             """
-            INSERT INTO events (event_template_id, name, venue, event_date, status)
-            VALUES (?, ?, ?, ?, ?) RETURNING id
+            INSERT INTO events
+                (event_template_id, name, venue, event_date, status, beneficiary_id)
+            VALUES (?, ?, ?, ?, ?, ?) RETURNING id
             """,
-            (template_id, name, venue, event_date.isoformat(), status),
+            (template_id, name, venue, event_date.isoformat(), status, migrant_workers_id),
         ).fetchone()[0]
         task_ids = {}
         for position, (task_name, offset, category, _role_name) in enumerate(template_tasks):

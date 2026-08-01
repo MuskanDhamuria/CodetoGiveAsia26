@@ -5,8 +5,9 @@ import EventCreationPrototype from "./EventCreationPrototype";
 import EventTaskHierarchyPrototype from "./EventTaskHierarchyPrototype";
 import EventOperationsMvp from "./EventOperationsMvp";
 import VolunteerDirectory from "./VolunteerDirectory";
+import VolunteerSignup from "./VolunteerSignup";
 
-export type Page = "home" | "dashboard" | "events" | "volunteers" | "ai";
+export type Page = "home" | "dashboard" | "events" | "volunteers" | "ai" | "signup";
 
 const navLinks: { label: string; page: Page }[] = [
   { label: "Dashboard", page: "dashboard" },
@@ -20,11 +21,12 @@ const pageLabels: Record<Page, string> = {
   events: "Events",
   volunteers: "Volunteers",
   ai: "AI Copilot",
+  signup: "Volunteer Sign-Up",
 };
 
 function readInitialPage(): Page {
   const page = new URLSearchParams(window.location.search).get("page");
-  return page === "dashboard" || page === "events" || page === "volunteers" || page === "ai"
+  return page === "dashboard" || page === "events" || page === "volunteers" || page === "ai" || page === "signup"
     ? page
     : "home";
 }
@@ -792,6 +794,10 @@ export default function App() {
       return;
     }
 
+  }
+
+  if (activePage === "signup") {
+    return <VolunteerSignup />;
   }
 
   return (

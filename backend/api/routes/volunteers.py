@@ -9,10 +9,9 @@ are not internal task assignees.
 from __future__ import annotations
 
 import sqlite3
-from typing import Annotated, Literal
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel
 
 from backend.api.routes._common import (
     Connection,
@@ -20,90 +19,22 @@ from backend.api.routes._common import (
     as_bool,
     list_envelope,
 )
+from backend.schema.volunteers import (
+    PublicSignupInput,
+    PublicSignupResult,
+    RoleInterestOut,
+    RoleOut,
+    SignupApprove,
+    SignupOut,
+    SignupUpdate,
+    SkillOut,
+    VolunteerCounts,
+    VolunteerDetail,
+    VolunteerEventHistory,
+    VolunteerListItem,
+)
 
 router = APIRouter(tags=["volunteers"])
-
-
-# --------------------------------------------------------------------------- #
-# Response models
-# --------------------------------------------------------------------------- #
-class RoleOut(BaseModel):
-    id: int
-    name: str
-    category: str
-    is_required: bool
-
-
-class SkillOut(BaseModel):
-    id: int
-    name: str
-
-
-class RoleInterestOut(BaseModel):
-    role_id: int
-    name: str
-    is_lead: bool
-
-
-class VolunteerCounts(BaseModel):
-    events_signed_up: int
-    events_approved: int
-    events_attended: int
-
-
-class VolunteerSummary(BaseModel):
-    id: int
-    name: str
-    contact_number: str | None
-    email: str | None
-    signup_status: str
-
-
-class VolunteerListItem(VolunteerSummary):
-    skills: list[str]
-    counts: VolunteerCounts
-
-
-class VolunteerDetail(VolunteerSummary):
-    skills: list[SkillOut]
-    interests: list[RoleInterestOut]
-    counts: VolunteerCounts
-
-
-class VolunteerEventHistory(BaseModel):
-    signup_id: int
-    event_id: int
-    event_name: str
-    event_date: str
-    status: str
-    assigned_role_id: int | None
-    assigned_role_name: str | None
-    is_leader: bool
-    attendance: bool | None
-
-
-class SignupOut(BaseModel):
-    id: int
-    event_id: int
-    volunteer_id: int
-    volunteer_name: str
-    status: str
-    assigned_role_id: int | None
-    assigned_role_name: str | None
-    is_leader: bool
-    attendance: bool | None
-
-
-class SignupUpdate(BaseModel):
-    status: Literal["requested", "approved", "rejected"] | None = None
-    assigned_role_id: int | None = None
-    is_leader: bool | None = None
-    attendance: bool | None = None
-
-
-class SignupApprove(BaseModel):
-    assigned_role_id: int
-    is_leader: bool = False
 
 
 # --------------------------------------------------------------------------- #
@@ -530,3 +461,86 @@ def _require_role_for_event(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Role {role_id} is not available for event {event_id}",
         )
+
+
+# --------------------------------------------------------------------------- #
+# Public self-service signup
+# --------------------------------------------------------------------------- #
+@router.post(
+    "/public/events/{event_id}/volunteer-signups",
+    response_model=PublicSignupResult,
+    summary="Public volunteer signup — find or create by phone, then request the event",
+)
+def public_signup(
+    event_id: int, payload: PublicSignupInput, db: Connection
+) -> PublicSignupResult:
+    require_event(db, event_id)
+
+    name = payload.name.strip()
+    phone = payload.contact_number.strip()
+    email = payload.email.strip() if payload.email else None
+    if not name:
+        raise HTTPException(status_code=400, detail="Enter your name.")
+    if not phone:
+        raise HTTPException(status_code=400, detail="Enter your phone number.")
+
+    # Validate chosen roles belong to the event before mutating anything.
+    for role_id in payload.role_ids:
+        _require_role_for_event(db, event_id, role_id)
+
+    # Find-or-create the volunteer by phone number.
+    existing = db.execute(
+        "SELECT id FROM volunteers WHERE contact_number = ?", (phone,)
+    ).fetchone()
+    if existing is not None:
+        volunteer_id = existing["id"]
+        volunteer_created = False
+    else:
+        try:
+            volunteer_id = db.execute(
+                """
+                INSERT INTO volunteers (name, contact_number, email)
+                VALUES (?, ?, ?) RETURNING id
+                """,
+                (name, phone, email),
+            ).fetchone()["id"]
+        except sqlite3.IntegrityError as error:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="That email is already registered to a different phone number.",
+            ) from error
+        volunteer_created = True
+
+    # One signup per volunteer per event.
+    if db.execute(
+        "SELECT 1 FROM volunteer_signups WHERE event_id = ? AND volunteer_id = ?",
+        (event_id, volunteer_id),
+    ).fetchone() is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="You have already signed up for this event.",
+        )
+
+    signup_id = db.execute(
+        """
+        INSERT INTO volunteer_signups (event_id, volunteer_id, status)
+        VALUES (?, ?, 'requested') RETURNING id
+        """,
+        (event_id, volunteer_id),
+    ).fetchone()["id"]
+
+    # Unranked preferences: store each chosen role with a null priority.
+    for role_id in payload.role_ids:
+        db.execute(
+            """
+            INSERT INTO volunteer_signup_role_preferences (signup_id, role_id, priority)
+            VALUES (?, ?, NULL)
+            """,
+            (signup_id, role_id),
+        )
+    db.commit()
+
+    return PublicSignupResult(
+        signup=signup_to_model(signup_row(db, event_id, signup_id)),
+        volunteer_created=volunteer_created,
+    )

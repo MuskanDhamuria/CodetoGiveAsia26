@@ -1,398 +1,274 @@
 # Tickets
 
-Backlog for the participant portal and cross-cutting work. Update statuses
-in place; remove or archive tickets once they're done rather than leaving
-stale entries here — see [`participant-portal.md`](participant-portal.md)
-for the "why" behind decisions already made.
+Backlog for the AI Side Panel initiative. Update statuses in place; remove or
+archive tickets once they're done rather than leaving stale entries here.
+
+The participant-portal backlog that lived in this file previously has been
+cleared per instruction to repopulate around the new proposal — if that work
+isn't actually done, recover it from git history (`git log -- docs/tickets.md`)
+before it's lost for good.
 
 ---
 
-~~TICKET-1: Let a returning participant sign in without RSVPing to an event~~
-— **Done.** Added `GET /api/v1/participants/lookup?contact_number=...`
-(`participants.py`) — exact match via the same `normalize_phone_number`
-(TICKET-13) used everywhere else, single match or 404, registered ahead of
-`/{participant_id}` so "lookup" doesn't get caught by that route's int path
-param. Frontend: `SignInForm`/`SignInPage` (`src/participant/components/`)
-ask only for a phone number, reuse `onIdentified`/`storeParticipant` on a
-match, land on My Events (no RSVP call made), and show the honest
-"We couldn't find that number — sign up for an event to get started." copy
-on a 404 rather than a raw error. A "Sign in" nav link next to My Events is
-shown only when no participant is currently identified. Still no real
-authentication, by design — see TICKET-6; the sign-in form's copy says so
-explicitly.
+## TICKET-0: Phase 0 compatibility audit (blocking — do not start implementation before this)
+
+**Priority:** Highest — the proposal itself says implementation must not
+begin until this is complete and reviewed.
+**Area:** whole system (read-only investigation, produces a report)
+
+### What to produce
+
+A written report (`docs/ai-panel-compatibility-report.md` or similar)
+covering the six audit areas from the proposal, using what's actually in this
+repo rather than the proposal's generic assumptions:
+
+- **Database**: no ORM — plain `sqlite3` via `backend/database.py`'s
+  `connect()`, manual SQL, `RETURNING` clauses. Migrations are additive `.sql`
+  files in `backend/migrations/`, applied in order by `initialize_database`
+  (see `002_add_event_description.sql` for the pattern). No soft-delete
+  convention observed yet — confirm by checking `events`/`participants`
+  schema for a `deleted_at`-style column before assuming hard deletes only.
+  No audit-logging table exists yet (see TICKET-4).
+- **Backend services**: there's no separate "service layer" to reuse — route
+  handlers in `backend/api/routes/events.py` (`create_event`, `list_events`,
+  `get_event`, plus task/subtask CRUD) directly contain the business logic
+  and SQL. Confirm whether AI tools should import and call these route
+  functions directly, or whether a thin extraction into callable
+  service functions is needed first so both the HTTP route and the AI tool
+  call the same code without one wrapping the other's HTTP layer.
+- **API inventory**: cross-check `backend/API_ENDPOINTS.md`'s "Current
+  implementation status" section against `backend/api/router.py` — event CRUD,
+  templates, team members, participants/RSVP, and dashboard summaries are
+  implemented; several proposed endpoints (event close/reopen/reschedule
+  automation, capacity/waitlist) are not. Tool scope (TICKET-2) must only
+  name tools backed by endpoints that actually exist.
+- **Frontend insertion point**: `src/App.tsx` is the legacy router for all
+  admin pages (dashboard, `AdminEventsPage.tsx`, volunteers, `AiCopilot.tsx`).
+  Note `src/AiCopilot.tsx` already exists — read it before building anything
+  new; it may be a prior prototype for this exact feature (or dead code) and
+  determines whether TICKET-5 extends it or replaces it. There's no existing
+  drawer/sidebar shell in `App.tsx` to hook into (confirm with a targeted
+  read) — the side panel likely needs its own layout wrapper.
+- **Authentication — this is the audit's most important finding.** The
+  volunteer flow (`backend/api/routes/volunteer_auth.py`) has real
+  password + bearer-token auth, but the **admin/organizer dashboard that this
+  proposal targets has no authentication at all** — `events.py`,
+  `event_templates.py`, `team_members.py`, `dashboard.py` have no session
+  checks, no roles, no permission middleware. There is currently no
+  "authenticated user" for an AI tool call to inherit permissions from. This
+  directly contradicts the proposal's Phase-0 goal ("ensure AI tool execution
+  inherits the authenticated user's permissions rather than introducing a
+  separate authorization path") because there is no such path to inherit yet.
+  This blocks TICKET-3 and needs a team decision — see the open question
+  below and TICKET-6 in the (removed) old backlog for prior context on this
+  exact gap.
+
+### Open question (needs your input before TICKET-3 can be scoped)
+
+Given there's no admin auth today, do we:
+(a) build minimal admin auth first as its own ticket, gating both the
+    existing admin pages and the new AI panel, or
+(b) ship the AI panel without new auth, explicitly scoped to a
+    single-organizer/no-multi-tenant trust model for the hackathon, and
+    defer real permission checks?
+This changes the shape of TICKET-3 significantly and should be decided before
+any tool-execution code is written.
 
 ---
 
-~~TICKET-2: Add a calendar view to the participant browse-events page~~ —
-**Done.** `EventBrowseList` gets a second `.event-browse-tabs` row (List /
-Calendar) directly below the existing Upcoming/Past tabs, same classes so it
-mirrors their placement and style exactly. Calendar view is a new
-`EventCalendarView` component (`src/participant/components/`), adapted from
-`EventOperationsMvp.tsx`'s `EventCalendar` for this page's `EventSummary`
-shape — event cells are `<Link to="events/:id">`s straight to the detail
-page instead of an `onOpen` callback + modal, matching how the list view
-already links out. Month navigation (prev/next) wraps years correctly (via
-`Date.UTC`, same approach as the original). CSS copied+adapted into
-`participant.css` (`.event-collection-calendar`, `.event-calendar-weekdays`,
-`.event-calendar-grid`, `a` selector instead of `button`) rather than
-importing `EventOperationsMvp.css`, so the two pages' calendars can diverge
-in styling later without cross-page coupling. Defaults to the current
-month; navigating between tabs (Upcoming/Past) doesn't reset it. Tests in
-`EventBrowseList.test.tsx` use a dynamically-computed "today" fixture date
-rather than fake timers, so they don't need the system clock mocked.
+## TICKET-1: Backend AI endpoint — OpenRouter integration and streaming
+
+**Priority:** High
+**Area:** new `backend/api/routes/ai_assistant.py` (or similar), `backend/schema/`
+
+### Scope
+
+- New route module, composed into `backend/api/router.py` alongside the
+  existing feature modules, following the one-module-per-feature convention.
+- Holds the OpenRouter API key server-side only (new env var, e.g.
+  `OPENROUTER_API_KEY`, read the same way other config is — check
+  `backend/main.py`/`backend/database.py` for the existing env-var pattern
+  like `PASSION_DATABASE_PATH`).
+- Accepts a chat message + conversation history from the frontend, forwards
+  to OpenRouter, streams the response back (SSE or chunked) to the frontend.
+- Registers the constrained tool set from TICKET-2 with the LLM call
+  (tool/function-calling schema, not a system-prompt-only approach).
+- Does **not** contain business logic itself — when the LLM emits a tool
+  call, this endpoint dispatches to the functions from TICKET-2 and nothing
+  else.
+
+### Depends on
+
+TICKET-0's auth finding (needs to know what "authenticated user" means for
+this endpoint before it can attach any permission context to tool calls) and
+TICKET-2 (needs the tool functions to dispatch to).
 
 ---
 
-## TICKET-3: Make the site an installable PWA (mobile + desktop)
+## TICKET-2: AI tool functions wrapping existing event operations
 
-**Priority:** Medium-High
-**Area:** `index.html`, new `public/manifest.json` (or similar), service worker, all page-level navigation
+**Priority:** High
+**Area:** new `backend/ai_tools/` (or colocated with `ai_assistant.py`),
+reuses `backend/api/routes/events.py`
 
-### Problem
+### Scope
 
-`index.html` currently has no PWA affordances at all — confirmed by reading
-it: no `<link rel="manifest">`, no `theme-color` meta, no icons, no service
-worker registration. Nothing here currently makes the site installable.
+Implement the constrained tool set the proposal names, each as a thin
+wrapper that calls the *existing* logic rather than duplicating it:
 
-### Acceptance criteria
-
-- **Manifest**: add a `manifest.json` (name, short_name, icons at minimum
-  192×192 and 512×512, `start_url`, `display: "standalone"`, `theme_color`,
-  `background_color`) and link it from `index.html` via
-  `<link rel="manifest" href="/manifest.json">`. Add a `theme-color` meta tag
-  to `index.html`'s `<head>` alongside the existing viewport meta.
-- **Service worker**: register one (even a minimal cache-the-app-shell one to
-  start) so the install criteria are met and the app has an offline
-  fallback. `vite-plugin-pwa` is the standard way to do this in a Vite
-  project and would generate both the manifest and service worker from
-  config rather than hand-rolling — worth using instead of writing this by
-  hand, given nothing PWA-related is installed yet (`package.json` has no
-  PWA plugin currently).
-- **In-app back navigation on every non-root page.** This is the part that's
-  easy to miss: once installed as a standalone PWA, the browser's own
-  back/forward chrome is gone (this is especially true on iOS Safari-based
-  installs, which have no back gesture at all in standalone mode). Every
-  page reachable by drilling in — `/participant/events/:eventId` today, and
-  whatever `/volunteer` and `/admin` sub-pages get built — needs an explicit
-  in-UI back control, not just reliance on browser chrome or nav links to
-  the section root. Concretely: add a back button to `EventDetailCard`, and
-  make this a requirement teammates building `/volunteer`/`/admin` know
-  about before those pages ship.
-- Test actual installability (Chrome's "Install app" prompt / Lighthouse PWA
-  audit) on both a desktop and a mobile viewport, not just that the manifest
-  file is syntactically valid.
-
----
-
-## TICKET-4: Backlog — improvements unlocked once the site is a PWA
-
-**Priority:** Low (future work, blocked on TICKET-3)
-**Area:** cross-cutting
-
-Not scoped for implementation yet — this is the list of things that become
-possible or worth doing *after* TICKET-3 lands, so they don't get lost:
-
-- **Offline browsing of already-loaded events.** Cache `GET /events` and
-  `GET /events/:id` responses via the service worker so a participant who's
-  browsed events once can still see them without signal — relevant given the
-  target beneficiary population (migrant workers, who may have inconsistent
-  data access).
-- **Background sync for signups made offline.** Queue
-  `POST /public/events/{id}/rsvp` / `POST /events/{id}/participants` calls
-  made while offline and replay them when connectivity returns, instead of
-  just failing.
-- **Push notifications for event reminders**, as a native complement to (or
-  eventual replacement for) the planned WhatsApp bot reminders — doesn't
-  require the participant to have WhatsApp.
-- **Home-screen install prompts** at the right moment (e.g. after a
-  successful signup) so returning participants don't have to re-navigate
-  from a bookmark or search each time.
-- **Manifest shortcuts** for one-tap deep links into `/participant`,
-  `/volunteer`, `/admin` from the home-screen icon's long-press menu, once
-  all three portals exist.
-- **Reduced data usage** from cached static assets (fonts, JS/CSS bundles)
-  on repeat visits — meaningful for users on limited mobile data plans.
-- **Splash screen / branded loading state** instead of a blank white flash
-  on cold start, using the manifest's `background_color` and icons.
-
----
-
-## TICKET-5: Capacity / waitlist support for event RSVPs
-
-**Priority:** Medium
-**Area:** Backend (`backend/migrations/`, `backend/api/routes/{events,public}.py`), Frontend
-
-### Problem
-
-`participations.rsvp_status` is a plain boolean. There's no way to cap
-signups for an event or waitlist people once it's full — this is listed as
-an open decision in `API_ENDPOINTS.md` ("Capacity limits, waiting lists,
-cancellation status, and RSVP states beyond a simple boolean").
-
-### Acceptance criteria
-
-- A capacity field (nullable = unlimited) somewhere on `events`, added via a
-  new additive migration, following the pattern in `002_add_event_description.sql`.
-- `POST /events/{id}/participants` and `POST /public/events/{id}/rsvp` check
-  capacity and either register the participant normally or place them on a
-  waitlist, returning which one happened.
-- `EventDetailCard` surfaces "You're on the waitlist" distinctly from
-  "You're signed up," and shows remaining slots (or "Full — join waitlist")
-  on the signup CTA.
+- `create_event_draft` — validates and returns a structured draft (see
+  TICKET-3's business/schema validation), does not write to the DB yet.
+- `publish_event` — takes an approved draft and calls whatever
+  `create_event` in `events.py` does today.
+- `update_event`, `get_event`, `list_events`, `cancel_event` — map onto
+  `events.py`'s existing handlers (`get_event`, `list_events`) or their
+  nearest existing equivalent (`cancel_event` doesn't exist yet as an
+  endpoint — check whether "cancel" means `close` in the current status
+  model, or is genuinely new; don't invent a new cancel semantics that
+  diverges from what `EVENT.status` already means per `CLAUDE.md`'s
+  open/closed note).
+- Explicitly out of scope per the proposal: no `execute_sql`, `run_code`, or
+  any generic/filesystem tool.
 
 ### Open question
 
-Whether waitlist position/promotion needs to be tracked explicitly (an
-ordered queue) or a simple `waitlisted` status is enough for the hackathon
-demo. Needs a team decision before implementation.
+Should tools call the route *handler functions* directly (in-process,
+skipping HTTP) or hit the app's own HTTP API internally? Direct in-process
+calls avoid network overhead and duplicate auth handling, but the route
+handlers currently take a `Connection` via FastAPI dependency injection —
+confirm they're callable outside a request context without rework, or note
+the small refactor needed (TICKET-0's service-layer question).
 
 ---
 
-## TICKET-6: Decide on and implement authentication
+## TICKET-3: Validation pipeline (schema → business rules → permissions)
 
-**Priority:** Medium (cross-cutting — affects every portal, not just participant)
-**Area:** whole system
+**Priority:** High
+**Area:** backend, shared across all tools from TICKET-2
 
-### Problem
+### Scope
 
-There is no real authentication anywhere in the system. The participant
-portal's phone-based identity (see `participant-portal.md`) is intentionally
-low-friction and not secure against a shared device — fine for a hackathon
-demo, but `API_ENDPOINTS.md`'s first open decision is explicitly
-"Authentication method and permissions for participant, volunteer,
-organizer, administrator, bot, and public access," and it's still open.
-
-### What this ticket actually is
-
-A design decision, not an implementation task yet — there's not enough
-agreed-upon shape to write acceptance criteria for. Needs the team to decide
-the method (session cookies? magic links? something bot-compatible for
-volunteers/organizers?) and a permissions matrix across the four roles
-before any endpoint can be locked down. Once decided, split into
-per-portal follow-up tickets.
-
----
-
-## TICKET-7: Add a `code` field to API error responses
-
-**Priority:** Low
-**Area:** Backend, all route modules
-
-### Problem
-
-`API_ENDPOINTS.md`'s "Suggested error response" convention is
-`{"detail": "...", "code": "..."}`, but every implemented route (including
-`health.py`, `events.py`, `participants.py`, `public.py`) only returns
-`{"detail": "..."}`, matching FastAPI's default `HTTPException` shape.
-
-This isn't just cosmetic: `src/participant/components/EventDetailCard.tsx`
-and `MyEventsList.tsx` currently detect a stale local identity by matching
-the exact `detail` *string* `"Participant not found"` (see
-`isStaleIdentityError` in both files) — fragile, since any wording change to
-that message silently breaks the fallback. A stable `code` like
-`participant_not_found` would fix that properly.
+- **Schema validation**: Pydantic models in `backend/schema/` already do
+  this for existing routes — reuse the same request models (e.g. whatever
+  `EventCreate` looks like) for AI-generated tool arguments instead of
+  writing parallel schemas, so the two paths can't drift.
+- **Business validation**: dates valid, referenced entities (venue, event
+  template) exist, `event_time` present (it's `NOT NULL` per
+  `002_add_event_description.sql`) — again, reuse whatever validation
+  `events.py`'s handlers already do rather than re-implementing it for the
+  AI path.
+- **Permission validation**: blocked on TICKET-0's auth finding — there's no
+  current-user/role concept to check against yet.
 
 ### Acceptance criteria
 
-- Team decision on whether to adopt the `code` field at all (it's marked
-  "suggested," not required, in the contract doc).
-- If yes: a custom exception handler that renders `{"detail", "code"}` for
-  domain errors, machine-stable `code` values assigned across existing
-  routes, and the frontend's string-matching swapped for `code` checks.
+- A tool call with a missing required field is rejected before reaching the
+  database, with a structured `{"success": false, "reason": "..."}"` error
+  (per the proposal's error-handling example), not a raw exception.
+- No new validation logic exists that isn't just reused from what
+  `backend/schema/` and `events.py` already enforce for the human-driven path.
 
 ---
 
-## TICKET-8: Backlog — other portals and integrations not yet built
+## TICKET-4: Audit logging for AI-generated mutations
 
-**Priority:** N/A (tracking only, not owned by the participant slice)
-**Area:** cross-cutting
+**Priority:** Medium
+**Area:** `backend/migrations/` (new additive migration), all AI tool
+execution paths
 
-- **Organizer-side event CRUD.** `backend/api/routes/events.py` only has
-  list/detail/register — no `POST/PATCH/DELETE /events`,
-  `/events/{id}/close`, `/reopen`, or `/reschedule`. Whoever builds the admin
-  event-management UI adds these to the same file. Note `events.event_time`
-  is `NOT NULL` (see `002_add_event_description.sql`), so the create-event
-  form needs a time input alongside the date picker, not just an optional
-  add-on.
-- **`/volunteer` and `/admin` route trees** aren't built yet. The
-  `/participant/*` route in `src/App.tsx` is the precedent for mounting them
-  the same way — a `<Route path="/x/*">` pointing at that portal's own
-  nested `<Routes>`, additive alongside the existing pages.
-- **WhatsApp bot integration.** The plan is for the bot to call
-  `POST /public/events/{id}/rsvp` for participant signups too, since both
-  key off phone number. Not started; owned by Jia Yu.
+### Scope
 
----
+The proposal requires "every AI-generated mutation must be auditable." No
+audit-log table exists in the schema today (confirm during TICKET-0). Needs:
 
-## TICKET-9: Backlog — participant portal polish
+- A new additive migration (following the `002_add_event_description.sql`
+  pattern) adding an audit table — at minimum: timestamp, tool name,
+  arguments, resulting entity id, and (once TICKET-0/6 resolves) the acting
+  user.
+- Every tool dispatch in TICKET-1/2 writes a row here, on both success and
+  failure.
 
-**Priority:** Low (non-blocking)
-**Area:** `src/participant/`, `backend/api/routes/participants.py`
+### Open question
 
-- Add a loading skeleton instead of plain "Loading events…" text on the
-  browse/detail pages.
-- ~~`EventBrowseList`'s "Past" tab includes today's date on both sides~~ —
-  moot: the Upcoming/Past tabs were replaced by month-grouped list view +
-  calendar coloring (see `participant-portal.md`), which fetches all events
-  once and buckets client-side with a strict `event_date < today` for past,
-  so today's events land in exactly one place.
-- Consider caching `GET /events` client-side (e.g. a simple in-memory cache
-  in `api/client.ts`) if the browse page ends up re-fetching on every nav.
-- `list_participants`'s `q` search (`backend/api/routes/participants.py`)
-  does a naive `LIKE` scan; fine at hackathon scale, would want an index or
-  FTS if the participant list grows large.
-- The "Code Morphing Agent" idea from the original brainstorm (an agent that
-  edits the system's own code) is still low-priority/good-to-have, not
-  started.
+Should this log *only* AI-originated mutations, or become the start of a
+general mutation audit log covering human-driven admin actions too? The
+proposal only asks for the former, but a log that only covers AI actions
+will look inconsistent next to human-driven changes with no trail at all.
+Flagging for a decision, not assuming scope beyond what's asked.
 
 ---
 
-~~TICKET-10: Cancel-signup doesn't recover from a concurrently-invalidated identity~~
-— **Partially done.** `handleCancel` (`EventDetailCard.tsx`) now catches a
-404 from `cancelRegistration` and resets to the not-signed-up state
-(`setIsSignedUp(false)`) instead of leaving a stale "Cancel my signup"
-button next to a raw "Registration not found" error — covers both "already
-cancelled elsewhere" and "participant record deleted" causes for the
-*visible UI state*.
+## TICKET-5: Frontend — AI side panel UI shell
 
-Still open (per the ticket's own second acceptance-criteria bullet, which
-was a "decide" item, not yet decided): `update_participation`
-(`backend/api/routes/events.py`) still doesn't distinguish "participant
-gone" from "registration gone" in its 404, so `handleCancel` can't safely
-call `onIdentityInvalid()` only in the participant-gone case — doing so
-unconditionally would incorrectly log out a participant who simply
-cancelled from another device/tab. That still needs the TICKET-7 `code`
-field (or an equivalent signal) before it can be implemented correctly.
+**Priority:** High
+**Area:** `src/App.tsx` (admin layout), `src/AiCopilot.tsx` (existing file —
+audit first, see TICKET-0), new panel component
 
----
+### Scope
 
-~~TICKET-11: Non-404 errors in the event-detail signup check are silently treated as "not signed up"~~
-— **Done.** The `getMyEvents` signup-check effect in `EventDetailCard.tsx`
-now has the same three-way outcome `MyEventsList` already had: success,
-stale-identity (`onIdentityInvalid()`, no error shown), and a distinct
-generic-error state (new `signupCheckStatus` state) that renders "Couldn't
-check your registration status. Refresh the page to try again." in the
-action area instead of silently coercing to "Sign up" with no explanation.
+- Collapsible side panel mounted into the existing admin layout in
+  `src/App.tsx`, not a new standalone route — per the proposal, no existing
+  page should become AI-dependent or be replaced.
+- Chat interface: message input, streaming response rendering (consumes
+  TICKET-1's stream), conversation history for the session.
+- Must not call OpenRouter directly and must not hold any API key — only
+  talks to the new backend endpoint from TICKET-1.
+
+### Depends on
+
+TICKET-0's frontend audit (to confirm whether `AiCopilot.tsx` is reusable
+scaffolding or a conflicting prior attempt).
 
 ---
 
-~~TICKET-12: Public RSVP can silently reassign identity to an existing participant under a different name~~
-— **Partially done.** `PublicRsvpOut` (`public.py`) now returns the
-matched/created participant's canonical `participant_name`,
-`participant_contact_number`, and `participant_email` — `_find_or_create_participant`
-returns the full `sqlite3.Row` instead of just an id, so the handler builds
-the response from what's actually in the DB rather than echoing the request
-body. `SignupForm.tsx`'s `onSignedUp` now stores `result.participant_name`/
-`result.participant_contact_number`/`result.participant_email` instead of
-the locally-typed form values (this also closes TICKET-15, the identical gap
-for `contact_number`). Covered by
-`test_rsvp_returns_the_matched_participants_canonical_name_not_the_submitted_one`
-and `test_rsvp_returns_canonical_contact_number_even_when_typed_differently`
-(`test_public.py`), plus a frontend integration test in
-`ParticipantApp.ui.test.tsx` asserting the "Signed in as …" badge reflects
-the backend's canonical name, not what was typed.
+## TICKET-6: Frontend — draft preview + approval flow
 
-Still open: this only fixes what gets *stored/displayed* after the fact — it
-doesn't detect or surface the mismatch to the participant at signup time.
-The acceptance criteria's suggested "this number is already registered as
-X — is that you?" confirmation step in `SignupForm` is still undone; two
-people sharing a phone (or a typo colliding with an existing registrant's
-number) still silently merges into the existing record without asking.
+**Priority:** High
+**Area:** same panel component as TICKET-5
+
+### Scope
+
+- When a tool call produces a draft (e.g. `create_event_draft`), render a
+  preview card (name/date/location/etc., per the proposal's mockup) with
+  Edit and Create/Confirm actions instead of executing immediately.
+- "Edit" re-opens the fields for correction before resubmitting to the AI or
+  directly patching the draft.
+- Only on explicit user confirmation does the frontend trigger the
+  publish/execute tool call.
+- Tool-execution progress/result (including structured errors from TICKET-3)
+  renders inline in the chat, with backend errors translated to plain
+  language rather than shown as raw JSON/stack traces (proposal's explicit
+  requirement — this translation happens in the LLM turn per the proposal,
+  so confirm TICKET-1's system prompt handles it before assuming the
+  frontend needs to do its own error-message mapping).
 
 ---
 
-~~TICKET-13: No phone-number normalization in participant identity matching~~
-— **Done.** `backend/phone.py`'s `normalize_phone_number` (built on
-`phonenumbers`) parses and reformats every incoming `contact_number` to
-E.164 before it's written or matched against — `create_participant`
-(`participants.py`) and `public_rsvp`/`_find_or_create_participant`
-(`public.py`) both funnel through it, and a number that fails to parse as
-valid now 400s instead of being stored as-is. Frontend: `SignupForm`'s phone
-field auto-formats as the participant types (`src/participant/phone.ts`,
-`libphonenumber-js`'s `AsYouType`) and rejects an invalid number client-side
-before submitting. Defaults to the `SG` region for numbers with no leading
-"+"; a "+"-prefixed number is parsed using its own country code regardless,
-so other countries work without a picker. Existing seeded data had no
-participants with phone numbers, so no backfill was needed — if that
-changes before this ships for real, audit stored `contact_number` values
-for anything pre-dating this fix.
+## TICKET-7: System prompt and tool-use policy
 
-Still open: TICKET-1's proposed lookup-by-phone endpoint should normalize
-its query parameter the same way once it's built.
+**Priority:** Medium
+**Area:** `backend/ai_assistant.py` (or wherever TICKET-1 lands), no frontend
+
+### Scope
+
+Write and iterate on the system prompt per the proposal's prompting strategy:
+never fabricate missing info, ask clarifying questions, use tools only when
+required, never bypass validation, prefer drafts over immediate execution,
+keep responses concise. This is a prompt-engineering/eval task, not a code
+scaffold — needs a small set of test conversations (including adversarial
+ones: "delete all events", "give me database access") to check the model
+doesn't reach for tools outside TICKET-2's constrained set or attempt to
+bypass the draft-then-approve flow.
 
 ---
 
-~~TICKET-14: `todayIso()` uses the browser's local clock, breaking the app's own "always UTC" date scheme for ~8 hours a day~~
-— **Done.** Added `sgNow()` (`dateFormat.ts`) — shifts the real UTC instant
-forward by a fixed 8-hour Singapore offset before reading its UTC calendar
-date/components, instead of trusting the device's local `Date`/
-`toISOString()`. `todayIso()` now builds on `sgNow()`; `EventBrowseList.tsx`'s
-`startOfCurrentMonth()` had the identical bug (deriving the "current month"
-default from a local-clock `Date`) and now uses `sgNow()` too. Regression
-test in `dateFormat.test.ts` fakes the system clock to an instant where UTC
-and SGT disagree on the calendar date and asserts `todayIso()` returns
-SGT's date; `EventBrowseList.test.tsx` gets an equivalent end-to-end case
-asserting an event dated "yesterday" (SGT) is bucketed as past rather than
-upcoming. `EventBrowseList.test.tsx`'s own fixture-date helper
-(`TODAY_ISO`/`isoDaysFromNow`) now imports `todayIso()` from the module
-under test rather than reimplementing the same local-clock logic, so the
-fixtures can't silently drift out of sync with the component again.
+## TICKET-8: Backlog — future tool expansion (not started)
 
----
+**Priority:** Low (tracking only)
+**Area:** N/A
 
-~~TICKET-15: `SignupForm` stores the un-normalized phone number locally, diverging from what the backend persists~~
-— **Done**, bundled into the same `PublicRsvpOut` response-shape fix as
-TICKET-12 (see above). `SignupForm.tsx` now stores
-`result.participant_contact_number` (E.164, as persisted) instead of the
-raw `contactNumber.trim()` form value, so a participant's
-`StoredParticipant.contactNumber` is normalized the same way whether they
-most recently signed up or signed in via `SignInForm`.
-
----
-
-~~TICKET-16: No test coverage for cancel-signup, repeat-signup, or the closed-event render branch~~
-— **Done.** New `EventDetailCard.test.tsx` covers: a successful cancel
-returning to the "Sign up" state; cancel recovering cleanly from a 404
-("registration already gone," TICKET-10) instead of leaving a stale Cancel
-button; a known, already-signed-in participant registering for a *second*
-event directly (no `SignupForm`); the closed-event message rendering with
-no signup affordance for a visitor with no existing RSVP; and the
-generic-error state on the signup check (TICKET-11) rendering instead of
-silently showing "Sign up".
-
----
-
-~~TICKET-17: Admin events calendar grid misaligns with its date headers on mobile once a day has events~~
-— **Done.** The bug was in `src/EventCollectionPrototype.tsx`'s calendar
-view (`.collection-calendar-days` / `.collection-calendar-grid`,
-`src/index.css`) — this is the component `App.tsx` actually mounts for the
-admin Events page, not `EventOperationsMvp.tsx`'s similarly-named
-`EventCalendar` (which is unused dead code for this route; `App.tsx` line
-718's `EventOperationsMvp` render path is for a different view). Root
-cause: the weekday header and day-cell grid were two separate sibling
-elements each independently declaring `grid-template-columns: repeat(7,
-1fr)`. `fr` tracks still respect each grid item's default `min-width:
-auto`, and nothing on the day cells or their event buttons reset that, so a
-long event name (e.g. "Clothes & Essentials Distribution") forced a
-cell's intrinsic minimum width past `1fr`, widening `.collection-calendar-grid`'s
-columns independently of `.collection-calendar-days`'s header row — with no
-events, all cells sat at the same content-free minimum and the rows
-coincidentally matched. Fixed by changing both grids to
-`repeat(7, minmax(0, 1fr))` and adding `min-width: 0` to the day cell and
-button, forcing every column to the shared track width regardless of
-content. That alone made columns line up but shrank cells so far on mobile
-that event-name text wrapped one letter per line; added a
-`max-width: 640px` block shrinking cell/button padding to recover usable
-width, and switched the event-name `<strong>` to single-line
-`overflow: hidden; text-overflow: ellipsis; white-space: nowrap` (the same
-pattern `EventOperationsMvp.css`'s dead calendar already used) instead of
-letting it wrap. Verified via the in-app browser at a 375px viewport:
-`.collection-calendar-days` and `.collection-calendar-grid` column
-`left` offsets now match exactly (`[49,89,128,168,207,247,286]`) both on
-an empty month and on a day cell with a long event name, which now
-ellipsizes to "C…" instead of blowing out its column.
-`EventCalendarView.tsx` (participant portal, TICKET-2) and
-`EventOperationsMvp.tsx`'s dead `EventCalendar` share the same
-weekday/grid-split structure — not touched here since neither is live on
-this bug's path, but worth a follow-up sweep if either turns out to have
-the same latent issue.
+Once TICKET-1–3's framework lands, additional tools (event-template
+operations, team-member assignment, participant lookups) should be addable
+as pure tool definitions without touching the assistant framework itself,
+per the proposal's "Future Expansion" section. Not scoped until the core
+framework ships and proves that pattern actually holds.

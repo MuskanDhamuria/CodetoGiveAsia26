@@ -79,6 +79,8 @@
 .signup-form button:disabled { opacity: .55; }
 .signup-form-error { color: #b3261e; font-weight: 700; margin: 0; }
 
+.link-button { background: none; border: 0; color: #246b45; cursor: pointer; font: inherit; font-weight: 700; padding: 0; text-decoration: underline; }
+
 @media (max-width: 640px) {
   .participant-header { align-items: flex-start; flex-direction: column; }
   .event-browse-card { flex-direction: column; }

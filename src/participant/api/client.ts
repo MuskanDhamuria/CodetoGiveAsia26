@@ -38,6 +38,19 @@ export type PublicRsvpInput = {
   email?: string | null;
 };
 
+export type PublicSignupInput = {
+  name: string;
+  contact_number?: string | null;
+  email?: string | null;
+};
+
+export type PublicSignupResult = {
+  participant_id: number;
+  participant_name: string;
+  participant_contact_number: string | null;
+  participant_email: string | null;
+};
+
 export type PublicRsvpResult = {
   participant_id: number;
   // The participant record actually matched/created by the backend — may
@@ -88,6 +101,13 @@ export function getEvent(eventId: number): Promise<EventSummary> {
 
 export function publicRsvp(eventId: number, input: PublicRsvpInput): Promise<PublicRsvpResult> {
   return request(`/public/events/${eventId}/rsvp`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function publicSignup(input: PublicSignupInput): Promise<PublicSignupResult> {
+  return request(`/public/signup`, {
     method: "POST",
     body: JSON.stringify(input),
   });

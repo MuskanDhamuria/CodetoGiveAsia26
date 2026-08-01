@@ -1258,3 +1258,147 @@ one-off edit here first.
 
 Depends on TICKET-17 (needs the cross-event data source to reason over).
 Should land as part of TICKET-7, not before it.
+
+---
+
+## TICKET-19: AI judgment call — recommend a volunteer for a role by skill match
+
+**Priority:** Medium
+**Area:** new `backend/ai_tools/` tools, reuses `backend/api/routes/volunteers.py`;
+`backend/api/routes/ai_assistant.py` (system prompt)
+
+### Correcting the request against what actually exists
+
+"Assign tasks based on volunteer skill" doesn't map onto this codebase as
+stated: task assignment (TICKET-14) only ever targets `team_member_id`,
+and `TeamMemberOut` (`backend/schema/team_members.py`) has no skill,
+experience, or role field at all — just name, email, `is_active`. Skill
+data (`SkillOut`, list of skill names) only exists on **volunteers**
+(`backend/schema/volunteers.py`), and volunteers are explicitly not
+task-assignable per TICKET-14's glossary finding. What volunteers *do* get
+matched against is a per-event **role** — `list_event_roles`
+(`backend/api/routes/volunteers.py:285`, `GET /events/{event_id}/roles`)
+returns `RoleOut` rows, and volunteers sign up against a role
+(`list_event_signups`/`approve_event_signup`, same file). This ticket
+scopes the judgment call to what the data actually supports: recommending
+which pending volunteer signup to approve for a role, using skill overlap
+— not task assignment.
+
+### Scope
+
+- New read tools this depends on: `list_event_roles` (wraps
+  `volunteers.list_event_roles`) and `list_event_signups` (wraps
+  `volunteers.list_event_signups`, filterable to pending) — both thin
+  wrappers, no new logic.
+- `SYSTEM_PROMPT` guidance: when an organizer asks something like "who
+  should fill the first-aid role for Saturday's cleanup," call
+  `list_event_roles` + `list_event_signups` (pending signups for that
+  event) + `list_volunteers` (TICKET-16, for skills) and reason over skill
+  overlap, past `signup_status` history, and any explicit organizer
+  preference stated in conversation. State the reasoning, don't just name
+  a winner silently.
+- Execution stays TICKET-6-shaped: the model recommends, the organizer
+  explicitly confirms, and only then does a call reach
+  `approve_event_signup` (already flagged as a future tool in TICKET-8's
+  audit-update section, now made concrete by this ticket) — never
+  auto-approve from a recommendation alone. A rejected/skipped
+  recommendation must not silently reject the signup either; "recommend"
+  means propose, not decide.
+
+### Out of scope / open question
+
+"Experience" beyond signup history (e.g. a tenure or reliability score)
+isn't modeled anywhere in the schema — don't invent a field for it. If
+that's wanted later, it's a schema-change ticket in its own right, not
+something this tool can wrap.
+
+---
+
+## TICKET-20: AI judgment call — recommend a team member for a task by current workload
+
+**Priority:** Medium
+**Area:** new `backend/ai_tools/` tool, reuses `backend/api/routes/team_members.py`
+
+### Scope, and why this is workload-based, not skill-based
+
+Team members carry no skill/experience field (see TICKET-19) — so a
+"who's best suited" judgment for *task* assignment can only reason over
+**current load**, not skill fit, until/unless a future migration adds
+something like a skills field to `team_members` (out of scope here; note
+it as a TICKET-8-style backlog candidate if this turns out to matter in
+practice, don't build it speculatively).
+
+- New tool `list_team_member_tasks`, wrapping the existing
+  `team_members.list_team_member_tasks` handler
+  (`GET /team-members/{member_id}/tasks`, filters: `status`, `event_id`,
+  `due_before`) — read-only, no new logic.
+- `SYSTEM_PROMPT` guidance: when asked who should take an unassigned task,
+  call `list_team_members` (TICKET-21) for the active roster and
+  `list_team_member_tasks` per candidate (or accept the organizer naming a
+  short list) to compare current open/overdue task counts, then recommend
+  the least-loaded active member — stating the comparison, not just a
+  name. Assignment itself still goes through TICKET-14's
+  `assign_event_task` only on organizer confirmation, same draft-then-act
+  pattern as TICKET-19.
+
+### Depends on / affects
+
+Depends on TICKET-14 (assignment tool this recommends into) and TICKET-21
+(team member roster). Pair with TICKET-13 for "what's unassigned" first.
+
+---
+
+## TICKET-21: AI tool — view team members
+
+**Priority:** Medium
+**Area:** new `backend/ai_tools/` tool, reuses `backend/api/routes/team_members.py`
+
+### Scope
+
+New tool `list_team_members`, wrapping the existing
+`team_members.list_team_members` handler (`GET /team-members`) —
+name/email/`is_active` per member, whatever filters the handler already
+supports. The organizer-side counterpart to TICKET-16's `list_volunteers`;
+needed as the roster TICKET-14 and TICKET-20 both assign/recommend
+against — the AI currently has no way to know who a team member even *is*
+before this ticket.
+
+---
+
+## TICKET-22: AI tool — dashboard summary snapshot
+
+**Priority:** Low
+**Area:** new `backend/ai_tools/` tool, reuses `backend/api/routes/dashboard.py`
+
+### Scope
+
+New tool `get_dashboard_summary`, wrapping the existing
+`dashboard.dashboard_summary` handler (`GET /dashboard/summary`) — the
+same aggregate counts (upcoming events, pending confirmations, overdue
+tasks, etc.) already shown on the live dashboard page. Lets "how are we
+doing this week?" get answered in chat without the organizer switching
+tabs. Complements TICKET-17's deadline-level detail with the org-wide
+headline view; genuinely no new logic, this is the smallest possible tool
+in the whole backlog.
+
+---
+
+## TICKET-23: AI tool — view an event's roles and signups
+
+**Priority:** Medium
+**Area:** new `backend/ai_tools/` tools, reuses `backend/api/routes/volunteers.py`
+
+### Scope
+
+Two read tools, both thin wrappers, no new logic:
+- `list_event_roles` — wraps `volunteers.list_event_roles`
+  (`GET /events/{event_id}/roles`).
+- `list_event_signups` — wraps `volunteers.list_event_signups`
+  (`GET /events/{event_id}/volunteer-signups`), filterable to pending vs.
+  approved/rejected.
+
+Split out as its own ticket (rather than folded silently into TICKET-19)
+because this pair is useful general-purpose visibility on its own — "who's
+signed up for Saturday and what roles are still open?" — independent of
+whether the skill-matching judgment call in TICKET-19 ever gets built.
+TICKET-19 depends on this ticket; this ticket does not depend on TICKET-19.

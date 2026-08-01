@@ -2,7 +2,25 @@
 
 This document is the proposed HTTP API between the React frontend and the
 FastAPI backend. It is based on the current SQLite schema and the product plan.
-It defines routes only; it does not implement them.
+
+## Current implementation status
+
+The organizer/admin backend currently implements:
+
+- Event-template CRUD and cloning, including ordered template tasks/subtasks.
+- Event CRUD, filtering, closing/reopening, rescheduling, and atomic workflow
+  generation from a template.
+- Event-task and subtask CRUD, ordering, status transitions, deadlines, and
+  internal team-member assignment.
+- Team-member CRUD and assigned-task queries.
+- Participant CRUD, event registration, RSVP, attendance, and event history.
+- Dashboard summary, upcoming deadlines, calendar events, and per-event
+  progress summaries.
+
+Volunteer routes remain owned by the volunteer feature module. The organizer
+implementation does not change the event volunteer-signup endpoints. Routes in
+the “Proposed future endpoints” section still require schema/product decisions
+and are not implemented.
 
 ## Conventions
 

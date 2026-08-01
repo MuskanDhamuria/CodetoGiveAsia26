@@ -17,6 +17,9 @@ export type EventSummary = {
   name: string
   venue: string
   event_date: string
+  description: string
+  start_time: string | null
+  end_time: string | null
   status: string
   beneficiary_id: number | null
 }
@@ -70,6 +73,40 @@ export type Role = {
   is_required: boolean
 }
 
+export type VolunteerAccount = {
+  id: number
+  volunteer_id: number
+  name: string
+  contact_number: string | null
+  email: string | null
+}
+
+export type VolunteerAuthResult = {
+  access_token: string
+  volunteer: VolunteerAccount
+}
+
+export type VolunteerDashboardEvent = {
+  signup_id: number
+  event_id: number
+  event_name: string
+  venue: string
+  event_date: string
+  event_status: string
+  signup_status: string
+  assigned_role_name: string | null
+  attendance: boolean | null
+}
+
+export type VolunteerDashboard = {
+  volunteer: VolunteerAccount
+  active_events: VolunteerDashboardEvent[]
+  past_events: VolunteerDashboardEvent[]
+  has_approved_event: boolean
+}
+
+const VOLUNTEER_TOKEN_KEY = "pts_volunteer_access_token"
+
 async function handle<T>(response: Response): Promise<T> {
   if (!response.ok) {
     const detail = await response
@@ -91,6 +128,50 @@ function postJson<T>(path: string, body?: unknown): Promise<T> {
     headers: body === undefined ? undefined : { "Content-Type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),
   }).then((response) => handle<T>(response))
+}
+
+function authorizedHeaders() {
+  const token = getVolunteerToken()
+  return token ? { Authorization: `Bearer ${token}` } : {}
+}
+
+function authorizedGet<T>(path: string): Promise<T> {
+  return fetch(`${API_BASE}${path}`, { headers: authorizedHeaders() }).then((response) => handle<T>(response))
+}
+
+export function getVolunteerToken() {
+  return window.localStorage.getItem(VOLUNTEER_TOKEN_KEY)
+}
+
+export function setVolunteerToken(token: string) {
+  window.localStorage.setItem(VOLUNTEER_TOKEN_KEY, token)
+}
+
+export function clearVolunteerToken() {
+  window.localStorage.removeItem(VOLUNTEER_TOKEN_KEY)
+}
+
+export function registerVolunteer(body: {
+  name: string
+  contact_number: string
+  password: string
+}): Promise<VolunteerAuthResult> {
+  return postJson("/volunteer-auth/register", body)
+}
+
+export function loginVolunteer(body: {
+  contact_number: string
+  password: string
+}): Promise<VolunteerAuthResult> {
+  return postJson("/volunteer-auth/login", body)
+}
+
+export function getVolunteerMe(): Promise<VolunteerAccount> {
+  return authorizedGet("/volunteer-auth/me")
+}
+
+export function getVolunteerDashboard(): Promise<VolunteerDashboard> {
+  return authorizedGet("/volunteer-auth/dashboard")
 }
 
 export function listEvents(): Promise<ListEnvelope<EventSummary>> {

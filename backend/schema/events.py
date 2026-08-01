@@ -1,6 +1,6 @@
 """Event, task, and subtask request and response schemas."""
 
-from datetime import date, datetime
+from datetime import date, datetime, time
 
 from pydantic import BaseModel, Field
 
@@ -17,6 +17,9 @@ class EventSummary(BaseModel):
     name: str
     venue: str
     event_date: str
+    description: str
+    start_time: str | None = None
+    end_time: str | None = None
     status: EventStatus
     beneficiary_id: int | None = None
 
@@ -26,6 +29,9 @@ class EventCreate(BaseModel):
     name: NonEmptyText
     venue: NonEmptyText
     event_date: date
+    description: str | None = None
+    start_time: time | None = None
+    end_time: time | None = None
     beneficiary_id: int | None = None
 
 
@@ -33,6 +39,9 @@ class EventUpdate(BaseModel):
     name: NonEmptyText | None = None
     venue: NonEmptyText | None = None
     event_date: date | None = None
+    description: str | None = None
+    start_time: time | None = None
+    end_time: time | None = None
     status: EventStatus | None = None
     beneficiary_id: int | None = None
 

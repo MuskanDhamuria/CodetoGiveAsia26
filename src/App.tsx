@@ -7,8 +7,11 @@ import EventOperationsMvp from "./EventOperationsMvp";
 import VolunteerDirectory from "./VolunteerDirectory";
 import VolunteerSignup from "./VolunteerSignup";
 import PublicEventsPortal from "./PublicEventsPortal";
+import VolunteerRegister from "./VolunteerRegister";
+import VolunteerLogin from "./VolunteerLogin";
+import VolunteerDashboard from "./VolunteerDashboard";
 
-export type Page = "home" | "dashboard" | "events" | "volunteers" | "ai" | "signup" | "community";
+export type Page = "home" | "dashboard" | "events" | "volunteers" | "ai" | "signup" | "community" | "volunteer-register" | "volunteer-login" | "volunteer-dashboard";
 
 const navLinks: { label: string; page: Page }[] = [
   { label: "Dashboard", page: "dashboard" },
@@ -23,11 +26,15 @@ const pageLabels: Record<Page, string> = {
   volunteers: "Volunteers",
   ai: "AI Copilot",
   signup: "Volunteer Sign-Up",
+  community: "Community Events",
+  "volunteer-register": "Volunteer Registration",
+  "volunteer-login": "Volunteer Sign In",
+  "volunteer-dashboard": "Volunteer Dashboard",
 };
 
 function readInitialPage(): Page {
   const page = new URLSearchParams(window.location.search).get("page");
-  return page === "dashboard" || page === "events" || page === "volunteers" || page === "ai" || page === "signup" || page === "community"
+  return page === "dashboard" || page === "events" || page === "volunteers" || page === "ai" || page === "signup" || page === "community" || page === "volunteer-register" || page === "volunteer-login" || page === "volunteer-dashboard"
     ? page
     : "home";
 }
@@ -791,6 +798,16 @@ export default function App() {
     window.history.replaceState({}, "", url);
   }
 
+  function navigateToVolunteerDashboard(eventId?: number) {
+    setActivePage("volunteer-dashboard");
+    const url = new URL(window.location.href);
+    url.searchParams.set("page", "volunteer-dashboard");
+    url.searchParams.delete("event");
+    if (eventId === undefined) url.searchParams.delete("focusEvent");
+    else url.searchParams.set("focusEvent", String(eventId));
+    window.history.replaceState({}, "", url);
+  }
+
   function handleQuickAction(action: FlowAction) {
     if (action === "create-event") {
       setOpenEventIndex(0);
@@ -810,10 +827,23 @@ export default function App() {
     return <VolunteerSignup />;
   }
 
+  if (activePage === "volunteer-register") {
+    return <VolunteerRegister onRegistered={() => navigateToVolunteerDashboard()} onLogin={() => navigate("volunteer-login")} />;
+  }
+
+  if (activePage === "volunteer-login") {
+    return <VolunteerLogin onLoggedIn={() => navigateToVolunteerDashboard()} onRegister={() => navigate("volunteer-register")} />;
+  }
+
+  if (activePage === "volunteer-dashboard") {
+    return <VolunteerDashboard onBack={() => navigate("community")} onSignIn={() => navigate("volunteer-login")} />;
+  }
+
   if (activePage === "community") {
     return (
       <PublicEventsPortal
-        onVolunteerSignup={() => navigateToSignup()}
+        onVolunteerSignup={() => navigate("volunteer-register")}
+        onVolunteerDashboard={navigateToVolunteerDashboard}
         onEventSignup={navigateToSignup}
       />
     );

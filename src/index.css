@@ -3297,11 +3297,16 @@ button {
 }
 
 .pts-signup-logo {
+  align-items: center;
   color: var(--pts-teal);
+  display: inline-flex;
   font-size: 20px;
   font-weight: 800;
   letter-spacing: -0.01em;
+  text-decoration: none;
 }
+
+.pts-signup-logo img { height: 42px; margin-right: 10px; object-fit: contain; width: 42px; }
 
 .pts-signup-tag {
   color: #8a9499;
@@ -3311,11 +3316,29 @@ button {
   letter-spacing: 0.06em;
 }
 
+.pts-signup-nav { align-items: center; display: flex; gap: 22px; }
+.pts-signup-nav a, .pts-account-header-actions a { color: #147e99; font-size: 13px; font-weight: 800; text-decoration: none; }
+
 .pts-signup-hero {
   background: linear-gradient(135deg, #eaf7fb 0%, #f7fbfd 100%);
   padding: 48px 28px;
   text-align: center;
 }
+
+.pts-signup-hero-image {
+  align-items: center;
+  background-image: linear-gradient(90deg, rgba(6, 48, 58, .74), rgba(6, 48, 58, .15)), url("/pts-community-hero.png");
+  background-position: center;
+  background-size: cover;
+  display: flex;
+  min-height: 320px;
+  text-align: left;
+}
+
+.pts-signup-hero-image > div { margin: 0 auto; max-width: 1050px; padding: 20px 28px; width: 100%; }
+.pts-signup-hero-image p { color: #bcecf6; font-size: 12px; font-weight: 800; letter-spacing: .13em; margin: 0 0 12px; text-transform: uppercase; }
+.pts-signup-hero-image h1 { color: #fff; font-size: clamp(34px, 5vw, 58px); letter-spacing: -.06em; line-height: 1; margin: 0 0 14px; max-width: 600px; }
+.pts-signup-hero-image span { color: #fff; display: block; font-size: 16px; line-height: 1.5; max-width: 500px; }
 
 .pts-signup-hero h1 {
   color: #1c2b30;
@@ -3336,6 +3359,16 @@ button {
   justify-content: center;
   padding: 32px 20px 64px;
 }
+
+.pts-signup-layout { align-items: start; gap: 24px; margin: 0 auto; max-width: 1050px; }
+.pts-signup-layout .pts-signup-card { flex: 1; }
+.pts-event-preview { background: #f2fafb; border: 1px solid #dceef1; border-radius: 14px; padding: 24px; width: min(350px, 100%); }
+.pts-event-preview h2 { color: #1c2b30; font-size: 25px; letter-spacing: -.04em; line-height: 1.1; margin: 0 0 20px; }
+.pts-event-preview-line { border-top: 1px solid #d9ebee; display: grid; gap: 3px; padding: 13px 0; }
+.pts-event-preview-line strong { color: #31535c; font-size: 13px; }
+.pts-event-preview-line span { color: #698087; font-size: 13px; }
+.pts-event-description { color: #5e747b; font-size: 14px; line-height: 1.55; margin: 13px 0 20px; }
+.pts-change-event { color: #147e99; font-size: 13px; font-weight: 800; text-decoration: none; }
 
 .pts-signup-card {
   background: #ffffff;
@@ -3514,6 +3547,132 @@ button {
   padding: 10px 18px;
 }
 
+.pts-account-page {
+  --pts-teal: #1aa3c4;
+  --pts-teal-dark: #147e99;
+  background: #fff;
+  color: #2b2b2b;
+  min-height: 100vh;
+  font-family: "Inter", "Segoe UI", system-ui, sans-serif;
+}
+
+.pts-account-header-actions,
+.pts-dashboard-actions {
+  align-items: center;
+  display: flex;
+  gap: 14px;
+}
+
+.pts-account-header-actions button,
+.pts-account-switch button,
+.pts-dashboard-actions button {
+  background: transparent;
+  border: 0;
+  color: var(--pts-teal-dark);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.pts-account-hero {
+  background-image: linear-gradient(90deg, rgba(6, 48, 58, .74), rgba(6, 48, 58, .16)), url("/pts-community-hero.png");
+  background-position: center;
+  background-size: cover;
+  padding: 58px 28px;
+  text-align: center;
+}
+
+.pts-account-hero p,
+.pts-account-eyebrow {
+  color: var(--pts-teal-dark);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .12em;
+  margin: 0 0 10px;
+  text-transform: uppercase;
+}
+
+.pts-account-hero p { color: #bcecf6; }
+
+.pts-account-hero h1,
+.pts-dashboard-top h1 {
+  color: #1c2b30;
+  font-size: clamp(30px, 4vw, 46px);
+  letter-spacing: -.05em;
+  margin: 0 0 10px;
+}
+
+.pts-account-hero h1 { color: #fff; }
+
+.pts-account-hero span,
+.pts-dashboard-top span {
+  color: #5b6b71;
+  display: block;
+  font-size: 15px;
+}
+
+.pts-account-hero span { color: #fff; }
+
+.pts-account-hero-compact { padding: 36px 28px; }
+.pts-account-main { align-items: start; display: flex; gap: 52px; justify-content: center; padding: 44px 20px 80px; }
+.pts-account-card { align-content: start; background: #fff; border: 1px solid #e2ecee; border-radius: 16px; box-shadow: 0 14px 36px rgba(22, 75, 88, .09); display: grid; gap: 16px; padding: 30px; width: min(520px, 100%); }
+.pts-account-side-copy { max-width: 330px; padding-top: 14px; }
+.pts-account-side-copy h2 { color: #1c2b30; font-size: 32px; letter-spacing: -.05em; line-height: 1.08; margin: 0 0 14px; }
+.pts-account-side-copy > p:not(.pts-account-eyebrow) { color: #6a7d83; font-size: 14px; line-height: 1.6; margin: 0 0 24px; }
+.pts-account-benefit { align-items: center; border-top: 1px solid #e5edef; display: flex; gap: 11px; padding: 13px 0; }
+.pts-account-benefit span { color: #1aa3c4; font-size: 11px; font-weight: 900; }
+.pts-account-benefit strong { color: #38545c; font-size: 13px; }
+.pts-login-side-copy { padding-top: 18px; }
+.pts-account-card-heading { margin-bottom: 3px; }
+.pts-account-card-heading h2 { color: #1c2b30; font-size: 26px; letter-spacing: -.04em; margin: 0; }
+.pts-info { align-items: center; background: #dff3f8; border: 0; border-radius: 50%; color: var(--pts-teal-dark); cursor: help; display: inline-flex; font-size: 11px; font-weight: 900; height: 17px; justify-content: center; margin-left: 4px; padding: 0; width: 17px; }
+.pts-password-meter { background: #edf1f2; border-radius: 999px; height: 5px; margin-top: 8px; overflow: hidden; }
+.pts-password-meter span { background: var(--pts-teal); display: block; height: 100%; transition: width .2s ease; }
+.pts-info-wrap { display: inline-block; position: relative; }
+.pts-password-tooltip { background: #1c363d; border-radius: 9px; bottom: calc(100% + 9px); box-shadow: 0 8px 22px rgba(22, 75, 88, .18); color: #dff5f8; display: grid; font-size: 12px; font-weight: 500; gap: 5px; left: 50%; min-width: 210px; opacity: 0; padding: 12px 14px; pointer-events: none; position: absolute; transform: translate(-50%, 5px); transition: opacity .15s ease, transform .15s ease; visibility: hidden; z-index: 5; }
+.pts-password-tooltip::after { border: 5px solid transparent; border-top-color: #1c363d; content: ""; left: 50%; position: absolute; top: 100%; transform: translateX(-50%); }
+.pts-password-tooltip strong { color: #fff; font-size: 12px; }
+.pts-info-wrap:hover .pts-password-tooltip,
+.pts-info-wrap:focus-within .pts-password-tooltip { opacity: 1; pointer-events: auto; transform: translate(-50%, 0); visibility: visible; }
+.pts-account-switch { color: #7c898d; font-size: 13px; margin: 0; text-align: center; }
+.pts-dashboard-main { margin: 0 auto; max-width: 1100px; padding: 52px 28px 80px; }
+.pts-dashboard-top { align-items: end; display: flex; justify-content: space-between; gap: 24px; margin-bottom: 34px; }
+.pts-dashboard-actions button { background: var(--pts-teal); border-radius: 8px; color: #fff; padding: 11px 15px; }
+.pts-dashboard-actions button.secondary { background: #eef7fa; color: var(--pts-teal-dark); }
+.pts-dashboard-section { border-top: 1px solid #e7eef0; padding: 28px 0; }
+.pts-dashboard-section-heading { align-items: end; display: flex; justify-content: space-between; margin-bottom: 14px; }
+.pts-dashboard-section-heading h2 { color: #1c2b30; font-size: 24px; letter-spacing: -.04em; margin: 0; }
+.pts-dashboard-section-heading > span { color: #849196; font-size: 13px; font-weight: 700; }
+.pts-dashboard-event { align-items: center; background: #fbfdfe; border: 1px solid #e3edef; border-radius: 12px; display: flex; justify-content: space-between; gap: 20px; margin-top: 11px; padding: 18px 20px; }
+.pts-dashboard-event.focused { animation: pts-event-focus 1.8s ease; border-color: #1aa3c4; box-shadow: 0 0 0 4px rgba(26, 163, 196, .14); }
+@keyframes pts-event-focus { 0%, 100% { background: #fbfdfe; } 35% { background: #eaf8fb; } }
+.pts-dashboard-event p { color: var(--pts-teal-dark); font-size: 11px; font-weight: 800; margin: 0 0 7px; text-transform: capitalize; }
+.pts-dashboard-event h3 { color: #1d3036; font-size: 18px; margin: 0 0 7px; }
+.pts-dashboard-event span, .pts-dashboard-event aside { color: #718187; font-size: 13px; }
+.pts-dashboard-event aside { display: grid; gap: 5px; text-align: right; }
+.pts-dashboard-event small { color: #9aa4a8; font-size: 11px; }
+.pts-dashboard-empty, .pts-dashboard-state { color: #7b898e; font-size: 14px; padding: 16px 0; }
+.pts-dashboard-signin { margin-top: 8px; width: min(300px, 100%); }
+.pts-locked-section { align-items: center; background: #f7fafb; border: 1px solid #e4eef0; border-radius: 13px; display: flex; gap: 24px; justify-content: space-between; margin-top: 20px; padding: 25px; }
+.pts-locked-section h2 { color: #1c2b30; font-size: 22px; margin: 0 0 7px; }
+.pts-locked-section p:not(.pts-account-eyebrow) { color: #718187; font-size: 13px; margin: 0; max-width: 560px; }
+.pts-locked-tools { display: flex; flex-wrap: wrap; gap: 7px; justify-content: flex-end; }
+.pts-locked-tools span { background: #e9f1f3; border-radius: 999px; color: #708087; font-size: 11px; font-weight: 800; padding: 8px 10px; white-space: nowrap; }
+
+@media (max-width: 680px) {
+  .pts-signup-topbar { padding: 16px 20px; }
+  .pts-signup-tag { display: none; }
+  .pts-signup-nav { gap: 12px; }
+  .pts-signup-layout, .pts-account-main { flex-direction: column; }
+  .pts-event-preview, .pts-account-side-copy, .pts-account-card { width: 100%; }
+  .pts-account-side-copy { max-width: none; padding-top: 0; }
+  .pts-dashboard-top, .pts-locked-section { align-items: stretch; flex-direction: column; }
+  .pts-dashboard-actions { justify-content: flex-start; }
+  .pts-dashboard-event { align-items: flex-start; flex-direction: column; }
+  .pts-dashboard-event aside { text-align: left; }
+  .pts-locked-tools { justify-content: flex-start; }
+}
+
 /* Public events portal */
 .public-events-portal {
   --public-teal: #149fc1;
@@ -3566,6 +3725,16 @@ button {
 
 .public-events-nav-link {
   text-decoration: none;
+}
+
+.public-events-signout-link {
+  background: transparent;
+  border: 0;
+  color: #64777e;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 800;
+  padding: 10px 0;
 }
 
 .public-events-volunteer-link {
@@ -3785,6 +3954,8 @@ button {
   padding: 11px 13px;
   width: 100%;
 }
+
+.public-event-details-button.signed-up { background: #e7f7f1; color: #17784a; cursor: pointer; opacity: 1; }
 
 .public-events-state {
   color: var(--public-muted);

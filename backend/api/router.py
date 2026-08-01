@@ -11,6 +11,7 @@ from backend.api.routes import (
     participants,
     team_members,
     volunteers,
+    volunteer_auth,
 )
 
 
@@ -22,6 +23,7 @@ api_router.include_router(events.router)
 api_router.include_router(team_members.router)
 api_router.include_router(dashboard.router)
 api_router.include_router(volunteers.router)
+api_router.include_router(volunteer_auth.router)
 api_router.include_router(participants.router)
 
 # Add future feature routers here, for example:

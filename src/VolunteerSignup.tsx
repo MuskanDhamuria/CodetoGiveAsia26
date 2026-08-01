@@ -3,6 +3,8 @@ import {
   listEventRoles,
   listEvents,
   publicSignup,
+  getVolunteerMe,
+  getVolunteerToken,
   type EventSummary,
   type Role,
 } from "./volunteer-api"
@@ -18,6 +20,14 @@ function formatDate(isoDate: string) {
         year: "numeric",
         timeZone: "UTC",
       }).format(parsed)
+}
+
+function formatTime(value: string | null) {
+  if (!value) return ""
+  const [hourText, minute] = value.split(":")
+  const hour = Number(hourText)
+  if (!Number.isInteger(hour)) return value
+  return `${hour % 12 || 12}:${minute} ${hour >= 12 ? "PM" : "AM"}`
 }
 
 function readEventFromUrl(): number | null {
@@ -50,6 +60,24 @@ export default function VolunteerSignup() {
         if (initial) setEventId(initial.id)
       })
       .catch((err) => setError(err instanceof Error ? err.message : "Could not load events."))
+  }, [])
+
+  useEffect(() => {
+    if (!getVolunteerToken()) return
+    getVolunteerMe()
+      .then((volunteer) => {
+        setName(volunteer.name)
+        setEmail(volunteer.email ?? "")
+        const knownCodes = ["+880", "+65", "+60", "+62", "+63", "+91", "+95", "+86", "+84", "+1", "+44"]
+        const matchedCode = knownCodes.find((code) => volunteer.contact_number?.startsWith(code))
+        if (matchedCode) {
+          setCountryCode(matchedCode)
+          setPhone((volunteer.contact_number ?? "").slice(matchedCode.length))
+        } else {
+          setPhone(volunteer.contact_number ?? "")
+        }
+      })
+      .catch(() => undefined)
   }, [])
 
   useEffect(() => {
@@ -101,16 +129,25 @@ export default function VolunteerSignup() {
   return (
     <div className="pts-signup">
       <header className="pts-signup-topbar">
-        <span className="pts-signup-logo">Passion To Serve</span>
-        <span className="pts-signup-tag">Volunteer Sign-Up</span>
+        <a className="pts-signup-logo" href="?page=community">
+          <img src="/pts-logo.png" alt="" />Passion To Serve
+        </a>
+        <nav className="pts-signup-nav">
+          <a href="?page=community">Events</a>
+          {getVolunteerToken() && <a href="?page=volunteer-dashboard">My dashboard</a>}
+          <span className="pts-signup-tag">Volunteer Sign-Up</span>
+        </nav>
       </header>
 
-      <section className="pts-signup-hero">
-        <h1>Volunteer with us</h1>
-        <p>Lend your time to an upcoming event. We'll confirm your spot by phone or email.</p>
+      <section className="pts-signup-hero pts-signup-hero-image">
+        <div>
+          <p>Passion To Serve community</p>
+          <h1>Give your time. Make an impact.</h1>
+          <span>Choose an event and join a community of volunteers serving together.</span>
+        </div>
       </section>
 
-      <main className="pts-signup-main">
+      <main className="pts-signup-main pts-signup-layout">
         {done ? (
           <div className="pts-signup-card pts-signup-success">
             <div className="pts-signup-check">✓</div>
@@ -135,9 +172,22 @@ export default function VolunteerSignup() {
             </button>
           </div>
         ) : (
+          <>
+          {selectedEvent && (
+            <aside className="pts-event-preview">
+              <p className="pts-account-eyebrow">You are joining</p>
+              <h2>{selectedEvent.name}</h2>
+              <div className="pts-event-preview-line"><strong>{formatDate(selectedEvent.event_date)}</strong><span>{selectedEvent.venue}</span></div>
+              {(selectedEvent.start_time || selectedEvent.end_time) && (
+                <div className="pts-event-preview-line"><strong>Time</strong><span>{formatTime(selectedEvent.start_time)}{selectedEvent.end_time ? ` – ${formatTime(selectedEvent.end_time)}` : ""}</span></div>
+              )}
+              <p className="pts-event-description">{selectedEvent.description || "Join us for a meaningful day of service with the Passion To Serve community."}</p>
+              <a href="#event-picker" className="pts-change-event">Choose another event</a>
+            </aside>
+          )}
           <form className="pts-signup-card" onSubmit={handleSubmit}>
             <label className="pts-field">
-              <span>Event</span>
+              <span id="event-picker">Event</span>
               <select
                 value={eventId ?? ""}
                 onChange={(input) => setEventId(input.target.value ? Number(input.target.value) : null)}
@@ -152,6 +202,7 @@ export default function VolunteerSignup() {
             {selectedEvent && (
               <p className="pts-signup-eventmeta">
                 {formatDate(selectedEvent.event_date)} · {selectedEvent.venue}
+                {(selectedEvent.start_time || selectedEvent.end_time) && ` · ${formatTime(selectedEvent.start_time)}${selectedEvent.end_time ? `–${formatTime(selectedEvent.end_time)}` : ""}`}
               </p>
             )}
 
@@ -222,6 +273,7 @@ export default function VolunteerSignup() {
               We'll only use your details to coordinate this event.
             </p>
           </form>
+          </>
         )}
       </main>
     </div>

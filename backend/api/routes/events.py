@@ -82,6 +82,9 @@ def event_detail(db, event_id: int) -> EventDetail:
         name=event["name"],
         venue=event["venue"],
         event_date=event["event_date"],
+        description=event["description"],
+        start_time=event["start_time"],
+        end_time=event["end_time"],
         status=event["status"],
         beneficiary_id=event["beneficiary_id"],
         created_at=event["created_at"],
@@ -93,7 +96,7 @@ def event_detail(db, event_id: int) -> EventDetail:
 @router.post("/events", response_model=EventDetail, status_code=201)
 def create_event(payload: EventCreate, db: Connection) -> EventDetail:
     template = db.execute(
-        "SELECT beneficiary_id FROM event_templates WHERE id = ?",
+        "SELECT beneficiary_id, description FROM event_templates WHERE id = ?",
         (payload.event_template_id,),
     ).fetchone()
     if template is None:
@@ -107,14 +110,19 @@ def create_event(payload: EventCreate, db: Connection) -> EventDetail:
     with db:
         event = db.execute(
             """
-            INSERT INTO events (event_template_id, name, venue, event_date, beneficiary_id)
-            VALUES (?, ?, ?, ?, ?) RETURNING id
+            INSERT INTO events
+                (event_template_id, name, venue, event_date, description,
+                 start_time, end_time, beneficiary_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id
             """,
             (
                 payload.event_template_id,
                 payload.name,
                 payload.venue,
                 payload.event_date.isoformat(),
+                payload.description if payload.description is not None else template["description"],
+                payload.start_time.isoformat() if payload.start_time else None,
+                payload.end_time.isoformat() if payload.end_time else None,
                 beneficiary_id,
             ),
         ).fetchone()
@@ -198,7 +206,8 @@ def list_events(
     ).fetchone()[0]
     rows = db.execute(
         f"""
-        SELECT id, name, venue, event_date, status, beneficiary_id FROM events
+        SELECT id, name, venue, event_date, description, start_time, end_time,
+               status, beneficiary_id FROM events
         WHERE {clause}
         ORDER BY {sort} {order.upper()}
         LIMIT ? OFFSET ?
@@ -224,6 +233,9 @@ def update_event(event_id: int, payload: EventUpdate, db: Connection) -> EventDe
     values = payload.model_dump(exclude_unset=True)
     if "event_date" in values and values["event_date"] is not None:
         values["event_date"] = values["event_date"].isoformat()
+    for field in ("start_time", "end_time"):
+        if field in values and values[field] is not None:
+            values[field] = values[field].isoformat()
     if values:
         assignments = ", ".join(f"{field} = ?" for field in values)
         db.execute(

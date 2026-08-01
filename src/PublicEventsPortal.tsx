@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react"
-import { listBeneficiaries, listEvents, type Beneficiary, type EventSummary } from "./volunteer-api"
+import { clearVolunteerToken, getVolunteerDashboard, getVolunteerToken, listBeneficiaries, listEvents, type Beneficiary, type EventSummary, type VolunteerDashboardEvent } from "./volunteer-api"
 
 const HERO_IMAGE = "/pts-community-hero.png"
 
@@ -52,11 +52,20 @@ function eventCategory(event: EventSummary) {
   return "Items-To-Serve"
 }
 
+function signupStatusLabel(status: string) {
+  if (status === "requested") return "Pending approval"
+  if (status === "approved") return "Approved"
+  if (status === "rejected") return "Not approved"
+  return status
+}
+
 export default function PublicEventsPortal({
   onVolunteerSignup,
+  onVolunteerDashboard,
   onEventSignup,
 }: {
   onVolunteerSignup: () => void
+  onVolunteerDashboard: (eventId?: number) => void
   onEventSignup: (eventId: number) => void
 }) {
   const [events, setEvents] = useState<EventSummary[]>([])
@@ -65,6 +74,14 @@ export default function PublicEventsPortal({
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("upcoming")
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [signedIn, setSignedIn] = useState(Boolean(getVolunteerToken()))
+  const [signupsByEvent, setSignupsByEvent] = useState<Map<number, VolunteerDashboardEvent>>(new Map())
+
+  function signOut() {
+    clearVolunteerToken()
+    setSignedIn(false)
+    setSignupsByEvent(new Map())
+  }
 
   useEffect(() => {
     setLoading(true)
@@ -77,6 +94,16 @@ export default function PublicEventsPortal({
       .catch((reason) => setError(reason instanceof Error ? reason.message : "Could not load events."))
       .finally(() => setLoading(false))
   }, [])
+
+  useEffect(() => {
+    if (!signedIn) return
+    getVolunteerDashboard()
+      .then((dashboard) => {
+        const signups = [...dashboard.active_events, ...dashboard.past_events]
+        setSignupsByEvent(new Map(signups.map((signup) => [signup.event_id, signup])))
+      })
+      .catch(() => undefined)
+  }, [signedIn])
 
   const beneficiaryNames = useMemo(
     () => new Map(beneficiaries.map((beneficiary) => [beneficiary.id, beneficiary.name])),
@@ -104,9 +131,18 @@ export default function PublicEventsPortal({
         </a>
         <nav className="public-events-nav" aria-label="Public navigation">
           <a className="public-events-nav-link" href="#events">Events</a>
-          <button type="button" className="public-events-volunteer-link" onClick={onVolunteerSignup}>
-            Volunteer sign up
+          <button
+            type="button"
+            className="public-events-volunteer-link"
+            onClick={() => signedIn ? onVolunteerDashboard() : onVolunteerSignup()}
+          >
+            {signedIn ? "My dashboard" : "Volunteer sign up"}
           </button>
+          {signedIn && (
+            <button type="button" className="public-events-signout-link" onClick={signOut}>
+              Sign out
+            </button>
+          )}
         </nav>
       </header>
 
@@ -158,10 +194,11 @@ export default function PublicEventsPortal({
 
         {!loading && !error && visibleEvents.length > 0 && (
           <section className="public-events-grid" aria-label="Events list">
-            {visibleEvents.map((event) => (
-              <article className="public-event-card" key={event.id}>
+            {visibleEvents.map((event) => {
+              const signup = signupsByEvent.get(event.id)
+              return <article className="public-event-card" key={event.id}>
                 <div className="public-event-card-image" style={{ backgroundImage: `url(${eventImage(event)})` }}>
-                  <span>{event.status === "closed" ? "Past event" : "Open for sign-up"}</span>
+                  <span>{signup ? `Already signed up · ${signupStatusLabel(signup.signup_status)}` : event.status === "closed" ? "Past event" : "Open for sign-up"}</span>
                 </div>
                 <div className="public-event-card-body">
                   <p className="public-event-category">{eventCategory(event)}</p>
@@ -175,15 +212,15 @@ export default function PublicEventsPortal({
                   </div>
                   <button
                     type="button"
-                    className="public-event-details-button"
-                    disabled={event.status === "closed"}
-                    onClick={() => onEventSignup(event.id)}
+                    className={`public-event-details-button ${signup ? "signed-up" : ""}`}
+                    disabled={event.status === "closed" && !signup}
+                    onClick={() => signup ? onVolunteerDashboard(event.id) : onEventSignup(event.id)}
                   >
-                    {event.status === "closed" ? "Past event" : "Sign up for this event"}
+                    {signup ? `View status · ${signupStatusLabel(signup.signup_status)}` : event.status === "closed" ? "Past event" : "Sign up for this event"}
                   </button>
                 </div>
               </article>
-            ))}
+            } )}
           </section>
         )}
       </main>

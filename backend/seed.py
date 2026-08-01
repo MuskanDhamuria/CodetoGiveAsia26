@@ -148,13 +148,16 @@ def seed(db) -> None:
         )
 
     def create_event(template_id: int, template_tasks, name, venue, event_date, status):
+        template_description = db.execute(
+            "SELECT description FROM event_templates WHERE id = ?", (template_id,)
+        ).fetchone()[0]
         event_id = db.execute(
             """
             INSERT INTO events
-                (event_template_id, name, venue, event_date, status, beneficiary_id)
-            VALUES (?, ?, ?, ?, ?, ?) RETURNING id
+                (event_template_id, name, venue, event_date, description, status, beneficiary_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id
             """,
-            (template_id, name, venue, event_date.isoformat(), status, migrant_workers_id),
+            (template_id, name, venue, event_date.isoformat(), template_description, status, migrant_workers_id),
         ).fetchone()[0]
         task_ids = {}
         for position, (task_name, offset, category, _role_name) in enumerate(template_tasks):

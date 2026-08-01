@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ChangeEvent } from "react";
 import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import AiCopilot from "./AiCopilot";
 import EventCollectionPrototype from "./EventCollectionPrototype";
@@ -15,7 +15,18 @@ import VolunteerRegister from "./VolunteerRegister";
 import VolunteerLogin from "./VolunteerLogin";
 import VolunteerDashboard from "./VolunteerDashboard";
 
-export type Page = "home" | "dashboard" | "events" | "volunteers" | "ai" | "signup" | "community" | "volunteer-register" | "volunteer-login" | "volunteer-dashboard";
+export type Page =
+  | "home"
+  | "dashboard"
+  | "events"
+  | "volunteers"
+  | "reports"
+  | "ai"
+  | "signup"
+  | "community"
+  | "volunteer-register"
+  | "volunteer-login"
+  | "volunteer-dashboard";
 
 const navLinks: { label: string; page: Page }[] = [
   { label: "Dashboard", page: "dashboard" },
@@ -28,6 +39,7 @@ const pageLabels: Record<Page, string> = {
   dashboard: "Dashboard",
   events: "Events",
   volunteers: "Volunteers",
+  reports: "Reports",
   ai: "AI Copilot",
   signup: "Volunteer Sign-Up",
   community: "Community Events",
@@ -43,7 +55,11 @@ function readInitialPage(pathname = window.location.pathname): Page {
 
   if (pathname.startsWith("/admin/")) {
     const adminPage = pathname.split("/")[2];
-    return adminPage === "dashboard" || adminPage === "events" || adminPage === "volunteers" || adminPage === "ai"
+    return adminPage === "dashboard" ||
+      adminPage === "events" ||
+      adminPage === "volunteers" ||
+      adminPage === "reports" ||
+      adminPage === "ai"
       ? adminPage
       : "home";
   }
@@ -55,7 +71,16 @@ function readInitialPage(pathname = window.location.pathname): Page {
   if (pathname === "/volunteer-dashboard") return "volunteer-dashboard";
 
   const page = new URLSearchParams(window.location.search).get("page");
-  return page === "dashboard" || page === "events" || page === "volunteers" || page === "ai" || page === "signup" || page === "community" || page === "volunteer-register" || page === "volunteer-login" || page === "volunteer-dashboard"
+  return page === "dashboard" ||
+    page === "events" ||
+    page === "volunteers" ||
+    page === "reports" ||
+    page === "ai" ||
+    page === "signup" ||
+    page === "community" ||
+    page === "volunteer-register" ||
+    page === "volunteer-login" ||
+    page === "volunteer-dashboard"
     ? page
     : "home";
 }
@@ -131,6 +156,122 @@ const events = [
     readiness: 56,
   },
 ];
+
+const completedEvents = [
+  {
+    id: 101,
+    name: "Community Health Fair 2026",
+    date: "18 Jul 2026",
+    venue: "Tampines Hub",
+    reportStatus: "Incomplete",
+    attendees: 620,
+    volunteers: 86,
+    fundsRaised: "$18,400",
+    beneficiaries: 430,
+    workshops: 12,
+    partners: ["Tampines Hub", "CareWell Clinic", "SMU Volunteers"],
+    photos: ["Registration", "Health screenings", "Volunteer teams"],
+    quote:
+      "The event made health checks feel accessible and friendly for everyone.",
+    nextAction: "Generate publicity pack",
+  },
+  {
+    id: 102,
+    name: "Beach Cleanup Drive 2026",
+    date: "4 Jul 2026",
+    venue: "East Coast Park Area C",
+    reportStatus: "Incomplete",
+    attendees: 340,
+    volunteers: 104,
+    fundsRaised: "$6,250",
+    beneficiaries: 900,
+    workshops: 3,
+    partners: ["NParks", "GreenSG", "Coastal Action Network"],
+    photos: ["Opening briefing", "Cleanup zones", "Closing weigh-in"],
+    quote:
+      "Seeing everyone work together made environmental action feel possible.",
+    nextAction: "Generate publicity pack",
+  },
+  {
+    id: 103,
+    name: "Food Donation Sortathon 2026",
+    date: "21 Jun 2026",
+    venue: "Central Warehouse",
+    reportStatus: "Complete",
+    attendees: 180,
+    volunteers: 52,
+    fundsRaised: "$9,800",
+    beneficiaries: 760,
+    workshops: 4,
+    partners: ["Food From The Heart", "Central Warehouse", "Youth Corps"],
+    photos: ["Sorting line", "Packing teams", "Distribution handover"],
+    quote:
+      "Every packed bundle felt like a practical expression of care.",
+    nextAction: "Review generated pack",
+  },
+  {
+    id: 104,
+    name: "Volunteer Training Day 2026",
+    date: "7 Jun 2026",
+    venue: "SMU School of Accountancy",
+    reportStatus: "Complete",
+    attendees: 210,
+    volunteers: 38,
+    fundsRaised: "$3,100",
+    beneficiaries: 210,
+    workshops: 8,
+    partners: ["SMU", "Community Leadership Circle"],
+    photos: ["Workshop rooms", "Mentor circles", "Certificate moment"],
+    quote:
+      "The training gave me confidence to lead calmly on event day.",
+    nextAction: "Review generated pack",
+  },
+] as const;
+
+type CompletedEvent = {
+  id: number;
+  name: string;
+  date: string;
+  venue: string;
+  reportStatus: "Complete" | "Incomplete";
+  attendees: number;
+  volunteers: number;
+  fundsRaised?: string;
+  beneficiaries?: number;
+  workshops?: number;
+  partners: string[];
+  photos: string[];
+  quote?: string;
+  nextAction: string;
+  generatedCaption?: string;
+};
+
+type CompletedEventReportResponse = {
+  id: number;
+  name: string;
+  date: string;
+  venue: string;
+  report_status: "Complete" | "Incomplete";
+  attendees: number;
+  volunteers: number;
+  partners: string[];
+  generated_caption: string;
+};
+
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000/api/v1";
+
+type UploadedPhoto = {
+  id: string;
+  name: string;
+  mimeType: string;
+  src: string;
+};
+
+type PhotoCaptionResult = {
+  caption: string;
+  altText: string;
+};
 
 const kanbanColumns = [
   {
@@ -247,6 +388,14 @@ const copilotSuggestions: Record<
       scope: "Registration Trend",
       summary: "Registration for Health Fair is lower than expected.",
       action: "Generate Broadcast",
+    },
+  ],
+  reports: [
+    {
+      scope: "Publicity Pack",
+      summary:
+        "Two completed events still need social media and donor-facing copy.",
+      action: "Generate Drafts",
     },
   ],
   events: [
@@ -832,6 +981,490 @@ function EventsPage({ initialEventIndex }: { initialEventIndex: number | null })
   );
 }
 
+function PublicityPack({
+  event,
+  isReportComplete,
+  onMarkComplete,
+}: {
+  event: CompletedEvent;
+  isReportComplete: boolean;
+  onMarkComplete: () => void;
+}) {
+  const [copiedLabel, setCopiedLabel] = useState<string | null>(null);
+  const [uploadedPhotos, setUploadedPhotos] = useState<UploadedPhoto[]>([]);
+  const [selectedPhotoId, setSelectedPhotoId] = useState<string | null>(null);
+  const [photoCaptions, setPhotoCaptions] = useState<
+    Record<string, PhotoCaptionResult>
+  >({});
+  const [isGeneratingPhotoCaption, setIsGeneratingPhotoCaption] =
+    useState(false);
+  const hashtagSource = event.partners
+    .map((partner) => partner.replace(/[^A-Za-z0-9]/g, ""))
+    .filter(Boolean)
+    .slice(0, 2);
+  const hashtags = [
+    "#PassionToServe",
+    "#VolunteerSG",
+    ...hashtagSource.map((tag) => `#${tag}`),
+  ];
+  const caption =
+    event.generatedCaption ||
+    `${event.name} welcomed ${event.attendees} attendees with the support of ${event.volunteers} volunteers and partners ${event.partners.join(", ")}. Thank you to everyone who helped create a meaningful day of service and community connection. ${hashtags.join(" ")}`;
+  const selectedPhoto =
+    uploadedPhotos.find((photo) => photo.id === selectedPhotoId) ??
+    uploadedPhotos[0] ??
+    null;
+  const fallbackPhotoCaption = selectedPhoto
+    ? `AI photo description is unavailable right now. Uploaded photo ${selectedPhoto.name} is attached to ${event.name}; retry when the backend is connected to generate a scene-specific caption.`
+    : "";
+  const fallbackPhotoAltText = selectedPhoto
+    ? `Uploaded event photo file: ${selectedPhoto.name}.`
+    : "";
+  const selectedPhotoCaption = selectedPhoto
+    ? photoCaptions[selectedPhoto.id]?.caption ?? fallbackPhotoCaption
+    : "";
+  const selectedPhotoAltText = selectedPhoto
+    ? photoCaptions[selectedPhoto.id]?.altText ?? fallbackPhotoAltText
+    : "";
+
+  useEffect(() => {
+    setUploadedPhotos([]);
+    setSelectedPhotoId(null);
+    setPhotoCaptions({});
+  }, [event.name]);
+
+  function handlePhotoUpload(uploadEvent: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(uploadEvent.target.files ?? []);
+    if (files.length === 0) return;
+
+    Promise.all(
+      files.map(
+        (file) =>
+          new Promise<UploadedPhoto>((resolve) => {
+            const reader = new FileReader();
+            reader.onload = () =>
+              resolve({
+                id: `${file.name}-${file.lastModified}-${file.size}`,
+                name: file.name,
+                mimeType: file.type || "image/jpeg",
+                src: String(reader.result),
+              });
+            reader.readAsDataURL(file);
+          }),
+      ),
+    ).then((photos) => {
+      setUploadedPhotos((current) => [...current, ...photos]);
+      setSelectedPhotoId((current) => current ?? photos[0]?.id ?? null);
+    });
+
+    uploadEvent.target.value = "";
+  }
+
+  function removeUploadedPhoto(photoId: string) {
+    setUploadedPhotos((current) => {
+      const next = current.filter((photo) => photo.id !== photoId);
+      setSelectedPhotoId((currentSelectedPhotoId) => {
+        if (currentSelectedPhotoId !== photoId) return currentSelectedPhotoId;
+        return next[0]?.id ?? null;
+      });
+      return next;
+    });
+  }
+
+  useEffect(() => {
+    if (!selectedPhoto || photoCaptions[selectedPhoto.id]) return;
+    const imageData = selectedPhoto.src.split(",")[1] ?? selectedPhoto.src;
+
+    setIsGeneratingPhotoCaption(true);
+    fetch(`${API_BASE_URL}/reports/${event.id}/photo-caption`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        file_name: selectedPhoto.name,
+        mime_type: selectedPhoto.mimeType,
+        image_data: imageData,
+        event_name: event.name,
+        venue: event.venue,
+        attendees: event.attendees,
+        volunteers: event.volunteers,
+        partners: event.partners,
+      }),
+    })
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error("Unable to generate photo caption");
+        }
+        return response.json() as Promise<{
+          caption: string;
+          alt_text: string;
+        }>;
+      })
+      .then((result) => {
+        setPhotoCaptions((current) => ({
+          ...current,
+          [selectedPhoto.id]: {
+            caption: result.caption,
+            altText: result.alt_text,
+          },
+        }));
+      })
+      .catch(() => {
+        setPhotoCaptions((current) => ({
+          ...current,
+          [selectedPhoto.id]: {
+            caption: fallbackPhotoCaption,
+            altText: fallbackPhotoAltText,
+          },
+        }));
+      })
+      .finally(() => setIsGeneratingPhotoCaption(false));
+  }, [
+    event.id,
+    fallbackPhotoAltText,
+    fallbackPhotoCaption,
+    photoCaptions,
+    selectedPhoto,
+  ]);
+
+  async function copyContent(label: string, copy: string) {
+    await navigator.clipboard?.writeText(copy);
+    setCopiedLabel(label);
+    window.setTimeout(() => setCopiedLabel(null), 1600);
+  }
+
+  return (
+    <section
+      className="publicity-pack"
+      aria-label={`${event.name} publicity pack`}
+    >
+      <div className="pack-header">
+        <div>
+          <p>AI publicity material generator</p>
+          <h2>{event.name}</h2>
+          <span>
+            Event report details with one ready-to-review caption and
+            photo-based caption support.
+          </span>
+        </div>
+        <button
+          type="button"
+          disabled={isReportComplete}
+          onClick={onMarkComplete}
+        >
+          {isReportComplete ? "Report Complete" : "Mark Report Complete"}
+        </button>
+      </div>
+
+      <div className="impact-summary-grid">
+        {[
+          ["Attendees", event.attendees],
+          ["Volunteers", event.volunteers],
+        ].map(([label, value]) => (
+          <article key={label}>
+            <span>{label}</span>
+            <strong>{value}</strong>
+          </article>
+        ))}
+      </div>
+
+      <section className="partner-panel">
+        <h3>Partners</h3>
+        <div>
+          {event.partners.map((partner) => (
+            <span key={partner}>{partner}</span>
+          ))}
+        </div>
+      </section>
+
+      <article className="caption-card">
+        <div>
+          <h3>Generated Caption</h3>
+          <p>{caption}</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => void copyContent("Generated Caption", caption)}
+        >
+          {copiedLabel === "Generated Caption" ? "Copied" : "Copy"}
+        </button>
+      </article>
+
+      <section className="photo-assistant">
+        <div className="photo-assistant-header">
+          <div>
+            <h3>Photo-based caption assistant</h3>
+            <p>Upload or select event photos to generate captions and alt text.</p>
+          </div>
+          <label>
+            <span>Upload Photos</span>
+            <input
+              multiple
+              type="file"
+              accept="image/*"
+              onChange={handlePhotoUpload}
+            />
+          </label>
+        </div>
+
+        {uploadedPhotos.length > 0 ? (
+          <div className="photo-selection-grid">
+            {uploadedPhotos.map((photo) => (
+              <article className="photo-upload-card" key={photo.id}>
+                <button
+                  className={`photo-select-button ${
+                    selectedPhoto?.id === photo.id ? "selected" : ""
+                  }`}
+                  type="button"
+                  onClick={() => setSelectedPhotoId(photo.id)}
+                >
+                  <img src={photo.src} alt="" />
+                  <span>{photo.name}</span>
+                </button>
+                <button
+                  className="remove-photo-button"
+                  aria-label={`Remove ${photo.name}`}
+                  type="button"
+                  onClick={() => removeUploadedPhoto(photo.id)}
+                >
+                  x
+                </button>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <div className="photo-upload-empty">
+            Upload one or more event photos to generate a caption and alt text.
+          </div>
+        )}
+
+        <div className="photo-output-grid">
+          <article>
+            <h4>Caption</h4>
+            <p>
+              {isGeneratingPhotoCaption
+                ? "Generating AI caption..."
+                : selectedPhoto
+                  ? selectedPhotoCaption
+                : "Your photo caption will appear here after upload."}
+            </p>
+          </article>
+          <article>
+            <h4>Alt Text</h4>
+            <p>
+              {isGeneratingPhotoCaption
+                ? "Generating alt text..."
+                : selectedPhoto
+                  ? selectedPhotoAltText
+                : "Alt text will appear here after upload."}
+            </p>
+          </article>
+        </div>
+      </section>
+    </section>
+  );
+}
+
+function ReportEventCard({
+  event,
+  isReportComplete,
+  isSelected,
+  onSelect,
+}: {
+  event: CompletedEvent;
+  isReportComplete: boolean;
+  isSelected: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      className={`report-event-card ${isSelected ? "selected" : ""}`}
+      type="button"
+      onClick={onSelect}
+    >
+      <div>
+        <h3>{event.name}</h3>
+        <p>
+          {event.date} - {event.venue}
+        </p>
+      </div>
+      <dl>
+        <div>
+          <dt>Attendees</dt>
+          <dd>{event.attendees}</dd>
+        </div>
+        <div>
+          <dt>Volunteers</dt>
+          <dd>{event.volunteers}</dd>
+        </div>
+      </dl>
+      <span>
+        {isReportComplete ? "Review generated pack" : event.nextAction}
+      </span>
+    </button>
+  );
+}
+
+function ReportsPage() {
+  const [reportEvents, setReportEvents] = useState<CompletedEvent[]>(
+    completedEvents.map((event) => ({ ...event })),
+  );
+  const [isLoadingReports, setIsLoadingReports] = useState(true);
+  const [reportsSource, setReportsSource] = useState<"database" | "demo">(
+    "demo",
+  );
+  const [completeReportNames, setCompleteReportNames] = useState(
+    () =>
+      new Set(
+        completedEvents
+          .filter((event) => event.reportStatus === "Complete")
+          .map((event) => event.name),
+      ),
+  );
+  const incompleteEvents = reportEvents.filter(
+    (event) => !completeReportNames.has(event.name),
+  );
+  const completeEvents = reportEvents.filter(
+    (event) => completeReportNames.has(event.name),
+  );
+  const [selectedEventName, setSelectedEventName] = useState(
+    incompleteEvents[0]?.name ?? completedEvents[0].name,
+  );
+  const selectedEvent =
+    reportEvents.find((event) => event.name === selectedEventName) ??
+    reportEvents[0];
+
+  useEffect(() => {
+    fetch(`${API_BASE_URL}/reports/completed`)
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error("Unable to load completed reports");
+        }
+        return response.json() as Promise<CompletedEventReportResponse[]>;
+      })
+      .then((reports) => {
+        if (reports.length === 0) {
+          setReportsSource("demo");
+          return;
+        }
+
+        const eventsFromDatabase = reports.map((report) => ({
+          id: report.id,
+          name: report.name,
+          date: report.date,
+          venue: report.venue,
+          reportStatus: report.report_status,
+          attendees: report.attendees,
+          volunteers: report.volunteers,
+          partners: report.partners,
+          photos: ["Uploaded event photo"],
+          nextAction: "Generate publicity caption",
+          generatedCaption: report.generated_caption,
+        }));
+        setReportEvents(eventsFromDatabase);
+        setCompleteReportNames(
+          new Set(
+            eventsFromDatabase
+              .filter((event) => event.reportStatus === "Complete")
+              .map((event) => event.name),
+          ),
+        );
+        setSelectedEventName(eventsFromDatabase[0].name);
+        setReportsSource("database");
+      })
+      .catch(() => {
+        setReportsSource("demo");
+      })
+      .finally(() => setIsLoadingReports(false));
+  }, []);
+
+  function markSelectedReportComplete() {
+    setCompleteReportNames((current) => {
+      const next = new Set(current);
+      next.add(selectedEvent.name);
+      return next;
+    });
+    setReportEvents((current) =>
+      current.map((event) =>
+        event.id === selectedEvent.id
+          ? { ...event, reportStatus: "Complete" }
+          : event,
+      ),
+    );
+
+    fetch(`${API_BASE_URL}/reports/${selectedEvent.id}/complete`, {
+      method: "PUT",
+    }).catch(() => undefined);
+  }
+
+  return (
+    <section className="reports-page">
+      <div className="dashboard-shell">
+        <header className="section-hero">
+          <p>Reports</p>
+          <h1>Post-event publicity</h1>
+          <span>
+            Select a completed event to generate review-ready social media and
+            impact material.
+          </span>
+          <small>
+            {isLoadingReports
+              ? "Loading completed events from database..."
+              : reportsSource === "database"
+                ? "Connected to database"
+                : "Using demo report data until the API has completed events"}
+          </small>
+        </header>
+
+        <div className="reports-layout">
+          <aside className="report-event-list" aria-label="Completed events">
+            <section>
+              <div className="section-heading compact">
+                <h2>Report Incomplete</h2>
+                <span>{incompleteEvents.length} events</span>
+              </div>
+              <div className="report-event-stack">
+                {incompleteEvents.map((event) => (
+                  <ReportEventCard
+                    event={event}
+                    isReportComplete={completeReportNames.has(event.name)}
+                    isSelected={selectedEvent.name === event.name}
+                    key={event.name}
+                    onSelect={() => setSelectedEventName(event.name)}
+                  />
+                ))}
+              </div>
+            </section>
+
+            <section>
+              <div className="section-heading compact">
+                <h2>Report Complete</h2>
+                <span>{completeEvents.length} events</span>
+              </div>
+              <div className="report-event-stack">
+                {completeEvents.map((event) => (
+                  <ReportEventCard
+                    event={event}
+                    isReportComplete={completeReportNames.has(event.name)}
+                    isSelected={selectedEvent.name === event.name}
+                    key={event.name}
+                    onSelect={() => setSelectedEventName(event.name)}
+                  />
+                ))}
+              </div>
+            </section>
+          </aside>
+
+          <PublicityPack
+            event={selectedEvent}
+            isReportComplete={completeReportNames.has(selectedEvent.name)}
+            onMarkComplete={markSelectedReportComplete}
+          />
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function VolunteerAvailabilityCalendar() {
   const availableDays = new Set([3, 4, 7, 10, 11, 17, 18, 24, 25, 31]);
   const cells = [
@@ -908,7 +1541,15 @@ function AdminPanel() {
   }, [location.pathname]);
 
   function navigate(page: Page) {
-    if (isAdminRoute && (page === "home" || page === "dashboard" || page === "events" || page === "volunteers" || page === "ai")) {
+    if (
+      isAdminRoute &&
+      (page === "home" ||
+        page === "dashboard" ||
+        page === "events" ||
+        page === "volunteers" ||
+        page === "reports" ||
+        page === "ai")
+    ) {
       routerNavigate(page === "home" ? "/admin" : `/admin/${page}`);
       if (page !== "events") setOpenEventIndex(null);
       if (page !== "volunteers") setOpenVolunteerIndex(null);
@@ -956,6 +1597,11 @@ function AdminPanel() {
     if (action === "invite-volunteers") {
       setOpenVolunteerIndex(0);
       navigate("volunteers");
+      return;
+    }
+
+    if (action === "generate-report") {
+      navigate("reports");
       return;
     }
 
@@ -1014,6 +1660,7 @@ function AdminPanel() {
               />
             )}
             {activePage === "volunteers" && <VolunteersPage />}
+            {activePage === "reports" && <ReportsPage />}
             {activePage === "ai" && <PlaceholderPage title="AI Copilot" />}
           </div>
           <AiCopilot activePage={activePage} />

@@ -22,6 +22,21 @@ DEFAULT_CORS_ORIGINS = (
 )
 
 
+def load_dotenv() -> None:
+    """Load simple KEY=VALUE pairs from the repository .env file if present."""
+
+    env_path = Path(__file__).resolve().parent.parent / ".env"
+    if not env_path.exists():
+        return
+
+    for line in env_path.read_text(encoding="utf-8").splitlines():
+        stripped_line = line.strip()
+        if not stripped_line or stripped_line.startswith("#") or "=" not in stripped_line:
+            continue
+        key, value = stripped_line.split("=", 1)
+        os.environ.setdefault(key.strip(), value.strip().strip("\"'"))
+
+
 def configured_database_path() -> Path:
     """Read the database location without fixing it at import time."""
 
@@ -40,6 +55,7 @@ def configured_cors_origins() -> list[str]:
 def create_app(database_path: str | Path | None = None) -> FastAPI:
     """Build the application; accepting a path keeps tests isolated."""
 
+    load_dotenv()
     resolved_database_path = Path(database_path or configured_database_path())
 
     @asynccontextmanager

@@ -179,6 +179,31 @@ CREATE TABLE IF NOT EXISTS volunteer_signup_role_preferences (
     UNIQUE (signup_id, priority)
 );
 
+CREATE TABLE IF NOT EXISTS event_partners (
+    id INTEGER PRIMARY KEY,
+    event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+    name TEXT NOT NULL CHECK (length(trim(name)) > 0),
+    UNIQUE (event_id, name)
+);
+
+CREATE TABLE IF NOT EXISTS event_reports (
+    event_id INTEGER PRIMARY KEY REFERENCES events(id) ON DELETE CASCADE,
+    status TEXT NOT NULL DEFAULT 'incomplete'
+        CHECK (status IN ('incomplete', 'complete')),
+    generated_caption TEXT NOT NULL DEFAULT '',
+    completed_at TEXT,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS report_photo_captions (
+    id INTEGER PRIMARY KEY,
+    event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+    file_name TEXT NOT NULL CHECK (length(trim(file_name)) > 0),
+    caption TEXT NOT NULL DEFAULT '',
+    alt_text TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE INDEX IF NOT EXISTS idx_events_event_date ON events(event_date);
 CREATE INDEX IF NOT EXISTS idx_event_tasks_event_due_at ON event_tasks(event_id, due_at);
 CREATE INDEX IF NOT EXISTS idx_event_tasks_assignee ON event_tasks(team_member_id);
@@ -186,6 +211,9 @@ CREATE INDEX IF NOT EXISTS idx_participations_participant ON participations(part
 CREATE INDEX IF NOT EXISTS idx_volunteer_signups_volunteer ON volunteer_signups(volunteer_id);
 CREATE INDEX IF NOT EXISTS idx_volunteer_signups_event_status
     ON volunteer_signups(event_id, status);
+CREATE INDEX IF NOT EXISTS idx_event_partners_event ON event_partners(event_id);
+CREATE INDEX IF NOT EXISTS idx_report_photo_captions_event
+    ON report_photo_captions(event_id);
 
 -- SQLite has no automatic ON UPDATE timestamp clause, so keep mutable records'
 -- updated_at fields accurate with small per-table triggers.
@@ -229,6 +257,13 @@ AFTER UPDATE ON volunteer_signups
 FOR EACH ROW WHEN NEW.updated_at = OLD.updated_at
 BEGIN
     UPDATE volunteer_signups SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
+END;
+
+CREATE TRIGGER IF NOT EXISTS event_reports_set_updated_at
+AFTER UPDATE ON event_reports
+FOR EACH ROW WHEN NEW.updated_at = OLD.updated_at
+BEGIN
+    UPDATE event_reports SET updated_at = CURRENT_TIMESTAMP WHERE event_id = NEW.event_id;
 END;
 
 INSERT OR IGNORE INTO schema_migrations (version, name)

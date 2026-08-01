@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useOutletContext, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useOutletContext, useParams } from "react-router-dom";
 import {
   ApiError,
   cancelRegistration,
@@ -22,6 +22,8 @@ function isStaleIdentityError(error: unknown): boolean {
 export default function EventDetailCard() {
   const { eventId } = useParams<{ eventId: string }>();
   const { participant, onIdentified, onIdentityInvalid } = useOutletContext<ParticipantOutletContext>();
+  const navigate = useNavigate();
+  const location = useLocation();
   const numericEventId = Number(eventId);
 
   const [event, setEvent] = useState<EventSummary | null>(null);
@@ -132,11 +134,41 @@ export default function EventDetailCard() {
     }
   }
 
-  if (status === "loading") return <p className="event-detail-status">Loading event…</p>;
-  if (status === "error" || !event) return <p className="event-detail-status">Event not found.</p>;
+  // `location.key` is "default" only when this entry has no history to go
+  // back to — a cold load/deep link (e.g. a WhatsApp bot event link, see
+  // docs/tickets.md TICKET-8). navigate(-1) would silently no-op there, so
+  // fall back to the browse list instead of leaving Back inert.
+  function handleBack() {
+    if (location.key !== "default") navigate(-1);
+    else navigate("/participant");
+  }
+
+  const backButton = (
+    <button type="button" className="event-detail-back" onClick={handleBack} aria-label="Back">
+      ← Back
+    </button>
+  );
+
+  if (status === "loading") {
+    return (
+      <div className="event-detail">
+        {backButton}
+        <p className="event-detail-status">Loading event…</p>
+      </div>
+    );
+  }
+  if (status === "error" || !event) {
+    return (
+      <div className="event-detail">
+        {backButton}
+        <p className="event-detail-status">Event not found.</p>
+      </div>
+    );
+  }
 
   return (
     <article className="event-detail">
+      {backButton}
       <header>
         <p>Event</p>
         <h1>{event.name}</h1>

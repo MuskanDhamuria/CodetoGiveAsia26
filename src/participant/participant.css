@@ -50,6 +50,7 @@
 .event-calendar-pill-past { background: #ecefec; color: #7c877e; }
 
 .event-detail { background: #fff; border: 1px solid #e4e8e4; border-radius: 16px; box-shadow: 0 10px 24px rgba(24, 57, 38, .06); max-width: 620px; padding: 28px; }
+.event-detail-back { background: transparent; border: 0; color: #44765b; cursor: pointer; font-weight: 700; margin: 0 0 16px; padding: 0; }
 .event-detail header p { color: #44765b; font-size: .78rem; font-weight: 800; letter-spacing: .08em; margin: 0; text-transform: uppercase; }
 .event-detail h1 { margin: 6px 0 20px; }
 .event-detail-meta { display: grid; gap: 12px; margin: 0 0 20px; }

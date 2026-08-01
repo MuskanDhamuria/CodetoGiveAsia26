@@ -11,6 +11,7 @@ export type EventSummary = {
   event_date: string;
   event_time: string | null;
   status: EventStatus;
+  is_cancelled: boolean;
 };
 
 export type EventForParticipant = EventSummary & {

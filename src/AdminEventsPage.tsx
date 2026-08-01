@@ -47,7 +47,7 @@ const emptyDraft: Draft = {
   venue: "",
 }
 
-type EventDialog = "edit" | "reschedule" | "close" | "delete" | null
+type EventDialog = "edit" | "reschedule" | "close" | "cancel" | "delete" | null
 type TaskEditorMode = "preview" | "edit"
 type TaskDraft = {
   name: string
@@ -146,11 +146,13 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
     () => events.map((event) => {
       const completed = eventCompletion(event)
       const date = new Date(`${event.event_date}T00:00:00Z`)
-      const status = event.status === "closed"
-        ? "Closed"
-        : completed.total > 0 && completed.done === completed.total
-          ? "On track"
-          : "Planning"
+      const status = event.is_cancelled
+        ? "Cancelled"
+        : event.status === "closed"
+          ? "Closed"
+          : completed.total > 0 && completed.done === completed.total
+            ? "On track"
+            : "Planning"
       return {
         id: String(event.id),
         name: event.name,
@@ -404,6 +406,21 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
     }
   }
 
+  async function cancelEventAction(event: EventDetail) {
+    setSaving(true)
+    setError("")
+    try {
+      const updated = await api.cancelEvent(event.id)
+      replaceEvent(updated)
+      setEventDialog(null)
+      setMessage("Event cancelled.")
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Unable to cancel Event.")
+    } finally {
+      setSaving(false)
+    }
+  }
+
   async function deleteEvent(event: EventDetail) {
     setSaving(true)
     setError("")
@@ -562,12 +579,13 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
                 <h2>{openEvent.name}</h2>
               </div>
               <div className="api-event-header-actions">
-                <span className={`api-event-status ${openEvent.status}`}>{openEvent.status === "closed" ? "Closed" : "Open"}</span>
+                <span className={`api-event-status ${openEvent.is_cancelled ? "cancelled" : openEvent.status}`}>{openEvent.is_cancelled ? "Cancelled" : openEvent.status === "closed" ? "Closed" : "Open"}</span>
                 {openEvent.status === "open" ? (<>
                   <button type="button" onClick={() => openEventDialog("edit", openEvent)}>Edit details</button>
                   <button type="button" onClick={() => openEventDialog("reschedule", openEvent)}>Reschedule</button>
                   <button type="button" onClick={() => openEventDialog("close", openEvent)}>Close Event</button>
-                </>) : <button type="button" onClick={() => void changeEventStatus(openEvent, "open")}>Reopen Event</button>}
+                  <button className="api-danger-button" type="button" onClick={() => openEventDialog("cancel", openEvent)}>Cancel Event</button>
+                </>) : !openEvent.is_cancelled && <button type="button" onClick={() => void changeEventStatus(openEvent, "open")}>Reopen Event</button>}
                 <button className="api-danger-button" type="button" onClick={() => openEventDialog("delete", openEvent)}>Delete Event</button>
               </div>
             </header>
@@ -577,7 +595,13 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
               <div><dt>Venue</dt><dd>{openEvent.venue}</dd></div>
               <div><dt>Tasks</dt><dd>{openEvent.tasks.length}</dd></div>
             </dl>
-            {openEvent.status === "closed" && <p className="event-operations-closed-notice">Closed Events are read-only. The Task history is kept for reference.</p>}
+            {openEvent.status === "closed" && (
+              <p className="event-operations-closed-notice">
+                {openEvent.is_cancelled
+                  ? "This Event has been cancelled. Its details and Task history are kept for reference."
+                  : "Closed Events are read-only. The Task history is kept for reference."}
+              </p>
+            )}
             <div className="api-event-workspace-body">
               <div className="api-event-workspace-main">
                 <div className="api-task-workspace-heading">
@@ -772,7 +796,7 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
           <div className="event-creation-overlay" role="presentation">
             <section aria-labelledby="event-action-title" aria-modal="true" className="event-creation-dialog api-action-dialog" role="dialog">
               <header>
-                <div><p>Event action</p><h2 id="event-action-title">{eventDialog === "edit" ? "Edit Event details" : eventDialog === "reschedule" ? "Reschedule Event" : eventDialog === "close" ? "Close Event" : "Delete Event"}</h2></div>
+                <div><p>Event action</p><h2 id="event-action-title">{eventDialog === "edit" ? "Edit Event details" : eventDialog === "reschedule" ? "Reschedule Event" : eventDialog === "close" ? "Close Event" : eventDialog === "cancel" ? "Cancel Event" : "Delete Event"}</h2></div>
                 <button aria-label="Cancel Event action" className="event-creation-close" type="button" onClick={() => setEventDialog(null)}>×</button>
               </header>
               <div className="event-creation-body api-action-body">
@@ -785,6 +809,7 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
                   <label className="api-checkbox-field"><input checked={eventForm.shift_task_deadlines} type="checkbox" onChange={(input) => setEventForm({ ...eventForm, shift_task_deadlines: input.target.checked })} /> Shift Task deadlines by the same number of days</label>
                 </div>}
                 {eventDialog === "close" && <p>Closing this Event makes its details and Tasks read-only until it is reopened.</p>}
+                {eventDialog === "cancel" && <p className="api-danger-notice">Cancelling tells participants and volunteers this Event isn't happening. It closes registration and marks the Event as cancelled instead of merely closed — this can't be undone from here.</p>}
                 {eventDialog === "delete" && <div className="event-creation-fields">
                   <p className="api-danger-notice">This permanently deletes the Event, Tasks, checklists, registrations, and volunteer signups.</p>
                   <label>Type {openEvent.name} to confirm<input aria-label="Confirm Event name" value={eventForm.delete_name} onChange={(input) => setEventForm({ ...eventForm, delete_name: input.target.value })} /></label>
@@ -796,6 +821,7 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
                 {eventDialog === "edit" && <button disabled={saving} type="button" onClick={() => void saveEventDetails(openEvent)}>Save changes</button>}
                 {eventDialog === "reschedule" && <button disabled={saving} type="button" onClick={() => void reschedule(openEvent)}>Reschedule Event</button>}
                 {eventDialog === "close" && <button disabled={saving} type="button" onClick={() => void changeEventStatus(openEvent, "closed")}>Confirm close</button>}
+                {eventDialog === "cancel" && <button className="api-delete-confirm" disabled={saving} type="button" onClick={() => void cancelEventAction(openEvent)}>Confirm cancellation</button>}
                 {eventDialog === "delete" && <button className="api-delete-confirm" disabled={saving || eventForm.delete_name !== openEvent.name} type="button" onClick={() => void deleteEvent(openEvent)}>Delete permanently</button>}
               </footer>
             </section>

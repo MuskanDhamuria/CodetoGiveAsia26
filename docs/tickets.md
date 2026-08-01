@@ -150,8 +150,9 @@ wrapper that calls the *existing* logic rather than duplicating it:
   `create_event` in `events.py` does today.
 - `update_event`, `get_event`, `list_events` — map directly onto `events.py`'s
   existing handlers of the same name.
-- `cancel_event` — **maps to TICKET-9's new `POST /events/{id}/cancel`**,
-  not `close_event` and never `delete_event`. Plain `close_event` only sets
+- `cancel_event` — **maps to `POST /events/{id}/cancel`** (shipped by
+  TICKET-9, now done — see its entry above), not `close_event` and never
+  `delete_event`. Plain `close_event` only sets
   `status = 'closed'`, which is indistinguishable from an ordinary
   registration-closed event on the dashboard (TICKET-0's audit originally
   suggested this mapping; superseded once that gap was flagged). TICKET-9's
@@ -344,7 +345,63 @@ framework ships and proves that pattern actually holds.
 
 ---
 
-## TICKET-9: Event cancellation as a distinct state from closed registration
+~~TICKET-9: Event cancellation as a distinct state from closed registration~~
+— **Done.** Implemented exactly as scoped below: `008_event_cancellation.sql`
+adds nullable `events.cancelled_at`; `POST /events/{id}/cancel` sets it
+together with `status='closed'`; `EventSummary`/`EventDetail` expose a
+derived `is_cancelled: bool`; `dashboard_summary` and `calendar_events` both
+add `AND cancelled_at IS NULL`; the admin Events page
+(`EventCollectionPrototype.tsx`/`AdminEventsPage.tsx`) shows a distinct
+"Cancelled" badge, hides cancelled events by default behind a new "Show
+cancelled" toggle (mirroring "Show closed"), and offers a "Cancel Event"
+action (with a confirmation dialog) instead of only close/reopen; the
+participant portal (`EventBrowseList`, `MyEventsList`, `EventDetailCard`)
+excludes cancelled events from browsing but still shows an already-RSVP'd
+participant a "Cancelled" badge rather than silently dropping the event.
+Covered by new tests on both sides:
+- Backend (`backend/tests/test_admin_api.py`):
+  `test_organizer_cancels_an_event_distinctly_from_closing_it` (cancel sets
+  both `status`/`is_cancelled`, and both `/dashboard/summary` and
+  `/calendar/events` exclude it) and `test_cancelling_a_missing_event_is_a_404`.
+  `backend/tests/test_participants.py` adds
+  `test_participant_events_flags_a_since_cancelled_event`, since
+  `/participants/{id}/events` needed its own `is_cancelled` derivation
+  (separate code path from `events.py`'s).
+- Frontend admin (`src/AdminEventsPage.test.tsx`):
+  `cancels an Event distinctly from closing it` (Cancel Event dialog → API
+  call → "Cancelled" badge → no Reopen/Close buttons) and
+  `hides cancelled Events from the portfolio by default, revealing them
+  under Show cancelled`.
+- Frontend participant portal: `src/participant/components/EventBrowseList.test.tsx`
+  (a cancelled event is excluded even though still upcoming by date, and the
+  empty state shows when it's the only event), `EventDetailCard.test.tsx`
+  (cancelled notice for a visitor, and "Remove from my events" instead of the
+  normal cancel-signup button for an already-RSVP'd participant), and a new
+  `MyEventsList.test.tsx` (this component had no test file before — it now
+  covers the sign-up prompt, normal RSVP listing, and the cancelled badge).
+
+`npx tsc --noEmit`, `npm test -- --run` (90 tests across 12 files), and the
+full backend unittest suite (71 tests) all pass. Also verified live
+in-browser: cancelling an event via the admin dialog, toggling "Show
+cancelled", the workspace's "Cancelled" notice (replacing "Reopen Event"
+with nothing — see open question below), and the participant detail page
+showing "This event has been cancelled by the organizer."
+
+**Found during implementation, resolved defensively rather than by
+resolving the open question below:** the existing `reopen_event` endpoint
+only flips `status` back to `'open'` and does not clear `cancelled_at` —
+reachable only via a direct API call, not through the admin UI (the
+"Reopen Event" button is intentionally not rendered for a cancelled event,
+only for an ordinarily-closed one). That leaves a theoretical
+`status='open'` + `cancelled_at` set state reachable from outside the UI;
+`dashboard_summary`/`calendar_events`'s `AND cancelled_at IS NULL` clauses
+were kept even though `status='open'`/`'closed'` filtering alone would
+otherwise be sufficient, specifically so that state still can't leak into
+the "what's coming up" views. Deciding true reversibility (clearing
+`cancelled_at` on reopen) is still open — see below.
+
+<details>
+<summary>Original ticket text</summary>
 
 **Priority:** High — blocks TICKET-2's `cancel_event` tool from doing the
 right thing
@@ -423,6 +480,8 @@ Corrects TICKET-0's audit and TICKET-2's tool mapping — see the update in
 each. `docs/ai-panel-compatibility-report.md`'s §1/§2/candidate-tools table
 should get a short addendum note pointing here rather than being rewritten.
 
+</details>
+
 ---
 
 ~~TICKET-10: Redesign the AI panel as a collapsible drawer (mobile + desktop)~~
@@ -439,6 +498,21 @@ toggle, Escape-to-close, backdrop click-outside-to-close (desktop only —
 correctly absent under 810px), and focus landing on the close button on
 open / returning to the FAB on close all confirmed working; `npx tsc
 --noEmit` and `npm test -- --run` (75 tests) both pass.
+
+**Update: automated test coverage added.** The pass above only had
+in-browser manual verification — no test file existed for `AiCopilot.tsx` at
+all. `src/AiCopilot.test.tsx` (new) now covers, without a browser: collapsed
+by default (FAB visible, panel `aria-hidden`/no `.open` class), opening via
+the FAB moves focus to the close button and hides the FAB, Escape closes and
+returns focus to the FAB, the close button does the same, clicking the
+backdrop closes the panel, and the FAB's `aria-expanded`/`aria-controls`
+point at the panel's `id`. (The panel is `aria-hidden` while closed, which
+removes it from the accessibility tree — Testing Library's `getByRole` can't
+see it then, so the tests look the panel up by `id` directly rather than by
+role/name whenever it might be closed.) Desktop-only backdrop absence under
+the 810px breakpoint is CSS (`display: none` in a media query) that jsdom
+doesn't evaluate, so that half stays manual-verification-only; the
+backdrop's presence and click-to-close behavior are what's covered here.
 
 Additional cleanup beyond the original scope's item 6: also removed a third,
 already-dead "workflow-wizard" copilot design

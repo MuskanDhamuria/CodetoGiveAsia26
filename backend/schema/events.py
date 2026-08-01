@@ -22,6 +22,7 @@ class EventSummary(BaseModel):
     end_time: str | None = None
     status: EventStatus
     beneficiary_id: int | None = None
+    is_cancelled: bool = False
     # Alias of `start_time` kept for the participant portal, which predates
     # the start_time/end_time split and still reads a single event time.
     event_time: str | None = None

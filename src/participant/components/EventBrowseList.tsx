@@ -84,23 +84,27 @@ export default function EventBrowseList() {
 
   const today = todayIso();
 
+  // Cancelled events aren't available to browse or sign up for — participants
+  // who already RSVP'd see them flagged in MyEventsList/EventDetailCard instead.
+  const visibleEvents = useMemo(() => events.filter((event) => !event.is_cancelled), [events]);
+
   const upcomingGroups = useMemo(() => {
-    const upcoming = events
+    const upcoming = visibleEvents
       .filter((event) => event.event_date >= today)
       .sort((a, b) => a.event_date.localeCompare(b.event_date));
     return groupByMonth(upcoming);
-  }, [events, today]);
+  }, [visibleEvents, today]);
 
   const pastGroups = useMemo(() => {
     // Most-recent-month-first, most-recent-day-first within each month.
-    const past = events
+    const past = visibleEvents
       .filter((event) => event.event_date < today)
       .sort((a, b) => b.event_date.localeCompare(a.event_date));
     return groupByMonth(past);
-  }, [events, today]);
+  }, [visibleEvents, today]);
 
   const pastCount = useMemo(() => pastGroups.reduce((total, group) => total + group.events.length, 0), [pastGroups]);
-  const upcomingCount = events.length - pastCount;
+  const upcomingCount = visibleEvents.length - pastCount;
 
   return (
     <section className="event-browse">
@@ -130,7 +134,7 @@ export default function EventBrowseList() {
 
       {status === "ready" && view === "calendar" && (
         <EventCalendarView
-          events={events}
+          events={visibleEvents}
           month={month}
           today={today}
           onChangeMonth={(direction) =>
@@ -141,7 +145,7 @@ export default function EventBrowseList() {
 
       {status === "ready" && view === "list" && (
         <>
-          {events.length === 0 && <p className="event-browse-status">No events right now.</p>}
+          {visibleEvents.length === 0 && <p className="event-browse-status">No events right now.</p>}
 
           {pastCount > 0 && (
             <details className="event-browse-past">

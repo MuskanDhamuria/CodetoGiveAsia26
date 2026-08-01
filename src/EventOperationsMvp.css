@@ -105,6 +105,7 @@
 .api-event-workspace-header h2 { font-size: clamp(1.45rem, 2.5vw, 2rem); }
 .api-event-status { background: #e8f2e9; border-radius: 999px; color: #2f6743; font-size: .74rem; font-weight: 800; padding: 7px 11px; }
 .api-event-status.closed { background: #eceeed; color: #59625c; }
+.api-event-status.cancelled { background: #fbe7e7; color: #a13636; }
 .api-event-metadata { display: grid; gap: 10px; grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 0; }
 .api-event-metadata > div { background: #f7f8f7; border: 1px solid #e4e8e4; border-radius: 9px; padding: 12px 14px; }
 .api-event-metadata dt { color: #68746b; font-size: .68rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }

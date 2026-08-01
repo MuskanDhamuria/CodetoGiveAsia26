@@ -49,6 +49,7 @@ describe("dashboard Event calendar", () => {
       venue: "Tampines Hub",
       event_date: "2026-08-08",
       status: "open",
+      is_cancelled: false,
       created_at: "2026-07-01 00:00:00",
       updated_at: "2026-07-01 00:00:00",
       tasks: [

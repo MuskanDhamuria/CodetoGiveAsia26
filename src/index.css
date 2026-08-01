@@ -293,6 +293,11 @@
   color: #707070;
 }
 
+.collection-status.status-cancelled {
+  background: #fbe7e7;
+  color: #a13636;
+}
+
 .ledger article > button {
   background: transparent;
   border: 0;

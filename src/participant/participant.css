@@ -39,6 +39,7 @@
 .event-status { border-radius: 999px; font-size: .72rem; font-weight: 800; padding: 5px 10px; text-transform: uppercase; }
 .event-status.status-open { background: #e8f2e9; color: #246b45; }
 .event-status.status-closed { background: #f1f1f1; color: #666; }
+.event-status.status-cancelled { background: #fbe7e7; color: #a13636; }
 
 .event-collection-calendar { background: #fff; border: 1px solid #e4e8e4; border-radius: 12px; overflow: hidden; }
 .event-collection-calendar > header { align-items: center; display: grid; grid-template-columns: 44px 1fr 44px; padding: 20px; }

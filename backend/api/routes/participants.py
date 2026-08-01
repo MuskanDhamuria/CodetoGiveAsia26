@@ -194,7 +194,7 @@ def list_participant_events(
     rows = db.execute(
         f"""
         SELECT e.id, e.name, e.venue, e.description, e.event_date,
-               e.start_time, e.end_time, e.status,
+               e.start_time, e.end_time, e.status, e.cancelled_at,
                pt.rsvp_status, pt.attendance
         FROM participations pt JOIN events e ON e.id = pt.event_id
         WHERE {clause} ORDER BY e.event_date DESC LIMIT ? OFFSET ?
@@ -203,8 +203,9 @@ def list_participant_events(
     ).fetchall()
     items = [
         {
-            **dict(row),
+            **{k: v for k, v in dict(row).items() if k != "cancelled_at"},
             "event_time": row["start_time"],
+            "is_cancelled": row["cancelled_at"] is not None,
             "rsvp_status": bool(row["rsvp_status"]),
             "attendance": as_bool(row["attendance"]),
         }

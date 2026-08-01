@@ -78,13 +78,55 @@ backdrop, focus handling) plus `npx tsc --noEmit` and `npm test -- --run`
 before/after and a process note about an `npm run format` mishap that got
 caught and reverted before landing.
 
-**TICKET-9 (event cancellation as a distinct state) — proposed, not yet
-implemented.** Full design (new `events.cancelled_at` column, kept separate
-from `status`, new `POST /events/{id}/cancel` endpoint, dashboard/calendar
-query changes, participant-portal handling) is written up in `tickets.md`
-but no code exists for it yet. This is what `cancel_event` (TICKET-2) should
-eventually call — **do not** wire `cancel_event` to `close_event` or
-`delete_event` as a stand-in; see TICKET-9/TICKET-2 in `tickets.md` for why.
+**Update: `src/AiCopilot.test.tsx` added (new file — none existed before).**
+The verification above was manual/in-browser only; the new suite locks in
+the same behavior without a browser: collapsed-by-default state, FAB → panel
+open with focus moving to the close button, Escape and the close button both
+closing and returning focus to the FAB, backdrop click-to-close, and the
+FAB's `aria-expanded`/`aria-controls` pointing at the panel. One quirk worth
+knowing if you touch this file: the panel is `aria-hidden` while closed,
+which removes it from the accessibility tree, so `getByRole("dialog", ...)`
+can't find it then — the tests look it up by `id` (`#ai-copilot-panel`)
+directly instead. The 810px mobile breakpoint hiding the backdrop is plain
+CSS (`display: none` in a media query), which jsdom doesn't evaluate, so
+that part of TICKET-10 stays manual-verification-only.
+
+**TICKET-9 (event cancellation as a distinct state) — done.** New additive
+migration `008_event_cancellation.sql` adds nullable `events.cancelled_at`,
+kept separate from `status` (see "Key decisions" below for why). New
+`POST /events/{id}/cancel` sets `cancelled_at` and `status='closed'`
+together. `EventSummary`/`EventDetail` expose a derived `is_cancelled: bool`.
+`dashboard_summary` and `calendar_events` both exclude cancelled events via
+`AND cancelled_at IS NULL`. The admin Events page
+(`EventCollectionPrototype.tsx`/`AdminEventsPage.tsx`) shows a distinct
+"Cancelled" badge, hides cancelled events by default behind a new "Show
+cancelled" toggle, and has a "Cancel Event" action with a confirmation
+dialog. The participant portal excludes cancelled events from browsing
+(`EventBrowseList`) but still flags them "Cancelled" for a participant
+already RSVP'd (`MyEventsList`, `EventDetailCard`) instead of silently
+dropping them. This is what `cancel_event` (TICKET-2) should call —
+**do not** wire `cancel_event` to `close_event` or `delete_event` as a
+stand-in; see TICKET-9/TICKET-2 in `tickets.md` for why.
+
+One loose end found while implementing, noted in `tickets.md`'s TICKET-9
+entry: the existing `reopen_event` endpoint doesn't clear `cancelled_at`,
+so a direct API call (not reachable through the admin UI, which hides
+"Reopen" for cancelled events) could leave `status='open'` with
+`cancelled_at` still set. The dashboard/calendar queries filter on
+`cancelled_at IS NULL` explicitly (not just `status`) to stay correct even
+in that state. Whether "reopen" should actually clear `cancelled_at`
+(true un-cancel) is still an open question — see TICKET-9's "Open
+questions" in `tickets.md`.
+
+Test coverage added on both sides — see the fuller breakdown in
+`tickets.md`'s TICKET-9 entry, summarized here: `test_admin_api.py` (cancel
++ 404, dashboard/calendar exclusion) and `test_participants.py` (a new test
+since `/participants/{id}/events` derives `is_cancelled` on its own code
+path, separate from `events.py`'s); `AdminEventsPage.test.tsx` (cancel
+dialog → badge → Reopen/Close hidden; the "Show cancelled" toggle);
+`EventBrowseList.test.tsx` and `EventDetailCard.test.tsx` (both extended);
+and a brand-new `MyEventsList.test.tsx` (this component had zero test
+coverage before this pass).
 
 **Not started:** TICKET-1 (backend OpenRouter endpoint), TICKET-2 (tool
 functions), TICKET-3 (validation pipeline), TICKET-4 (audit log), TICKET-5
@@ -116,9 +158,9 @@ individual files by hand or via your editor's formatter instead.
 
 All backlog items — remaining tickets, their scope, dependencies, and open
 questions — live in [`tickets.md`](tickets.md). That's the single source of
-truth; don't duplicate it here. As of this writing, the recommended order
-(from the compatibility report) is: TICKET-2 → TICKET-3 → TICKET-1, then
-TICKET-9 (needed before TICKET-2's `cancel_event` can be correct), then
+truth; don't duplicate it here. TICKET-9 is now done, so the remaining
+recommended order is: TICKET-2 (now able to wire `cancel_event` to the real
+`/cancel` endpoint from the start) → TICKET-3 → TICKET-1, then
 TICKET-5/TICKET-6 together, with TICKET-4/TICKET-7 parallel to the rest.
 
 ## Key decisions worth knowing the "why" of

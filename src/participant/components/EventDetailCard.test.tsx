@@ -28,6 +28,14 @@ const CLOSED_EVENT = {
   status: "closed",
 }
 
+const CANCELLED_EVENT = {
+  ...OPEN_EVENT,
+  id: 3,
+  name: "Rained-out Beach Cleanup",
+  status: "closed",
+  is_cancelled: true,
+}
+
 const KNOWN_PARTICIPANT = {
   participantId: 42,
   name: "Alice",
@@ -161,6 +169,41 @@ describe("Closed events (TICKET-16)", () => {
     expect(await screen.findByText("Registration is closed for this event.")).toBeTruthy()
     expect(screen.queryByLabelText("Name")).toBeNull()
     expect(screen.queryByRole("button", { name: "Sign up" })).toBeNull()
+  })
+})
+
+describe("Cancelled events (TICKET-9)", () => {
+  it("shows a cancelled notice with no signup affordance for a visitor with no existing RSVP", async () => {
+    mockRoutes({
+      "GET /api/v1/events/3": () => jsonResponse(CANCELLED_EVENT),
+    })
+
+    renderEvent("/participant/events/3")
+
+    expect(await screen.findByText("This event has been cancelled by the organizer.")).toBeTruthy()
+    expect(screen.getByText("Cancelled")).toBeTruthy()
+    expect(screen.queryByLabelText("Name")).toBeNull()
+    expect(screen.queryByRole("button", { name: "Sign up" })).toBeNull()
+  })
+
+  it("still lets an already-signed-up participant see it's cancelled instead of hiding the event", async () => {
+    signInAs(KNOWN_PARTICIPANT)
+    mockRoutes({
+      "GET /api/v1/events/3": () => jsonResponse(CANCELLED_EVENT),
+      "GET /api/v1/participants/42/events?limit=100": () =>
+        jsonResponse({
+          items: [{ ...CANCELLED_EVENT, rsvp_status: true, attendance: null }],
+          total: 1,
+          limit: 100,
+          offset: 0,
+        }),
+    })
+
+    renderEvent("/participant/events/3")
+
+    expect(await screen.findByText("This event has been cancelled by the organizer.")).toBeTruthy()
+    expect(screen.queryByText("You're signed up for this event.")).toBeNull()
+    expect(await screen.findByRole("button", { name: "Remove from my events" })).toBeTruthy()
   })
 })
 

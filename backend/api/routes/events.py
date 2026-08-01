@@ -88,6 +88,7 @@ def event_detail(db, event_id: int) -> EventDetail:
         event_time=event["start_time"],
         status=event["status"],
         beneficiary_id=event["beneficiary_id"],
+        is_cancelled=event["cancelled_at"] is not None,
         created_at=event["created_at"],
         updated_at=event["updated_at"],
         tasks=tasks,
@@ -224,14 +225,21 @@ def list_events(
     rows = db.execute(
         f"""
         SELECT id, name, venue, event_date, description, start_time, end_time,
-               status, beneficiary_id FROM events
+               status, beneficiary_id, cancelled_at FROM events
         WHERE {clause}
         ORDER BY {sort} {order.upper()}
         LIMIT ? OFFSET ?
         """,
         [*params, pagination.limit, pagination.offset],
     ).fetchall()
-    items = [EventSummary(**dict(row), event_time=row["start_time"]) for row in rows]
+    items = [
+        EventSummary(
+            **{k: v for k, v in dict(row).items() if k != "cancelled_at"},
+            event_time=row["start_time"],
+            is_cancelled=row["cancelled_at"] is not None,
+        )
+        for row in rows
+    ]
     return list_envelope(items, total, pagination)
 
 
@@ -682,3 +690,18 @@ def close_event(event_id: int, db: Connection) -> EventDetail:
 @router.post("/events/{event_id}/reopen", response_model=EventDetail)
 def reopen_event(event_id: int, db: Connection) -> EventDetail:
     return set_event_status(event_id, "open", db)
+
+
+@router.post("/events/{event_id}/cancel", response_model=EventDetail)
+def cancel_event(event_id: int, db: Connection) -> EventDetail:
+    row = db.execute(
+        """
+        UPDATE events SET status = 'closed', cancelled_at = CURRENT_TIMESTAMP
+        WHERE id = ? RETURNING id
+        """,
+        (event_id,),
+    ).fetchone()
+    if row is None:
+        raise HTTPException(404, f"Event {event_id} was not found")
+    db.commit()
+    return event_detail(db, event_id)

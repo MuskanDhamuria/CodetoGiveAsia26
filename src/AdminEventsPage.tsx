@@ -26,6 +26,7 @@ const emptyDraft: Draft = {
 }
 
 type EventDialog = "edit" | "reschedule" | "close" | "delete" | null
+type TaskEditorMode = "preview" | "edit"
 type TaskDraft = {
   name: string
   body: string
@@ -68,6 +69,7 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
   const [eventDialog, setEventDialog] = useState<EventDialog>(null)
   const [eventForm, setEventForm] = useState({ name: "", venue: "", event_date: "", shift_task_deadlines: true, delete_name: "" })
   const [editingTaskId, setEditingTaskId] = useState<number | "new" | null>(null)
+  const [taskEditorMode, setTaskEditorMode] = useState<TaskEditorMode>("edit")
   const [taskForm, setTaskForm] = useState<TaskDraft>(emptyTaskDraft)
   const [subtaskTitles, setSubtaskTitles] = useState<Record<number, string>>({})
   const [newSubtaskTitle, setNewSubtaskTitle] = useState("")
@@ -276,8 +278,9 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
     }
   }
 
-  function openTaskEditor(task?: EventTask) {
+  function openTaskEditor(task?: EventTask, mode: TaskEditorMode = "edit") {
     setError("")
+    setTaskEditorMode(mode)
     setConfirmDeleteTask(false)
     setConfirmDeleteSubtaskId(null)
     setNewSubtaskTitle("")
@@ -489,7 +492,19 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
                             dragEvent.dataTransfer.setData("text/plain", String(task.id))
                           }
                         }}
-                        title={openEvent.status === "open" ? "Drag this Task to another status" : undefined}
+                        onClick={(clickEvent) => {
+                          if ((clickEvent.target as HTMLElement).closest("button")) return
+                          openTaskEditor(task, "preview")
+                        }}
+                        onKeyDown={(keyEvent) => {
+                          if (keyEvent.key !== "Enter" && keyEvent.key !== " ") return
+                          keyEvent.preventDefault()
+                          openTaskEditor(task, "preview")
+                        }}
+                        aria-label={`Preview ${task.name}`}
+                        role="group"
+                        tabIndex={0}
+                        title={openEvent.status === "open" ? "Drag this Task to another status or click to preview" : "Click to preview this Task"}
                       >
                         <div className="event-operations-card-heading">
                           <span className={`event-operations-phase event-operations-phase-${task.category.replace("_", "-")}`}>{task.category.replace("_", " ")}</span>
@@ -664,33 +679,33 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
           <div className="event-creation-overlay" role="presentation">
             <section aria-labelledby="task-editor-title" aria-modal="true" className="event-creation-dialog api-task-dialog" role="dialog">
               <header>
-                <div><p>Task editor</p><h2 id="task-editor-title">{editingTaskId === "new" ? "Add Task" : `Edit ${editingTask?.name ?? "Task"}`}</h2></div>
+                <div><p>{taskEditorMode === "preview" ? "Task preview" : "Task editor"}</p><h2 id="task-editor-title">{editingTaskId === "new" ? "Add Task" : taskEditorMode === "preview" ? editingTask?.name ?? "Task" : `Edit ${editingTask?.name ?? "Task"}`}</h2></div>
                 <button aria-label="Close Task editor" className="event-creation-close" type="button" onClick={() => setEditingTaskId(null)}>×</button>
               </header>
               <div className="event-creation-body api-task-editor-body">
                 <div className="api-task-fields">
-                  <label>Task name<input value={taskForm.name} onChange={(input) => setTaskForm({ ...taskForm, name: input.target.value })} /></label>
-                  <label>Due date<input type="date" value={taskForm.due_at} onChange={(input) => setTaskForm({ ...taskForm, due_at: input.target.value })} /></label>
-                  <label>Category<select value={taskForm.category} onChange={(input) => setTaskForm({ ...taskForm, category: input.target.value as TaskCategory })}><option value="planning">Planning</option><option value="execution">Execution</option><option value="post_execution">Post execution</option></select></label>
-                  <label>Assignee<select value={taskForm.team_member_id} onChange={(input) => setTaskForm({ ...taskForm, team_member_id: input.target.value })}><option value="">Unassigned</option>{teamMembers.map((member) => <option disabled={!member.is_active && String(member.id) !== taskForm.team_member_id} key={member.id} value={member.id}>{member.name}{member.is_active ? "" : " (inactive)"}</option>)}</select></label>
-                  <label className="api-task-body-field">Description<textarea rows={4} value={taskForm.body} onChange={(input) => setTaskForm({ ...taskForm, body: input.target.value })} /></label>
+                  <label>Task name<input readOnly={taskEditorMode === "preview"} value={taskForm.name} onChange={(input) => setTaskForm({ ...taskForm, name: input.target.value })} /></label>
+                  <label>Due date<input readOnly={taskEditorMode === "preview"} type="date" value={taskForm.due_at} onChange={(input) => setTaskForm({ ...taskForm, due_at: input.target.value })} /></label>
+                  <label>Category<select disabled={taskEditorMode === "preview"} value={taskForm.category} onChange={(input) => setTaskForm({ ...taskForm, category: input.target.value as TaskCategory })}><option value="planning">Planning</option><option value="execution">Execution</option><option value="post_execution">Post execution</option></select></label>
+                  <label>Assignee<select disabled={taskEditorMode === "preview"} value={taskForm.team_member_id} onChange={(input) => setTaskForm({ ...taskForm, team_member_id: input.target.value })}><option value="">Unassigned</option>{teamMembers.map((member) => <option disabled={!member.is_active && String(member.id) !== taskForm.team_member_id} key={member.id} value={member.id}>{member.name}{member.is_active ? "" : " (inactive)"}</option>)}</select></label>
+                  <label className="api-task-body-field">Description<textarea readOnly={taskEditorMode === "preview"} rows={4} value={taskForm.body} onChange={(input) => setTaskForm({ ...taskForm, body: input.target.value })} /></label>
                 </div>
                 {editingTask && <section aria-labelledby="task-checklist-title" className="api-task-checklist">
                   <h3 id="task-checklist-title">Checklist</h3>
                   {editingTask.subtasks.map((subtask) => <div className="api-subtask-row" key={subtask.id}>
-                    <input aria-label={`Complete ${subtask.title}`} checked={subtask.completed} type="checkbox" onChange={() => void updateSubtask(openEvent, editingTask, subtask.id, { completed: !subtask.completed })} />
-                    <input aria-label={`Checklist item ${subtask.id}`} value={subtaskTitles[subtask.id] ?? subtask.title} onChange={(input) => setSubtaskTitles({ ...subtaskTitles, [subtask.id]: input.target.value })} />
-                    <button disabled={saving || !(subtaskTitles[subtask.id] ?? "").trim()} type="button" onClick={() => void updateSubtask(openEvent, editingTask, subtask.id, { title: subtaskTitles[subtask.id].trim() })}>Save</button>
-                    {confirmDeleteSubtaskId === subtask.id ? <><button className="api-danger-button" type="button" onClick={() => void deleteSubtask(openEvent, editingTask, subtask.id)}>Confirm delete</button><button type="button" onClick={() => setConfirmDeleteSubtaskId(null)}>Cancel</button></> : <button type="button" onClick={() => setConfirmDeleteSubtaskId(subtask.id)}>Delete</button>}
+                    <input aria-label={`Complete ${subtask.title}`} checked={subtask.completed} disabled={taskEditorMode === "preview"} type="checkbox" onChange={() => void updateSubtask(openEvent, editingTask, subtask.id, { completed: !subtask.completed })} />
+                    <input aria-label={`Checklist item ${subtask.id}`} readOnly={taskEditorMode === "preview"} value={subtaskTitles[subtask.id] ?? subtask.title} onChange={(input) => setSubtaskTitles({ ...subtaskTitles, [subtask.id]: input.target.value })} />
+                    {taskEditorMode === "edit" && <><button disabled={saving || !(subtaskTitles[subtask.id] ?? "").trim()} type="button" onClick={() => void updateSubtask(openEvent, editingTask, subtask.id, { title: subtaskTitles[subtask.id].trim() })}>Save</button>
+                    {confirmDeleteSubtaskId === subtask.id ? <><button className="api-danger-button" type="button" onClick={() => void deleteSubtask(openEvent, editingTask, subtask.id)}>Confirm delete</button><button type="button" onClick={() => setConfirmDeleteSubtaskId(null)}>Cancel</button></> : <button type="button" onClick={() => setConfirmDeleteSubtaskId(subtask.id)}>Delete</button>}</>}
                   </div>)}
                   {!editingTask.subtasks.length && <p>No checklist items yet.</p>}
-                  <div className="api-add-subtask"><input aria-label="New checklist item" placeholder="Add a checklist item" value={newSubtaskTitle} onChange={(input) => setNewSubtaskTitle(input.target.value)} /><button disabled={saving || !newSubtaskTitle.trim()} type="button" onClick={() => void addSubtask(openEvent, editingTask)}>Add item</button></div>
+                  {taskEditorMode === "edit" && <div className="api-add-subtask"><input aria-label="New checklist item" placeholder="Add a checklist item" value={newSubtaskTitle} onChange={(input) => setNewSubtaskTitle(input.target.value)} /><button disabled={saving || !newSubtaskTitle.trim()} type="button" onClick={() => void addSubtask(openEvent, editingTask)}>Add item</button></div>}
                 </section>}
                 {editingTaskId === "new" && <p className="api-editor-note">Save the Task first, then add checklist items here.</p>}
                 {error && <p className="event-creation-error" role="alert">{error}</p>}
-                {editingTask && (confirmDeleteTask ? <div className="api-delete-task-confirm"><span>Delete this Task and its checklist?</span><button className="api-danger-button" type="button" onClick={() => void deleteTask(openEvent, editingTask.id)}>Confirm delete Task</button><button type="button" onClick={() => setConfirmDeleteTask(false)}>Cancel</button></div> : <button className="api-task-delete-button" type="button" onClick={() => setConfirmDeleteTask(true)}>Delete Task</button>)}
+                {taskEditorMode === "edit" && editingTask && (confirmDeleteTask ? <div className="api-delete-task-confirm"><span>Delete this Task and its checklist?</span><button className="api-danger-button" type="button" onClick={() => void deleteTask(openEvent, editingTask.id)}>Confirm delete Task</button><button type="button" onClick={() => setConfirmDeleteTask(false)}>Cancel</button></div> : <button className="api-task-delete-button" type="button" onClick={() => setConfirmDeleteTask(true)}>Delete Task</button>)}
               </div>
-              <footer><button type="button" onClick={() => setEditingTaskId(null)}>Close</button><button disabled={saving} type="button" onClick={() => void saveTask(openEvent)}>{editingTaskId === "new" ? "Create Task" : "Save Task"}</button></footer>
+              <footer><button type="button" onClick={() => setEditingTaskId(null)}>Close</button>{taskEditorMode === "preview" ? openEvent.status === "open" && <button type="button" onClick={() => setTaskEditorMode("edit")}>Edit Task</button> : <button disabled={saving} type="button" onClick={() => void saveTask(openEvent)}>{editingTaskId === "new" ? "Create Task" : "Save Task"}</button>}</footer>
             </section>
           </div>
         )}

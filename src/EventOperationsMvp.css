@@ -66,7 +66,7 @@
 .event-operations-action-button-delete { background: #fff3f1; color: #8a322b; }
 .event-operations-task-actions button, .event-operations-add-task > button { background: #edf4ee; border: 1px solid #c9d8cb; border-radius: 7px; color: #215d3a; cursor: pointer; font-weight: 700; padding: 8px 10px; }
 .event-operations-workspace > h3 { margin: 8px 0 -4px; }
-.event-operations-kanban { align-items: start; display: grid; gap: 12px; grid-template-columns: repeat(3, minmax(0, 1fr)); overflow-x: auto; }
+.event-operations-kanban { align-items: start; display: grid; gap: 12px; grid-template-columns: repeat(3, minmax(240px, 1fr)); overflow-x: auto; padding-bottom: 4px; }
 .event-operations-kanban > section { background: #f3f4f5; border: 1px solid rgba(0, 0, 0, .055); border-radius: 8px; display: grid; gap: 9px; min-height: 365px; min-width: 240px; padding: 12px; }
 .event-operations-kanban > section > h4 { align-items: center; color: #171717; display: flex; font-size: .8rem; justify-content: space-between; letter-spacing: -.02em; margin: 1px 2px 3px; }
 .event-operations-kanban > section > h4::after { background: #e4e5e6; border-radius: 999px; color: #696969; content: attr(data-count); font-size: .63rem; padding: 4px 7px; }
@@ -147,6 +147,9 @@
 .api-subtask-progress > span { color: #637068; }
 .api-subtask-progress > i { background: #dfe8e1; }
 .api-subtask-progress > i > b { background: #4d805e; }
+.api-event-workspace .event-operations-task-card:focus-visible { box-shadow: 0 0 0 3px rgba(53, 114, 76, .2); outline: 2px solid #35724c; outline-offset: 2px; }
+.api-event-workspace .event-operations-task-card:not(.draggable) { cursor: pointer; }
+.api-task-dialog input[readonly], .api-task-dialog textarea[readonly], .api-task-dialog select:disabled { background: #f4f6f4; color: #445149; cursor: default; opacity: 1; }
 .api-workspace-feedback { background: #eef6ef; border-left: 3px solid #4f7f5c; color: #31533b !important; margin: -6px 0 0 !important; padding: 9px 11px; }
 .api-workspace-feedback.error { background: #fff3f1; border-left-color: #a23b33; color: #7c302a !important; }
 .api-action-dialog { max-width: 620px; }

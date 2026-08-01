@@ -42,6 +42,38 @@ describe("API-backed organizer events", () => {
     expect(screen.getByLabelText("Checklist item 31")).toBeTruthy()
   })
 
+  it("opens a read-only Task preview when its card is clicked", async () => {
+    const event: EventDetail = {
+      id: 4, event_template_id: null, name: "Wellness session", venue: "Hall",
+      event_date: "2027-09-01", status: "open", created_at: "", updated_at: "",
+      tasks: [{
+        id: 20, team_member_id: null, template_task_id: null, name: "Prepare room",
+        body: "Set out chairs", due_at: "2027-08-30", category: "planning",
+        status: "ongoing", position: 0,
+        subtasks: [{ id: 31, title: "Count chairs", position: 0, completed: true }],
+      }],
+    }
+    const api = {
+      listEventTemplates: vi.fn().mockResolvedValue([]),
+      listEvents: vi.fn().mockResolvedValue([event]),
+      listTeamMembers: vi.fn().mockResolvedValue([]),
+    } as unknown as AdminApi
+    const user = userEvent.setup()
+
+    render(<AdminEventsPage api={api} />)
+    await user.click(await screen.findByRole("button", { name: "Open Wellness session" }))
+    await user.click(screen.getByText("Prepare room"))
+
+    expect(screen.getByText("Task preview")).toBeTruthy()
+    expect((screen.getByLabelText("Task name") as HTMLInputElement).readOnly).toBe(true)
+    expect((screen.getByLabelText("Complete Count chairs") as HTMLInputElement).disabled).toBe(true)
+    expect(screen.queryByRole("button", { name: "Save Task" })).toBeNull()
+    await user.click(screen.getByRole("button", { name: "Edit Task" }))
+    expect((screen.getByLabelText("Task name") as HTMLInputElement).readOnly).toBe(false)
+    expect((screen.getByLabelText("Complete Count chairs") as HTMLInputElement).disabled).toBe(false)
+    expect(screen.getByRole("button", { name: "Save Task" })).toBeTruthy()
+  })
+
   it("edits Event details through the API", async () => {
     const event: EventDetail = {
       id: 4, event_template_id: null, name: "Wellness session", venue: "Old Hall",
@@ -334,5 +366,9 @@ describe("API-backed organizer events", () => {
     expect(screen.getAllByText("No Tasks")).toHaveLength(2)
     expect(screen.getByText(/closed events are read-only/i)).toBeTruthy()
     expect(screen.queryByRole("button", { name: /start task|mark done|reopen task/i })).toBeNull()
+    await user.click(screen.getByText("Book the event venue"))
+    expect(screen.getByText("Task preview")).toBeTruthy()
+    expect((screen.getByLabelText("Task name") as HTMLInputElement).readOnly).toBe(true)
+    expect(screen.queryByRole("button", { name: "Edit Task" })).toBeNull()
   })
 })

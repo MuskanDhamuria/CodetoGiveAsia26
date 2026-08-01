@@ -1,0 +1,50 @@
+"""OpenAI/OpenRouter-style function-calling tool specs for TICKET-1.
+
+Parameters are generated from the same argument models used for schema
+validation (`backend.ai_tools.schemas.TOOL_ARG_MODELS`), so the tool
+definitions sent to the LLM can never drift from what the dispatch pipeline
+actually accepts.
+"""
+
+from __future__ import annotations
+
+from backend.ai_tools.schemas import TOOL_ARG_MODELS
+
+TOOL_DESCRIPTIONS: dict[str, str] = {
+    "create_event_draft": (
+        "Validate a proposed event and return it as a draft for the "
+        "organizer to review. Does not create anything yet — always call "
+        "this before publish_event."
+    ),
+    "publish_event": (
+        "Create a real event from an approved draft. Only call this after "
+        "the organizer has explicitly confirmed the draft from "
+        "create_event_draft."
+    ),
+    "update_event": "Update fields on an existing event.",
+    "get_event": "Look up a single event and its tasks by id.",
+    "list_events": "List events, optionally filtered by status, date range, template, or search text.",
+    "cancel_event": (
+        "Cancel an event. This is different from closing registration: a "
+        "cancelled event stops accepting RSVPs and is marked cancelled "
+        "everywhere it's shown. This does not delete the event or its "
+        "history."
+    ),
+}
+
+
+def _tool_spec(name: str) -> dict:
+    model = TOOL_ARG_MODELS[name]
+    schema = model.model_json_schema()
+    schema.pop("title", None)
+    return {
+        "type": "function",
+        "function": {
+            "name": name,
+            "description": TOOL_DESCRIPTIONS[name],
+            "parameters": schema,
+        },
+    }
+
+
+TOOL_SPECS: list[dict] = [_tool_spec(name) for name in TOOL_ARG_MODELS]

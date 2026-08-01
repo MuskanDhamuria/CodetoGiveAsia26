@@ -95,8 +95,15 @@ def event_detail(db, event_id: int) -> EventDetail:
     )
 
 
-@router.post("/events", response_model=EventDetail, status_code=201)
-def create_event(payload: EventCreate, db: Connection) -> EventDetail:
+def resolve_event_template_context(db, payload: EventCreate) -> tuple[int | None, str]:
+    """Look up the payload's template (if any) and resolve inherited fields.
+
+    Shared by ``create_event`` and the AI ``create_event_draft`` tool
+    (backend/ai_tools) so draft validation can reuse the exact same
+    template-existence check and default-inheritance rules without a DB
+    write, instead of re-implementing them.
+    """
+
     template = None
     if payload.event_template_id is not None:
         template = db.execute(
@@ -120,6 +127,12 @@ def create_event(payload: EventCreate, db: Connection) -> EventDetail:
         if payload.description is not None
         else template["description"] if template is not None else ""
     )
+    return beneficiary_id, description
+
+
+@router.post("/events", response_model=EventDetail, status_code=201)
+def create_event(payload: EventCreate, db: Connection) -> EventDetail:
+    beneficiary_id, description = resolve_event_template_context(db, payload)
 
     with db:
         event = db.execute(

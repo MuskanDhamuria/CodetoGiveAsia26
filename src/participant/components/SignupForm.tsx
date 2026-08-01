@@ -38,11 +38,15 @@ export default function SignupForm({
         contact_number: contactNumber.trim(),
         email: email.trim() || null,
       });
+      // Store what the backend actually matched/created, not the raw form
+      // input — this RSVP may have attached to a pre-existing participant
+      // (matched by contact number/email) whose canonical name/number
+      // differ from what was just typed. See TICKET-12/TICKET-15.
       onSignedUp({
         participantId: result.participant_id,
-        name: name.trim(),
-        contactNumber: contactNumber.trim(),
-        email: email.trim() || null,
+        name: result.participant_name,
+        contactNumber: result.participant_contact_number,
+        email: result.participant_email,
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Couldn't sign you up.");

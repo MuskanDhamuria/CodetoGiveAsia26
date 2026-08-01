@@ -28,6 +28,15 @@ class PublicRsvpIn(BaseModel):
 
 class PublicRsvpOut(BaseModel):
     participant_id: int
+    # The participant record actually matched/created — not an echo of the
+    # submitted body. `_find_or_create_participant` may attach this RSVP to
+    # a pre-existing participant (matched by contact_number/email) whose
+    # name differs from what was just typed; returning the canonical record
+    # lets the frontend store/display the real identity instead of quietly
+    # trusting unverified form input. See docs/tickets.md TICKET-12/TICKET-15.
+    participant_name: str
+    participant_contact_number: str | None
+    participant_email: str | None
     event_id: int
     rsvp_status: bool
 
@@ -37,34 +46,34 @@ def _find_or_create_participant(
     name: str,
     contact_number: str | None,
     email: str | None,
-) -> int:
+) -> sqlite3.Row:
     row = None
     if contact_number:
         row = connection.execute(
-            "SELECT id FROM participants WHERE contact_number = ?", (contact_number,)
+            "SELECT * FROM participants WHERE contact_number = ?", (contact_number,)
         ).fetchone()
     if row is None and email:
         row = connection.execute(
-            "SELECT id FROM participants WHERE email = ? COLLATE NOCASE", (email,)
+            "SELECT * FROM participants WHERE email = ? COLLATE NOCASE", (email,)
         ).fetchone()
     if row is not None:
-        return row["id"]
+        return row
 
     try:
-        cursor = connection.execute(
-            "INSERT INTO participants (name, contact_number, email) VALUES (?, ?, ?)",
+        return connection.execute(
+            "INSERT INTO participants (name, contact_number, email) "
+            "VALUES (?, ?, ?) RETURNING *",
             (name, contact_number, email),
-        )
-        return cursor.lastrowid
+        ).fetchone()
     except sqlite3.IntegrityError:
         # Lost a race with a concurrent signup using the same contact/email.
         row = connection.execute(
-            "SELECT id FROM participants WHERE contact_number = ? OR email = ? COLLATE NOCASE",
+            "SELECT * FROM participants WHERE contact_number = ? OR email = ? COLLATE NOCASE",
             (contact_number, email),
         ).fetchone()
         if row is None:
             raise
-        return row["id"]
+        return row
 
 
 @router.post(
@@ -98,12 +107,12 @@ def public_rsvp(event_id: int, body: PublicRsvpIn, request: Request) -> PublicRs
             )
 
         with connection:
-            participant_id = _find_or_create_participant(
+            participant = _find_or_create_participant(
                 connection, body.name.strip(), contact_number, body.email
             )
             existing = connection.execute(
                 "SELECT id FROM participations WHERE event_id = ? AND participant_id = ?",
-                (event_id, participant_id),
+                (event_id, participant["id"]),
             ).fetchone()
             if existing:
                 connection.execute(
@@ -114,10 +123,15 @@ def public_rsvp(event_id: int, body: PublicRsvpIn, request: Request) -> PublicRs
                 connection.execute(
                     "INSERT INTO participations (event_id, participant_id, rsvp_status) "
                     "VALUES (?, ?, ?)",
-                    (event_id, participant_id, int(body.rsvp_status)),
+                    (event_id, participant["id"], int(body.rsvp_status)),
                 )
         return PublicRsvpOut(
-            participant_id=participant_id, event_id=event_id, rsvp_status=body.rsvp_status
+            participant_id=participant["id"],
+            participant_name=participant["name"],
+            participant_contact_number=participant["contact_number"],
+            participant_email=participant["email"],
+            event_id=event_id,
+            rsvp_status=body.rsvp_status,
         )
     finally:
         connection.close()

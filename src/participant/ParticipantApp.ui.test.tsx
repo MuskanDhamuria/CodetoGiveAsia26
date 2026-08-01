@@ -42,7 +42,17 @@ function mockFetch() {
         return jsonResponse(OPEN_EVENT)
       }
       if (url === "/api/v1/public/events/1/rsvp" && method === "POST") {
-        return jsonResponse({ participant_id: 42, event_id: 1, rsvp_status: true }, 201)
+        return jsonResponse(
+          {
+            participant_id: 42,
+            participant_name: "Alice",
+            participant_contact_number: "+6591234567",
+            participant_email: null,
+            event_id: 1,
+            rsvp_status: true,
+          },
+          201,
+        )
       }
       if (url === "/api/v1/participants/42/events?limit=100" && method === "GET") {
         return jsonResponse({
@@ -97,6 +107,72 @@ describe("Participant signup journey", () => {
     await user.click(screen.getByRole("button", { name: "Sign up" }))
 
     expect(await screen.findByText("You're signed up for this event.")).toBeTruthy()
+  })
+})
+
+describe("Public RSVP identity (TICKET-12 / TICKET-15)", () => {
+  it("stores the backend's canonical participant identity, not the raw form input", async () => {
+    // Simulates the RSVP's contact number matching a pre-existing
+    // participant under a different name/formatting — the response's
+    // participant_name/participant_contact_number are what should end up
+    // in local storage and on screen, not what was just typed.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = typeof input === "string" ? input : input.toString()
+        const method = init?.method ?? "GET"
+
+        if (url === "/api/v1/events?order=asc&limit=100" && method === "GET") {
+          return jsonResponse({ items: [OPEN_EVENT], total: 1, limit: 100, offset: 0 })
+        }
+        if (url === "/api/v1/events/1" && method === "GET") {
+          return jsonResponse(OPEN_EVENT)
+        }
+        if (url === "/api/v1/public/events/1/rsvp" && method === "POST") {
+          return jsonResponse(
+            {
+              participant_id: 42,
+              participant_name: "Canonical Alice",
+              participant_contact_number: "+6591234567",
+              participant_email: null,
+              event_id: 1,
+              rsvp_status: true,
+            },
+            201,
+          )
+        }
+        if (url === "/api/v1/participants/42/events?limit=100" && method === "GET") {
+          return jsonResponse({
+            items: [{ ...OPEN_EVENT, rsvp_status: true, attendance: null }],
+            total: 1,
+            limit: 100,
+            offset: 0,
+          })
+        }
+        throw new Error(`Unhandled request in test: ${method} ${url}`)
+      }),
+    )
+
+    const user = userEvent.setup()
+    render(
+      <MemoryRouter initialEntries={["/participant"]}>
+        <Routes>
+          <Route path="/participant/*" element={<ParticipantApp />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByText("Wellness Morning")).toBeTruthy()
+    await user.click(screen.getByRole("link", { name: /Wellness Morning/ }))
+
+    expect(await screen.findByText("Bring a water bottle.")).toBeTruthy()
+    await user.type(screen.getByLabelText("Name"), "Typo'd Alice")
+    await user.type(screen.getByLabelText("Phone number"), "+6591234567")
+    await user.click(screen.getByRole("button", { name: "Sign up" }))
+
+    expect(await screen.findByText("You're signed up for this event.")).toBeTruthy()
+    expect(await screen.findByText(/Signed in as Canonical Alice/)).toBeTruthy()
+    expect(screen.queryByText(/Signed in as Typo'd Alice/)).toBeNull()
   })
 })
 

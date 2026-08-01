@@ -40,6 +40,13 @@ export type PublicRsvpInput = {
 
 export type PublicRsvpResult = {
   participant_id: number;
+  // The participant record actually matched/created by the backend — may
+  // differ from what was submitted if this contact number/email already
+  // belonged to an existing participant. Always prefer these over the
+  // locally-typed form values. See docs/tickets.md TICKET-12/TICKET-15.
+  participant_name: string;
+  participant_contact_number: string | null;
+  participant_email: string | null;
   event_id: number;
   rsvp_status: boolean;
 };

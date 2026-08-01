@@ -60,6 +60,9 @@ class PublicRsvpEndpointTest(unittest.TestCase):
         body = response.json()
         self.assertEqual(body["event_id"], event_id)
         self.assertTrue(body["rsvp_status"])
+        self.assertEqual(body["participant_name"], "Alice")
+        self.assertEqual(body["participant_contact_number"], "+6591234567")
+        self.assertIsNone(body["participant_email"])
 
         my_events = self.client.get(f"/api/v1/participants/{body['participant_id']}/events").json()
         self.assertEqual(my_events["total"], 1)
@@ -78,6 +81,41 @@ class PublicRsvpEndpointTest(unittest.TestCase):
         ).json()
 
         self.assertEqual(first["participant_id"], second["participant_id"])
+
+    def test_rsvp_returns_the_matched_participants_canonical_name_not_the_submitted_one(
+        self,
+    ) -> None:
+        # TICKET-12: reusing an existing participant by contact number must
+        # not let a differently-typed name on the second RSVP silently
+        # relabel who the frontend thinks it's talking to.
+        first_event_id = self.insert_template_and_event(name="First event")
+        second_event_id = self.insert_template_and_event(name="Second event")
+
+        self.client.post(
+            f"/api/v1/public/events/{first_event_id}/rsvp",
+            json={"name": "Alice", "contact_number": "+6591234567"},
+        )
+        second = self.client.post(
+            f"/api/v1/public/events/{second_event_id}/rsvp",
+            json={"name": "Someone Else Entirely", "contact_number": "+6591234567"},
+        ).json()
+
+        self.assertEqual(second["participant_name"], "Alice")
+
+    def test_rsvp_returns_canonical_contact_number_even_when_typed_differently(self) -> None:
+        first_event_id = self.insert_template_and_event(name="First event")
+        second_event_id = self.insert_template_and_event(name="Second event")
+
+        self.client.post(
+            f"/api/v1/public/events/{first_event_id}/rsvp",
+            json={"name": "Alice", "contact_number": "9123 4567"},
+        )
+        second = self.client.post(
+            f"/api/v1/public/events/{second_event_id}/rsvp",
+            json={"name": "Alice again", "contact_number": "+65 9123-4567"},
+        ).json()
+
+        self.assertEqual(second["participant_contact_number"], "+6591234567")
 
     def test_rsvp_matches_an_existing_participant_despite_different_formatting(self) -> None:
         first_event_id = self.insert_template_and_event(name="First event")

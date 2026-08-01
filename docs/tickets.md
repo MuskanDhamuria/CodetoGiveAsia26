@@ -324,46 +324,28 @@ is invisible to the user and indistinguishable from "you're not signed up."
 
 ---
 
-## TICKET-12: Public RSVP can silently reassign identity to an existing participant under a different name
+~~TICKET-12: Public RSVP can silently reassign identity to an existing participant under a different name~~
+— **Partially done.** `PublicRsvpOut` (`public.py`) now returns the
+matched/created participant's canonical `participant_name`,
+`participant_contact_number`, and `participant_email` — `_find_or_create_participant`
+returns the full `sqlite3.Row` instead of just an id, so the handler builds
+the response from what's actually in the DB rather than echoing the request
+body. `SignupForm.tsx`'s `onSignedUp` now stores `result.participant_name`/
+`result.participant_contact_number`/`result.participant_email` instead of
+the locally-typed form values (this also closes TICKET-15, the identical gap
+for `contact_number`). Covered by
+`test_rsvp_returns_the_matched_participants_canonical_name_not_the_submitted_one`
+and `test_rsvp_returns_canonical_contact_number_even_when_typed_differently`
+(`test_public.py`), plus a frontend integration test in
+`ParticipantApp.ui.test.tsx` asserting the "Signed in as …" badge reflects
+the backend's canonical name, not what was typed.
 
-**Priority:** Medium
-**Area:** Backend (`backend/api/routes/public.py`), Frontend (`src/participant/components/SignupForm.tsx`)
-
-### Problem
-
-`_find_or_create_participant` (`public.py`) matches an existing participant
-by `contact_number` (then `email`) alone — it never checks that the
-submitted `name` matches the record it found. Meanwhile `SignupForm`'s
-`onSignedUp` callback stores the *locally-typed* name into `localStorage`,
-since `PublicRsvpOut` doesn't return the matched participant's actual name:
-
-```ts
-onSignedUp({
-  participantId: result.participant_id,
-  name: name.trim(),   // never verified against the DB record it just matched
-  ...
-});
-```
-
-Concrete failure case: two people share a phone (family device, or someone
-signs up on behalf of another migrant worker using that person's number), or
-a typo in the phone number happens to collide with an existing registrant's.
-The RSVP attaches to the existing DB participant, but the "Signed in as …"
-badge shows the freshly-typed name — the localStorage identity and the DB
-identity diverge, and every subsequent action (My Events, cancel) operates
-on the *original* person's record under a *different* displayed name, with
-nothing surfacing the mismatch.
-
-### Acceptance criteria
-
-- Decide the intended behavior when a submitted name doesn't match an
-  existing participant matched by contact number/email: at minimum, have
-  `PublicRsvpOut` return the participant's canonical `name` so the frontend
-  stores/display the DB's name rather than trusting the form input
-  unconditionally.
-- Consider surfacing an explicit "this number is already registered as X —
-  is that you?" confirmation step in `SignupForm` rather than silently
-  merging identities.
+Still open: this only fixes what gets *stored/displayed* after the fact — it
+doesn't detect or surface the mismatch to the participant at signup time.
+The acceptance criteria's suggested "this number is already registered as
+X — is that you?" confirmation step in `SignupForm` is still undone; two
+people sharing a phone (or a typo colliding with an existing registrant's
+number) still silently merges into the existing record without asking.
 
 ---
 
@@ -403,3 +385,13 @@ upcoming. `EventBrowseList.test.tsx`'s own fixture-date helper
 (`TODAY_ISO`/`isoDaysFromNow`) now imports `todayIso()` from the module
 under test rather than reimplementing the same local-clock logic, so the
 fixtures can't silently drift out of sync with the component again.
+
+---
+
+~~TICKET-15: `SignupForm` stores the un-normalized phone number locally, diverging from what the backend persists~~
+— **Done**, bundled into the same `PublicRsvpOut` response-shape fix as
+TICKET-12 (see above). `SignupForm.tsx` now stores
+`result.participant_contact_number` (E.164, as persisted) instead of the
+raw `contactNumber.trim()` form value, so a participant's
+`StoredParticipant.contactNumber` is normalized the same way whether they
+most recently signed up or signed in via `SignInForm`.

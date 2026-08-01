@@ -4,21 +4,24 @@ import userEvent from "@testing-library/user-event"
 import { MemoryRouter, Route, Routes } from "react-router-dom"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import ParticipantApp from "../ParticipantApp"
+import { todayIso } from "../dateFormat"
 
 afterEach(() => {
   cleanup()
   localStorage.clear()
   vi.unstubAllGlobals()
+  vi.useRealTimers()
 })
 
 // Computed relative to "today" (rather than hardcoded dates) so tests don't
 // depend on faking the system clock and stay correct regardless of when
-// they're run.
-const NOW = new Date()
-const TODAY_ISO = NOW.toISOString().slice(0, 10)
+// they're run. Reuses the module under test's own `todayIso()` (rather than
+// reimplementing "today" here) so this fixture can't drift out of sync with
+// what the component actually considers "today" — see TICKET-14.
+const TODAY_ISO = todayIso()
 
 function isoDaysFromNow(days: number): string {
-  const date = new Date(NOW)
+  const date = new Date(`${TODAY_ISO}T00:00:00Z`)
   date.setUTCDate(date.getUTCDate() + days)
   return date.toISOString().slice(0, 10)
 }
@@ -242,5 +245,37 @@ describe("Calendar view", () => {
     await clickUntilLinkVisible(user, "Next month", "Digital Literacy Workshop")
     const closedLink = screen.getByRole("link", { name: "Digital Literacy Workshop" })
     expect(closedLink.className).toContain("event-calendar-pill-closed")
+  })
+})
+
+describe("Timezone-correct 'today' (TICKET-14)", () => {
+  it("buckets an event dated yesterday in Singapore as past, even though it's still 'today' in UTC", async () => {
+    // 2026-08-01T02:00 SGT == 2026-07-31T18:00Z — Singapore's calendar has
+    // already turned over to Aug 1, but plain UTC hasn't yet. An event dated
+    // 2026-07-31 is a past event from the Singapore-based audience's
+    // perspective; a naive UTC-only "today" would wrongly still call it
+    // today's date and leave it out of the past bucket.
+    // Fake only `Date`, not timers — faking `setTimeout` too would freeze
+    // Testing Library's `findBy*` polling and hang the test.
+    vi.useFakeTimers({ toFake: ["Date"] })
+    vi.setSystemTime(new Date("2026-07-31T18:00:00Z"))
+
+    const yesterdayInSgEvent = {
+      id: 4,
+      name: "Yesterday's Cleanup Drive",
+      venue: "East Coast Park",
+      description: "Already happened.",
+      event_date: "2026-07-31",
+      event_time: "18:00",
+      status: "open",
+    }
+    mockFetch([yesterdayInSgEvent])
+    renderBrowse()
+
+    const summary = await screen.findByText("Past events (1)")
+    const details = summary.closest("details")
+    expect(details).toBeTruthy()
+    expect(within(details as HTMLElement).getByText("Yesterday's Cleanup Drive")).toBeTruthy()
+    expect(screen.getByText("No upcoming events right now.")).toBeTruthy()
   })
 })

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { getAllEvents, type EventSummary } from "../api/client";
-import { formatEventDate, formatEventTime, formatMonthLabel, todayIso } from "../dateFormat";
+import { formatEventDate, formatEventTime, formatMonthLabel, sgNow, todayIso } from "../dateFormat";
 import EventCalendarView from "./EventCalendarView";
 
 type View = "list" | "calendar";
@@ -30,7 +30,7 @@ function groupByMonth(events: EventSummary[]): MonthGroup[] {
 }
 
 function startOfCurrentMonth(): Date {
-  const now = new Date();
+  const now = sgNow();
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
 }
 

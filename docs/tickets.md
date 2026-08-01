@@ -385,3 +385,21 @@ for anything pre-dating this fix.
 
 Still open: TICKET-1's proposed lookup-by-phone endpoint should normalize
 its query parameter the same way once it's built.
+
+---
+
+~~TICKET-14: `todayIso()` uses the browser's local clock, breaking the app's own "always UTC" date scheme for ~8 hours a day~~
+— **Done.** Added `sgNow()` (`dateFormat.ts`) — shifts the real UTC instant
+forward by a fixed 8-hour Singapore offset before reading its UTC calendar
+date/components, instead of trusting the device's local `Date`/
+`toISOString()`. `todayIso()` now builds on `sgNow()`; `EventBrowseList.tsx`'s
+`startOfCurrentMonth()` had the identical bug (deriving the "current month"
+default from a local-clock `Date`) and now uses `sgNow()` too. Regression
+test in `dateFormat.test.ts` fakes the system clock to an instant where UTC
+and SGT disagree on the calendar date and asserts `todayIso()` returns
+SGT's date; `EventBrowseList.test.tsx` gets an equivalent end-to-end case
+asserting an event dated "yesterday" (SGT) is bucketed as past rather than
+upcoming. `EventBrowseList.test.tsx`'s own fixture-date helper
+(`TODAY_ISO`/`isoDaysFromNow`) now imports `todayIso()` from the module
+under test rather than reimplementing the same local-clock logic, so the
+fixtures can't silently drift out of sync with the component again.

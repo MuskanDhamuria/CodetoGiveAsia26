@@ -35,6 +35,21 @@ export function formatMonthLabel(monthKey: string): string {
   }).format(new Date(`${monthKey}-01T00:00:00Z`));
 }
 
+// Singapore is a fixed UTC+8 offset with no DST (matching DEFAULT_COUNTRY in
+// phone.ts). Shifting the real UTC instant forward by that offset before
+// reading its UTC calendar date/components gives "now" on Singapore's
+// calendar, independent of the viewer's device timezone/clock settings —
+// consistent with every other date computation in this module, which is
+// UTC-anchored rather than viewer-local. Without this, todayIso() would
+// return the wrong calendar date for up to 8 hours a day for anyone
+// physically in Singapore, since their local midnight lands 8 hours before
+// UTC's.
+const SG_UTC_OFFSET_MS = 8 * 60 * 60 * 1000;
+
+export function sgNow(): Date {
+  return new Date(Date.now() + SG_UTC_OFFSET_MS);
+}
+
 export function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
+  return sgNow().toISOString().slice(0, 10);
 }

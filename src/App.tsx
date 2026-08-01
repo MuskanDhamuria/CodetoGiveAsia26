@@ -459,7 +459,7 @@ function Navbar({
           aria-label="Passion to Serve home"
           onClick={() => onNavigate("home")}
         >
-          Passion to Serve<span className="logo-mark">R</span>
+          Passion to Serve
         </button>
         <div className="nav-links">
           {navLinks.map((link) => (

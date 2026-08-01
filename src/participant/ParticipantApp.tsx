@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { NavLink, Outlet, Route, Routes } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { NavLink, Outlet, Route, Routes, useNavigate } from "react-router-dom";
 import {
   clearStoredParticipant,
   getStoredParticipant,
@@ -18,8 +18,51 @@ export type ParticipantOutletContext = {
   onIdentityInvalid: () => void;
 };
 
+function ParticipantMenu({ participant, onSignOut }: { participant: StoredParticipant; onSignOut: () => void }) {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handleOutsideClick(event: MouseEvent) {
+      if (!containerRef.current?.contains(event.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handleOutsideClick);
+    return () => document.removeEventListener("mousedown", handleOutsideClick);
+  }, [open]);
+
+  return (
+    <div className="participant-menu" ref={containerRef}>
+      <button
+        type="button"
+        className="participant-badge"
+        aria-haspopup="true"
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+      >
+        Signed in as {participant.name}
+      </button>
+      {open && (
+        <div className="participant-menu-dropdown" role="menu">
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setOpen(false);
+              onSignOut();
+            }}
+          >
+            Sign out
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ParticipantLayout() {
   const [participant, setParticipant] = useState<StoredParticipant | null>(getStoredParticipant);
+  const navigate = useNavigate();
 
   function handleIdentified(next: StoredParticipant) {
     storeParticipant(next);
@@ -29,6 +72,12 @@ function ParticipantLayout() {
   function handleIdentityInvalid() {
     clearStoredParticipant();
     setParticipant(null);
+  }
+
+  function handleSignOut() {
+    clearStoredParticipant();
+    setParticipant(null);
+    navigate("/participant/sign-in");
   }
 
   const context: ParticipantOutletContext = {
@@ -51,7 +100,7 @@ function ParticipantLayout() {
           <NavLink to="/participant/my-events">My Events</NavLink>
           {!participant && <NavLink to="/participant/sign-in">Sign in</NavLink>}
         </nav>
-        {participant && <span className="participant-badge">Signed in as {participant.name}</span>}
+        {participant && <ParticipantMenu participant={participant} onSignOut={handleSignOut} />}
       </header>
       <main className="participant-main">
         <Outlet context={context} />

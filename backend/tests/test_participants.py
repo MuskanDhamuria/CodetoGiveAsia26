@@ -71,9 +71,96 @@ class ParticipantsEndpointTest(unittest.TestCase):
 
         self.assertEqual(response.status_code, 409)
 
+    def test_create_participant_normalizes_contact_number(self) -> None:
+        response = self.client.post(
+            "/api/v1/participants",
+            json={"name": "Alice", "contact_number": "9123 4567"},
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json()["contact_number"], "+6591234567")
+
+    def test_create_participant_rejects_duplicate_contact_number_in_different_formats(
+        self,
+    ) -> None:
+        self.client.post(
+            "/api/v1/participants",
+            json={"name": "Alice", "contact_number": "9123 4567"},
+        )
+
+        response = self.client.post(
+            "/api/v1/participants",
+            json={"name": "Someone else", "contact_number": "+65 9123-4567"},
+        )
+
+        self.assertEqual(response.status_code, 409)
+
+    def test_create_participant_rejects_invalid_contact_number(self) -> None:
+        response = self.client.post(
+            "/api/v1/participants",
+            json={"name": "Alice", "contact_number": "not a phone number"},
+        )
+
+        self.assertEqual(response.status_code, 400)
+
     def test_get_participant_not_found(self) -> None:
         response = self.client.get("/api/v1/participants/999")
         self.assertEqual(response.status_code, 404)
+
+    def test_lookup_participant_by_contact_number(self) -> None:
+        created = self.client.post(
+            "/api/v1/participants",
+            json={"name": "Alice", "contact_number": "+6591234567"},
+        ).json()
+
+        response = self.client.get(
+            "/api/v1/participants/lookup", params={"contact_number": "+6591234567"}
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["id"], created["id"])
+
+    def test_lookup_participant_matches_despite_different_formatting(self) -> None:
+        created = self.client.post(
+            "/api/v1/participants",
+            json={"name": "Alice", "contact_number": "9123 4567"},
+        ).json()
+
+        response = self.client.get(
+            "/api/v1/participants/lookup", params={"contact_number": "+65 9123-4567"}
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["id"], created["id"])
+
+    def test_lookup_participant_not_found_is_honest_404(self) -> None:
+        response = self.client.get(
+            "/api/v1/participants/lookup", params={"contact_number": "+6591234567"}
+        )
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_lookup_participant_rejects_invalid_contact_number(self) -> None:
+        response = self.client.get(
+            "/api/v1/participants/lookup", params={"contact_number": "not a phone number"}
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_lookup_participant_requires_contact_number_query_param(self) -> None:
+        response = self.client.get("/api/v1/participants/lookup")
+
+        self.assertEqual(response.status_code, 422)
+
+    def test_lookup_route_takes_priority_over_numeric_participant_id_route(self) -> None:
+        # Regression guard: "/participants/lookup" must not be swallowed by
+        # "/participants/{participant_id}" (which would 422 trying to parse
+        # "lookup" as an int) — route registration order matters here.
+        response = self.client.get(
+            "/api/v1/participants/lookup", params={"contact_number": "+6591234567"}
+        )
+
+        self.assertNotEqual(response.status_code, 422)
 
     def test_get_participant(self) -> None:
         created = self.client.post(

@@ -54,6 +54,19 @@ function mockFetch() {
       if (url === "/api/v1/participants/999/events?limit=100" && method === "GET") {
         return jsonResponse({ detail: "Participant not found" }, 404)
       }
+      if (url.startsWith("/api/v1/participants/lookup?contact_number=") && method === "GET") {
+        const raw = new URLSearchParams(url.split("?")[1]).get("contact_number") ?? ""
+        const contactNumber = raw.replace(/[^\d+]/g, "")
+        if (contactNumber === "+6591234567") {
+          return jsonResponse({
+            id: 42,
+            name: "Returning Alice",
+            contact_number: "+6591234567",
+            email: null,
+          })
+        }
+        return jsonResponse({ detail: "Participant not found" }, 404)
+      }
       throw new Error(`Unhandled request in test: ${method} ${url}`)
     }),
   )
@@ -109,5 +122,69 @@ describe("Stale local identity", () => {
     expect(await screen.findByText("Bring a water bottle.")).toBeTruthy()
     expect(await screen.findByLabelText("Name")).toBeTruthy()
     expect(screen.queryByText(/Signed in as Old Alice/)).toBeNull()
+  })
+})
+
+describe("Sign in", () => {
+  it("restores a returning participant's identity by phone number, without RSVPing", async () => {
+    const user = userEvent.setup()
+    render(
+      <MemoryRouter initialEntries={["/participant/sign-in"]}>
+        <Routes>
+          <Route path="/participant/*" element={<ParticipantApp />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    await user.type(screen.getByLabelText("Phone number"), "+6591234567")
+    await user.click(screen.getByRole("button", { name: "Sign in" }))
+
+    expect(await screen.findByText(/Signed in as Returning Alice/)).toBeTruthy()
+    // Lands on My Events, not on an event's signup flow — no RSVP side effect.
+    expect(screen.queryByRole("button", { name: "Sign up" })).toBeNull()
+  })
+
+  it("shows an honest empty state when no participant matches, not a raw API error", async () => {
+    const user = userEvent.setup()
+    render(
+      <MemoryRouter initialEntries={["/participant/sign-in"]}>
+        <Routes>
+          <Route path="/participant/*" element={<ParticipantApp />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    await user.type(screen.getByLabelText("Phone number"), "8765 4321")
+    await user.click(screen.getByRole("button", { name: "Sign in" }))
+
+    expect(
+      await screen.findByText(
+        "We couldn't find that number — sign up for an event to get started.",
+      ),
+    ).toBeTruthy()
+    expect(screen.queryByText(/Signed in as/)).toBeNull()
+  })
+
+  it("hides the Sign in link once a participant is identified", async () => {
+    localStorage.setItem(
+      "p2s.participant",
+      JSON.stringify({
+        participantId: 42,
+        name: "Returning Alice",
+        contactNumber: "+6591234567",
+        email: null,
+      }),
+    )
+
+    render(
+      <MemoryRouter initialEntries={["/participant"]}>
+        <Routes>
+          <Route path="/participant/*" element={<ParticipantApp />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByText(/Signed in as Returning Alice/)).toBeTruthy()
+    expect(screen.queryByRole("link", { name: "Sign in" })).toBeNull()
   })
 })

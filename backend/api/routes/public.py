@@ -14,6 +14,7 @@ from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
 from backend.database import connect
+from backend.phone import InvalidPhoneNumberError, normalize_phone_number
 
 router = APIRouter(prefix="/public", tags=["public"])
 
@@ -77,6 +78,13 @@ def public_rsvp(event_id: int, body: PublicRsvpIn, request: Request) -> PublicRs
             status.HTTP_400_BAD_REQUEST, "Provide a contact number or email to sign up"
         )
 
+    contact_number = None
+    if body.contact_number:
+        try:
+            contact_number = normalize_phone_number(body.contact_number)
+        except InvalidPhoneNumberError as error:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, str(error)) from error
+
     connection = connect(request.app.state.database_path)
     try:
         event = connection.execute(
@@ -91,7 +99,7 @@ def public_rsvp(event_id: int, body: PublicRsvpIn, request: Request) -> PublicRs
 
         with connection:
             participant_id = _find_or_create_participant(
-                connection, body.name.strip(), body.contact_number, body.email
+                connection, body.name.strip(), contact_number, body.email
             )
             existing = connection.execute(
                 "SELECT id FROM participations WHERE event_id = ? AND participant_id = ?",

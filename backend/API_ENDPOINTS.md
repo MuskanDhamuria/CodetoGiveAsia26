@@ -265,6 +265,7 @@ approved for an event and assigned a volunteer role through `volunteer_signups`.
 | --- | --- | --- | --- |
 | `GET` | `/participants` | Query: `q?`, `limit`, `offset` | Search participants by name, email, or contact number. |
 | `POST` | `/participants` | Body: `name`, `contact_number?`, `email?` | Create a participant. |
+| `GET` | `/participants/lookup` | Query: `contact_number` | Exact, side-effect-free lookup by phone number — single match or 404. Used to restore local identity ("sign in") without RSVPing. Registered ahead of `/participants/{participant_id}` since it isn't a numeric ID. |
 | `GET` | `/participants/{participant_id}` | Path ID | Get participant details. |
 | `PATCH` | `/participants/{participant_id}` | Body: `name?`, `contact_number?`, `email?` | Update participant details. |
 | `DELETE` | `/participants/{participant_id}` | Path ID | Delete a participant and their participation records. Restrict to administrators. |

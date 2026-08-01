@@ -1,29 +1,28 @@
 import { useState, type FormEvent } from "react";
-import { publicRsvp } from "../api/client";
+import { ApiError, lookupParticipant } from "../api/client";
 import type { StoredParticipant } from "../identity";
 import { formatPhoneNumberAsYouType, isValidParticipantPhoneNumber } from "../phone";
 
-export default function SignupForm({
-  eventId,
-  onSignedUp,
+export default function SignInForm({
+  onSignedIn,
 }: {
-  eventId: number;
-  onSignedUp: (participant: StoredParticipant) => void;
+  onSignedIn: (participant: StoredParticipant) => void;
 }) {
-  const [name, setName] = useState("");
   const [contactNumber, setContactNumber] = useState("");
-  const [email, setEmail] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notFound, setNotFound] = useState(false);
 
   function handleContactNumberChange(value: string) {
     setContactNumber(formatPhoneNumberAsYouType(value));
+    setNotFound(false);
+    setError(null);
   }
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
-    if (!name.trim() || !contactNumber.trim()) {
-      setError("Enter your name and phone number.");
+    if (!contactNumber.trim()) {
+      setError("Enter your phone number.");
       return;
     }
     if (!isValidParticipantPhoneNumber(contactNumber)) {
@@ -32,20 +31,21 @@ export default function SignupForm({
     }
     setPending(true);
     setError(null);
+    setNotFound(false);
     try {
-      const result = await publicRsvp(eventId, {
-        name: name.trim(),
-        contact_number: contactNumber.trim(),
-        email: email.trim() || null,
-      });
-      onSignedUp({
-        participantId: result.participant_id,
-        name: name.trim(),
-        contactNumber: contactNumber.trim(),
-        email: email.trim() || null,
+      const participant = await lookupParticipant(contactNumber);
+      onSignedIn({
+        participantId: participant.id,
+        name: participant.name,
+        contactNumber: participant.contact_number,
+        email: participant.email,
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't sign you up.");
+      if (err instanceof ApiError && err.status === 404) {
+        setNotFound(true);
+      } else {
+        setError(err instanceof Error ? err.message : "Couldn't sign you in.");
+      }
     } finally {
       setPending(false);
     }
@@ -53,11 +53,10 @@ export default function SignupForm({
 
   return (
     <form className="signup-form" onSubmit={handleSubmit}>
-      <p>Enter your details to sign up. We'll remember you on this device.</p>
-      <label>
-        <span>Name</span>
-        <input value={name} onChange={(event) => setName(event.target.value)} required />
-      </label>
+      <p>
+        This isn't a secure login — it just looks up a previous sign-up on
+        this device by phone number.
+      </p>
       <label>
         <span>Phone number</span>
         <input
@@ -69,13 +68,14 @@ export default function SignupForm({
           placeholder="9123 4567"
         />
       </label>
-      <label>
-        <span>Email (optional)</span>
-        <input value={email} onChange={(event) => setEmail(event.target.value)} type="email" />
-      </label>
+      {notFound && (
+        <p className="signup-form-error">
+          We couldn't find that number — sign up for an event to get started.
+        </p>
+      )}
       {error && <p className="signup-form-error">{error}</p>}
       <button type="submit" disabled={pending}>
-        {pending ? "Signing up…" : "Sign up"}
+        {pending ? "Checking…" : "Sign in"}
       </button>
     </form>
   );

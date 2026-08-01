@@ -78,6 +78,58 @@ class PublicRsvpEndpointTest(unittest.TestCase):
 
         self.assertEqual(first["participant_id"], second["participant_id"])
 
+    def test_rsvp_matches_an_existing_participant_despite_different_formatting(self) -> None:
+        first_event_id = self.insert_template_and_event(name="First event")
+        second_event_id = self.insert_template_and_event(name="Second event")
+
+        first = self.client.post(
+            f"/api/v1/public/events/{first_event_id}/rsvp",
+            json={"name": "Alice", "contact_number": "9123 4567"},
+        ).json()
+        second = self.client.post(
+            f"/api/v1/public/events/{second_event_id}/rsvp",
+            json={"name": "Alice again", "contact_number": "+65 9123-4567"},
+        ).json()
+
+        self.assertEqual(first["participant_id"], second["participant_id"])
+
+    def test_rsvp_normalizes_and_stores_contact_number_as_e164(self) -> None:
+        event_id = self.insert_template_and_event()
+
+        result = self.client.post(
+            f"/api/v1/public/events/{event_id}/rsvp",
+            json={"name": "Alice", "contact_number": "9123 4567"},
+        ).json()
+
+        participant = self.client.get(
+            f"/api/v1/participants/{result['participant_id']}"
+        ).json()
+        self.assertEqual(participant["contact_number"], "+6591234567")
+
+    def test_rsvp_accepts_a_foreign_country_code(self) -> None:
+        event_id = self.insert_template_and_event()
+
+        result = self.client.post(
+            f"/api/v1/public/events/{event_id}/rsvp",
+            json={"name": "Bob", "contact_number": "+1 415 555 2671"},
+        )
+
+        self.assertEqual(result.status_code, 201)
+        participant = self.client.get(
+            f"/api/v1/participants/{result.json()['participant_id']}"
+        ).json()
+        self.assertEqual(participant["contact_number"], "+14155552671")
+
+    def test_rsvp_rejects_an_invalid_contact_number(self) -> None:
+        event_id = self.insert_template_and_event()
+
+        response = self.client.post(
+            f"/api/v1/public/events/{event_id}/rsvp",
+            json={"name": "Alice", "contact_number": "not a phone number"},
+        )
+
+        self.assertEqual(response.status_code, 400)
+
     def test_rsvp_requires_contact_number_or_email(self) -> None:
         event_id = self.insert_template_and_event()
 

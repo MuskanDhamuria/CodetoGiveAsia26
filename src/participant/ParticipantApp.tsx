@@ -9,6 +9,7 @@ import {
 import EventBrowseList from "./components/EventBrowseList";
 import EventDetailCard from "./components/EventDetailCard";
 import MyEventsList from "./components/MyEventsList";
+import SignInPage from "./components/SignInPage";
 import "./participant.css";
 
 export type ParticipantOutletContext = {
@@ -48,6 +49,7 @@ function ParticipantLayout() {
             Browse
           </NavLink>
           <NavLink to="/participant/my-events">My Events</NavLink>
+          {!participant && <NavLink to="/participant/sign-in">Sign in</NavLink>}
         </nav>
         {participant && <span className="participant-badge">Signed in as {participant.name}</span>}
       </header>
@@ -65,6 +67,7 @@ export default function ParticipantApp() {
         <Route index element={<EventBrowseList />} />
         <Route path="events/:eventId" element={<EventDetailCard />} />
         <Route path="my-events" element={<MyEventsList />} />
+        <Route path="sign-in" element={<SignInPage />} />
       </Route>
     </Routes>
   );

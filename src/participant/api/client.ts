@@ -108,3 +108,10 @@ export function cancelRegistration(eventId: number, participantId: number): Prom
 export function getMyEvents(participantId: number): Promise<ListResponse<EventForParticipant>> {
   return request(`/participants/${participantId}/events?limit=100`);
 }
+
+// Exact, side-effect-free lookup used to restore local identity ("sign in")
+// without RSVPing to an event. Throws ApiError(404) if no participant has
+// this contact number.
+export function lookupParticipant(contactNumber: string): Promise<ParticipantRecord> {
+  return request(`/participants/lookup?contact_number=${encodeURIComponent(contactNumber)}`);
+}

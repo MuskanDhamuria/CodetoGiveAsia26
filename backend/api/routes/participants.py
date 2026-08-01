@@ -12,6 +12,7 @@ from fastapi import APIRouter, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
 
 from backend.database import connect
+from backend.phone import InvalidPhoneNumberError, normalize_phone_number
 
 router = APIRouter(prefix="/participants", tags=["participants"])
 
@@ -104,18 +105,56 @@ def list_participants(
 def create_participant(body: ParticipantIn, request: Request) -> ParticipantOut:
     connection = _db(request)
     try:
+        contact_number = None
+        if body.contact_number:
+            try:
+                contact_number = normalize_phone_number(body.contact_number)
+            except InvalidPhoneNumberError as error:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, str(error)) from error
+
         try:
             with connection:
                 row = connection.execute(
                     "INSERT INTO participants (name, contact_number, email) "
                     "VALUES (?, ?, ?) RETURNING *",
-                    (body.name.strip(), body.contact_number, body.email),
+                    (body.name.strip(), contact_number, body.email),
                 ).fetchone()
         except sqlite3.IntegrityError as error:
             raise HTTPException(
                 status.HTTP_409_CONFLICT,
                 "A participant with that contact number or email already exists",
             ) from error
+        return _row_to_participant(row)
+    finally:
+        connection.close()
+
+
+@router.get("/lookup", response_model=ParticipantOut)
+def lookup_participant(
+    request: Request,
+    contact_number: str = Query(min_length=1),
+) -> ParticipantOut:
+    """Exact, side-effect-free lookup by phone number.
+
+    Registered ahead of `/{participant_id}` — "lookup" would otherwise match
+    that route's path pattern first and fail int validation with a 422
+    instead of running this handler. Used to restore a participant's local
+    identity ("sign in") on a new device/browser without registering them
+    for an event as a side effect. See docs/tickets.md TICKET-1.
+    """
+
+    connection = _db(request)
+    try:
+        try:
+            normalized = normalize_phone_number(contact_number)
+        except InvalidPhoneNumberError as error:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, str(error)) from error
+
+        row = connection.execute(
+            "SELECT * FROM participants WHERE contact_number = ?", (normalized,)
+        ).fetchone()
+        if row is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Participant not found")
         return _row_to_participant(row)
     finally:
         connection.close()

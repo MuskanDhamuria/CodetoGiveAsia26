@@ -19,11 +19,16 @@ dashboard/events/volunteers pages in `src/App.tsx` (untouched):
 - `/participant/events/:eventId` — event detail, description/instructions,
   sign-up or cancel
 - `/participant/my-events` — the signed-in participant's RSVP'd events
+- `/participant/sign-in` — restore identity on a new device/browser by phone
+  number, no event context or RSVP side effect. Only shown in the nav when
+  no participant is currently identified.
 
 Identity is phone-based with no login: first-time signup calls the backend's
 public RSVP endpoint (name + phone, optional email), the returned
 `participant_id` is cached in `localStorage` (`src/participant/identity.ts`),
-and later visits/signups reuse it silently.
+and later visits/signups reuse it silently. `/participant/sign-in` restores
+that same cached identity on a fresh session via a phone-only lookup —
+`SignInForm`/`SignInPage` in `src/participant/components/`.
 
 **Backend** (`backend/`), implementing the participant/events/public slice of
 [`backend/API_ENDPOINTS.md`](../backend/API_ENDPOINTS.md) inside the shared
@@ -34,7 +39,10 @@ FastAPI + `sqlite3` structure:
   `PATCH /events/{id}/participants/{participant_id}` (cancel / update
   attendance)
 - `backend/api/routes/participants.py` — `GET/POST /participants`,
-  `GET /participants/{id}`, `GET /participants/{id}/events` ("My Events")
+  `GET /participants/{id}`, `GET /participants/{id}/events` ("My Events"),
+  `GET /participants/lookup?contact_number=...` (exact, side-effect-free
+  lookup backing "sign in" — registered ahead of `/{id}` so it isn't
+  swallowed by that route's int path param)
 - `backend/api/routes/public.py` — `POST /public/events/{id}/rsvp`, the
   find-or-create-and-register endpoint the signup form and (eventually) the
   WhatsApp bot both use
@@ -46,10 +54,18 @@ FastAPI + `sqlite3` structure:
 - `backend/seed_demo_data.py` — inserts a placeholder event template plus a
   handful of demo events, since organizer-side event/template creation isn't
   built yet and `events.event_template_id` is `NOT NULL`.
+- `backend/phone.py` — `normalize_phone_number`, built on the `phonenumbers`
+  package. Every route that reads or writes `contact_number`
+  (`create_participant` in `participants.py`, `public_rsvp` in `public.py`)
+  normalizes to E.164 before comparing or storing, so "9123 4567",
+  "+65 9123 4567", and "+6591234567" all resolve to the same participant.
+  Defaults to region `SG` for numbers with no leading "+"; a "+"-prefixed
+  number is parsed using its own country code. An unparseable number 400s
+  instead of being stored as-is.
 
-Tests: `python3 -m unittest discover -s backend/tests -v` (29 passing,
+Tests: `python3 -m unittest discover -s backend/tests -v` (50 passing,
 `unittest.TestCase` style to match the rest of the backend — no `pytest`
-dependency needed) and `npx vitest run` (24 passing).
+dependency needed) and `npx vitest run` (35 passing).
 
 ## How to run it locally
 
@@ -81,3 +97,11 @@ there before starting new work on this slice.
 - **Public RSVP is one combined endpoint**, not identify-then-signup as two
   calls — simpler for the frontend and matches `API_ENDPOINTS.md`'s own
   suggested shape for the public flow.
+- **Phone numbers normalize to E.164, defaulting to the `SG` region.** Given
+  phone number *is* the identity (previous bullet), two differently-typed
+  numbers that reach the DB unnormalized silently create two disconnected
+  participants — see the now-closed TICKET-13 in `tickets.md`. Used
+  `phonenumbers`/`libphonenumber-js` (Google's libphonenumber, on each side)
+  rather than a hand-rolled regex, since correctly validating/formatting
+  numbers across many countries' varying rules is exactly the problem that
+  library exists to solve.

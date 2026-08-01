@@ -7,48 +7,19 @@ for the "why" behind decisions already made.
 
 ---
 
-## TICKET-1: Let a returning participant sign in without RSVPing to an event
-
-**Priority:** High
-**Area:** Frontend (`src/participant/`), Backend (`backend/api/routes/participants.py`)
-
-### Problem
-
-There's no way to re-establish identity on a new device/browser (or after
-clearing site data) without going through an event's signup form — and that
-form always registers you for that event as a side effect
-(`POST /public/events/{id}/rsvp` does find-or-create *and* RSVP in one call,
-by design — see `docs/participant-portal.md`). So today, checking "my
-events" from a fresh session either shows nothing, or forces an unwanted
-signup just to get identified.
-
-### Acceptance criteria
-
-- A "Sign in" entry point on the participant portal (e.g. next to the
-  existing "My Events" link in `ParticipantApp.tsx`'s nav) that asks only
-  for a phone number — no event context, no RSVP side effect.
-- On success, the same `storeParticipant` / `localStorage` flow already used
-  by `SignupForm` is reused so "My Events" and future signups pick up the
-  restored identity.
-- On failure (no participant with that number), an honest empty state
-  ("We couldn't find that number — sign up for an event to get started"),
-  not a raw API error.
-
-### Technical notes
-
-- No backend endpoint currently supports an exact, side-effect-free lookup
-  by phone number. `GET /api/v1/participants?q=...` (`participants.py`)
-  does a `LIKE`-based partial search across name/email/contact_number and
-  returns a list — usable as a stopgap by filtering client-side for an exact
-  `contact_number` match, but not built for this and returns more than
-  necessary.
-- Recommend adding a small dedicated endpoint instead, e.g.
-  `GET /api/v1/participants/lookup?contact_number=...` returning a single
-  match or 404 — cleaner than repurposing the search endpoint, and avoids
-  leaking other participants' data if the `q` match is too loose.
-- There is still no real authentication in this system (see
-  `API_ENDPOINTS.md`'s open decisions) — this is "restore local identity by
-  phone number," not a secure login. Keep the UI copy honest about that.
+~~TICKET-1: Let a returning participant sign in without RSVPing to an event~~
+— **Done.** Added `GET /api/v1/participants/lookup?contact_number=...`
+(`participants.py`) — exact match via the same `normalize_phone_number`
+(TICKET-13) used everywhere else, single match or 404, registered ahead of
+`/{participant_id}` so "lookup" doesn't get caught by that route's int path
+param. Frontend: `SignInForm`/`SignInPage` (`src/participant/components/`)
+ask only for a phone number, reuse `onIdentified`/`storeParticipant` on a
+match, land on My Events (no RSVP call made), and show the honest
+"We couldn't find that number — sign up for an event to get started." copy
+on a 404 rather than a raw error. A "Sign in" nav link next to My Events is
+shown only when no participant is currently identified. Still no real
+authentication, by design — see TICKET-6; the sign-in form's copy says so
+explicitly.
 
 ---
 
@@ -293,3 +264,144 @@ that message silently breaks the fallback. A stable `code` like
 - The "Code Morphing Agent" idea from the original brainstorm (an agent that
   edits the system's own code) is still low-priority/good-to-have, not
   started.
+
+---
+
+## TICKET-10: Cancel-signup doesn't recover from a concurrently-invalidated identity
+
+**Priority:** Low
+**Area:** Frontend (`src/participant/components/EventDetailCard.tsx`)
+
+### Problem
+
+`c30feaf` added stale-identity recovery (`isStaleIdentityError` → `onIdentityInvalid()`)
+to the `getMyEvents` status check and to `handleSignup`, but not to
+`handleCancel` (`EventDetailCard.tsx`'s `handleCancel`, around line 90) — it
+just does a generic `setActionError(error.message)`.
+
+This is reachable if a participant is deleted from the DB *after* the detail
+page has already loaded and shown "Cancel my signup" (identity was valid at
+mount, invalidated mid-session). `PATCH /events/{id}/participants/{id}`
+(`backend/api/routes/events.py`, `update_participation`) never checks that
+the participant still exists — it only looks up the `participations` row,
+and that row cascade-deletes with the participant
+(`participations.participant_id ... ON DELETE CASCADE` in
+`001_initial_schema.sql`). So the request 404s with "Registration not
+found," not "Participant not found," and the existing string-matched
+`isStaleIdentityError` wouldn't catch it even if it were checked here.
+
+### Acceptance criteria
+
+- `handleCancel`'s catch treats a 404 on this endpoint as "the registration
+  is already gone" — reset to the not-signed-up state (`setIsSignedUp(false)`,
+  and if the underlying cause is the participant no longer existing, also
+  `onIdentityInvalid()`) instead of leaving the UI showing a stale "Cancel"
+  button next to a confusing raw error string.
+- Decide whether `update_participation` should itself distinguish
+  "participant gone" vs. "registration gone" (see TICKET-7 re: a `code`
+  field) rather than collapsing both into one 404 message.
+
+---
+
+## TICKET-11: Non-404 errors in the event-detail signup check are silently treated as "not signed up"
+
+**Priority:** Medium
+**Area:** Frontend (`src/participant/components/EventDetailCard.tsx`)
+
+### Problem
+
+In `EventDetailCard`, the effect that checks whether the current participant
+is already signed up for this event does:
+
+```ts
+getMyEvents(participant.participantId)
+  .then(...)
+  .catch((error) => {
+    if (isStaleIdentityError(error)) onIdentityInvalid();
+    setIsSignedUp(false);   // runs on every error, not just the stale-identity 404
+  });
+```
+
+A transient 500 or a dropped network request produces the exact same UI as
+"you're genuinely not registered" — an already-signed-up participant sees
+the "Sign up" button again, with no error banner and no retry. Contrast with
+`MyEventsList.tsx`, which correctly separates the stale-identity 404
+(`onIdentityInvalid()`) from a generic failure (`setStatus("error")`) —
+`EventDetailCard` only has the happy-path/stale-identity branches, not a
+generic-failure one, even though this same file does distinguish them
+correctly inside `handleSignup`.
+
+Worst case is low-severity (re-submitting sign-up on a backend blip is a
+harmless upsert), but the missing error state means a real backend problem
+is invisible to the user and indistinguishable from "you're not signed up."
+
+### Acceptance criteria
+
+- Give this effect the same three-way outcome `MyEventsList` already has:
+  success, stale-identity (reset to signed-out), and generic error (surface
+  something to the user — even reusing the existing `event-detail-status`
+  treatment — rather than silently coercing to "not signed up").
+
+---
+
+## TICKET-12: Public RSVP can silently reassign identity to an existing participant under a different name
+
+**Priority:** Medium
+**Area:** Backend (`backend/api/routes/public.py`), Frontend (`src/participant/components/SignupForm.tsx`)
+
+### Problem
+
+`_find_or_create_participant` (`public.py`) matches an existing participant
+by `contact_number` (then `email`) alone — it never checks that the
+submitted `name` matches the record it found. Meanwhile `SignupForm`'s
+`onSignedUp` callback stores the *locally-typed* name into `localStorage`,
+since `PublicRsvpOut` doesn't return the matched participant's actual name:
+
+```ts
+onSignedUp({
+  participantId: result.participant_id,
+  name: name.trim(),   // never verified against the DB record it just matched
+  ...
+});
+```
+
+Concrete failure case: two people share a phone (family device, or someone
+signs up on behalf of another migrant worker using that person's number), or
+a typo in the phone number happens to collide with an existing registrant's.
+The RSVP attaches to the existing DB participant, but the "Signed in as …"
+badge shows the freshly-typed name — the localStorage identity and the DB
+identity diverge, and every subsequent action (My Events, cancel) operates
+on the *original* person's record under a *different* displayed name, with
+nothing surfacing the mismatch.
+
+### Acceptance criteria
+
+- Decide the intended behavior when a submitted name doesn't match an
+  existing participant matched by contact number/email: at minimum, have
+  `PublicRsvpOut` return the participant's canonical `name` so the frontend
+  stores/display the DB's name rather than trusting the form input
+  unconditionally.
+- Consider surfacing an explicit "this number is already registered as X —
+  is that you?" confirmation step in `SignupForm` rather than silently
+  merging identities.
+
+---
+
+~~TICKET-13: No phone-number normalization in participant identity matching~~
+— **Done.** `backend/phone.py`'s `normalize_phone_number` (built on
+`phonenumbers`) parses and reformats every incoming `contact_number` to
+E.164 before it's written or matched against — `create_participant`
+(`participants.py`) and `public_rsvp`/`_find_or_create_participant`
+(`public.py`) both funnel through it, and a number that fails to parse as
+valid now 400s instead of being stored as-is. Frontend: `SignupForm`'s phone
+field auto-formats as the participant types (`src/participant/phone.ts`,
+`libphonenumber-js`'s `AsYouType`) and rejects an invalid number client-side
+before submitting. Defaults to the `SG` region for numbers with no leading
+"+"; a "+"-prefixed number is parsed using its own country code regardless,
+so other countries work without a picker. Existing seeded data had no
+participants with phone numbers, so no backfill was needed — if that
+changes before this ships for real, audit stored `contact_number` values
+for anything pre-dating this fix.
+
+Still open: TICKET-1's proposed lookup-by-phone endpoint should normalize
+its query parameter the same way once it's built.

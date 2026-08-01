@@ -105,7 +105,32 @@ repo rather than the proposal's generic assumptions:
 
 ---
 
-## TICKET-1: Backend AI endpoint — OpenRouter integration and streaming
+~~TICKET-1: Backend AI endpoint — OpenRouter integration and streaming~~
+— **Done.** New `backend/api/routes/ai_assistant.py` (registered in
+`backend/api/router.py`), `POST /api/v1/ai/chat`. Accepts
+`{"messages": [{"role": "user"|"assistant", "content": "..."}]}`
+(`backend/schema/ai_assistant.py`), holds `OPENROUTER_API_KEY` server-side
+only (`backend/README.md`/root `CLAUDE.md` document the env var; 500 if
+unset), and streams Server-Sent Events (`token`/`tool_call`/`tool_result`/
+`done`/`error`) back over `StreamingResponse`. Registers TICKET-2's tool set
+with the OpenRouter call via `tools=TOOL_SPECS` (real function-calling
+schema, not a system-prompt-only approach — see TICKET-7 for the prompt
+itself). Contains no business logic: `run_chat_turn` only accumulates the
+model's streamed tool-call fragments and hands them to
+`ai_tools.dispatch_tool_call` (TICKET-2/3), nothing else. Handles exactly one
+round of tool-calling per user turn (call whatever the model asked for, feed
+results back, stream the follow-up reply) rather than an open-ended agent
+loop — matches the draft-then-approve flow, since `publish_event` only fires
+on a later, separate user turn once the organizer approves the draft.
+Covered by `backend/tests/test_ai_assistant.py` using `httpx.MockTransport`
+to fake OpenRouter's streaming response (no real network, no real key
+needed): plain-text streaming, a full tool-call round trip (including
+confirming `create_event_draft` never writes to the DB), a hypothetical
+out-of-set tool call still getting rejected, the missing-`OPENROUTER_API_KEY`
+500, and the empty-`messages` 422.
+
+<details>
+<summary>Original ticket text</summary>
 
 **Priority:** High
 **Area:** new `backend/api/routes/ai_assistant.py` (or similar), `backend/schema/`
@@ -131,9 +156,38 @@ repo rather than the proposal's generic assumptions:
 TICKET-2 (needs the tool functions to dispatch to). No auth/permission
 context to attach per TICKET-0's decision (ship without new auth).
 
+</details>
+
 ---
 
-## TICKET-2: AI tool functions wrapping existing event operations
+~~TICKET-2: AI tool functions wrapping existing event operations~~
+— **Done.** New `backend/ai_tools/` package: `tools.py` has the six thin
+wrappers (`create_event_draft`, `publish_event`, `update_event`, `get_event`,
+`list_events`, `cancel_event`), each calling straight into the matching
+`backend/api/routes/events.py` handler in-process — no duplicated SQL or
+business logic. `cancel_event` calls `events.cancel_event`
+(`POST /events/{id}/cancel` from TICKET-9), never `close_event` or
+`delete_event`; a test (`test_cancel_event_never_hard_deletes_the_row`)
+locks that in. No `execute_sql`/`run_code`/generic tool exists, and
+`TOOL_SPECS` (`specs.py`) is asserted to expose exactly the six named tools
+and nothing else. `create_event_draft` reuses a new
+`resolve_event_template_context` helper extracted from `create_event`
+itself (`backend/api/routes/events.py`) — the same template-existence check
+runs for both the draft and the real write, instead of a second copy that
+could drift. Dispatch is in-process as decided (no HTTP loopback): tool
+executors take a plain `sqlite3.Connection` from
+`backend.ai_tools.dispatch_tool_call`'s caller, which for the endpoint is
+the same request-scoped `Connection` `ai_assistant.py` already gets via
+FastAPI's `Depends()` — no separate `backend.database.connect()` call turned
+out to be needed since the endpoint already has a connection in hand.
+Covered by `backend/tests/test_ai_tools.py` (17 tests): draft/publish/
+update/get/list/cancel happy paths, missing-required-field and
+missing-template rejections before any DB write, unknown-argument rejection,
+missing-event 404s surfaced as structured errors, and an unknown tool name
+(`delete_event`, `execute_sql`) rejected without touching the database.
+
+<details>
+<summary>Original ticket text</summary>
 
 **Priority:** High
 **Area:** new `backend/ai_tools/` (or colocated with `ai_assistant.py`),
@@ -151,45 +205,50 @@ wrapper that calls the *existing* logic rather than duplicating it:
 - `update_event`, `get_event`, `list_events` — map directly onto `events.py`'s
   existing handlers of the same name.
 - `cancel_event` — **maps to `POST /events/{id}/cancel`** (shipped by
-  TICKET-9, now done — see its entry above), not `close_event` and never
-  `delete_event`. Plain `close_event` only sets
-  `status = 'closed'`, which is indistinguishable from an ordinary
-  registration-closed event on the dashboard (TICKET-0's audit originally
-  suggested this mapping; superseded once that gap was flagged). TICKET-9's
-  endpoint sets both `cancelled_at` and `status='closed'` together, and is
-  the only correct target for this tool. `delete_event` hard-deletes the row
-  with cascading deletes to tasks/subtasks/participations — never wire this
-  tool to it under any circumstance.
+  TICKET-9), not `close_event` and never `delete_event`. `delete_event`
+  hard-deletes the row with cascading deletes to tasks/subtasks/
+  participations — never wire this tool to it under any circumstance.
 - Explicitly out of scope per the proposal: no `execute_sql`, `run_code`, or
   any generic/filesystem tool.
 
 ### Dispatch approach — decided, with a fallback condition
 
 Tools call the route *handler functions* directly, in-process (skipping
-HTTP), rather than looping back through the app's own HTTP API — this is all
-server-side work regardless (per the architecture diagram: browser only
-talks to the AI endpoint, never to OpenRouter or the tool layer directly), so
-there's no client device-performance concern here to weigh against it. The
-route handlers' `Connection` parameter is, at the Python level, just a plain
-`sqlite3.Connection` — TICKET-0's audit confirmed FastAPI's `Depends()`
-wiring is irrelevant to a direct in-process call, so this needs no refactor.
-Acquire the connection via `backend.database.connect(app.state.database_path)`
-(the convention `CLAUDE.md` documents) rather than copying `_common.py`'s
-inline `sqlite3.connect()` setup, and close it explicitly afterward since
-there's no request-scoped generator managing that outside FastAPI's DI.
+HTTP), rather than looping back through the app's own HTTP API. Acquire the
+connection via `backend.database.connect(app.state.database_path)` (the
+convention `CLAUDE.md` documents) rather than copying `_common.py`'s inline
+`sqlite3.connect()` setup, and close it explicitly afterward since there's no
+request-scoped generator managing that outside FastAPI's DI.
 
 Only fall back to hitting the app's own HTTP API internally if in-process
 calls turn out to need request-scoped state that can't reasonably be
-constructed by hand (e.g. deep FastAPI dependency chains) — not for
-client-device performance, since none of this runs on the client. Given the
-target device range (wide mix of mobile and desktop), keep the *frontend*
-side of TICKET-5/6 lightweight (streaming text + simple cards, no heavy
-client-side rendering work) so perceived responsiveness stays acceptable on
-low-end devices regardless of how the backend dispatches tools.
+constructed by hand.
+
+</details>
 
 ---
 
-## TICKET-3: Validation pipeline (schema → business rules → permissions)
+~~TICKET-3: Validation pipeline (schema → business rules → permissions)~~
+— **Done.** `backend/ai_tools/dispatch.py`'s `dispatch_tool_call` runs three
+named stages: **schema** (`backend/ai_tools/schemas.py`'s `TOOL_ARG_MODELS`
+subclass the same `EventCreate`/`EventUpdate` models `backend/schema/events.py`
+already defines for the human HTTP routes, with `extra="forbid"` so an
+LLM-invented extra field is rejected rather than silently ignored); **business**
+(deliberately *not* re-implemented — the executors call straight into
+`events.py`'s handlers, which already run their own checks such as
+template-exists before any write, so there is no second copy to drift);
+**permissions** (`_check_permissions` — an explicit, named no-op per
+TICKET-0's decision that the admin backend has no auth/role concept yet, so
+a real check has an obvious place to plug in later instead of being silently
+skipped). Any failure at any stage becomes
+`{"success": false, "reason": "..."}` instead of a raised exception —
+verified for a missing required field, a missing referenced template, and a
+missing event id, all before any database write. Test coverage lives
+alongside TICKET-2's in `backend/tests/test_ai_tools.py` since the pipeline
+and the tools it wraps were built and tested together.
+
+<details>
+<summary>Original ticket text</summary>
 
 **Priority:** High
 **Area:** backend, shared across all tools from TICKET-2
@@ -201,23 +260,23 @@ low-end devices regardless of how the backend dispatches tools.
   `EventCreate` looks like) for AI-generated tool arguments instead of
   writing parallel schemas, so the two paths can't drift.
 - **Business validation**: dates valid, referenced entities (venue, event
-  template) exist, `event_time` present (it's `NOT NULL` per
-  `002_add_event_description.sql`) — again, reuse whatever validation
+  template) exist, `event_time` present — again, reuse whatever validation
   `events.py`'s handlers already do rather than re-implementing it for the
   AI path.
 - **Permission validation**: no-op for this milestone per TICKET-0's
-  decision (ship without new auth) — there's no current-user/role concept to
-  check against. Leave an explicit, named pass-through step in the pipeline
-  rather than silently skipping it, so it's obvious where a real check would
-  plug in later.
+  decision (ship without new auth). Leave an explicit, named pass-through
+  step in the pipeline rather than silently skipping it, so it's obvious
+  where a real check would plug in later.
 
 ### Acceptance criteria
 
 - A tool call with a missing required field is rejected before reaching the
-  database, with a structured `{"success": false, "reason": "..."}"` error
-  (per the proposal's error-handling example), not a raw exception.
+  database, with a structured `{"success": false, "reason": "..."}"` error,
+  not a raw exception.
 - No new validation logic exists that isn't just reused from what
   `backend/schema/` and `events.py` already enforce for the human-driven path.
+
+</details>
 
 ---
 

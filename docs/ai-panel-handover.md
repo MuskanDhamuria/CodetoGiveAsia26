@@ -128,10 +128,39 @@ dialog → badge → Reopen/Close hidden; the "Show cancelled" toggle);
 and a brand-new `MyEventsList.test.tsx` (this component had zero test
 coverage before this pass).
 
-**Not started:** TICKET-1 (backend OpenRouter endpoint), TICKET-2 (tool
-functions), TICKET-3 (validation pipeline), TICKET-4 (audit log), TICKET-5
-(wire real chat into the TICKET-10 shell), TICKET-6 (draft/approval cards),
-TICKET-7 (system prompt), TICKET-8 (future tool backlog, tracking only).
+**TICKET-2 (AI tool functions), TICKET-3 (validation pipeline), and
+TICKET-1 (backend OpenRouter endpoint) — all done.** New `backend/ai_tools/`
+package (`tools.py`, `schemas.py`, `dispatch.py`, `specs.py`) implements the
+six-tool set the proposal names — `create_event_draft`, `publish_event`,
+`update_event`, `get_event`, `list_events`, `cancel_event` — each a thin
+in-process wrapper around the matching `backend/api/routes/events.py`
+handler, dispatched through `dispatch_tool_call(db, tool_name, arguments)`.
+That function runs the three-stage pipeline TICKET-3 asked for (schema
+validation via the same `EventCreate`/`EventUpdate` Pydantic models the
+human HTTP routes use; business validation reused from `events.py`'s own
+checks rather than re-implemented; permission validation as an explicit
+named no-op, since the admin backend still has no auth/role concept) and
+always returns a structured `{"success": bool, ...}` result instead of
+raising. `cancel_event` correctly targets `POST /events/{id}/cancel`
+(TICKET-9), never `close_event`/`delete_event`. New
+`backend/api/routes/ai_assistant.py` exposes `POST /api/v1/ai/chat`: holds
+`OPENROUTER_API_KEY` server-side only, streams Server-Sent Events back to
+the frontend, registers `ai_tools.TOOL_SPECS` with the OpenRouter call as
+real function-calling tools, and dispatches any tool call the model makes
+straight to `dispatch_tool_call` — the route itself has no business logic.
+It resolves one round of tool-calling per user turn (not an open-ended agent
+loop), which is enough for the draft-then-approve flow since `publish_event`
+only fires on a separate, later user turn once the organizer confirms.
+See TICKET-1/2/3 in `tickets.md` for the full design rationale and test
+breakdown (22 new backend tests across `test_ai_tools.py` and
+`test_ai_assistant.py`, none of which need a real OpenRouter key —
+`httpx.MockTransport` fakes the streaming response).
+
+**Not started:** TICKET-4 (audit log), TICKET-5 (wire real chat into the
+TICKET-10 shell — the backend it needs now exists), TICKET-6 (draft/approval
+cards), TICKET-7 (system prompt — `ai_assistant.py` ships a first-pass
+`SYSTEM_PROMPT`, but TICKET-7's eval/adversarial-testing work is separate),
+TICKET-8 (future tool backlog, tracking only).
 
 ## How to run and see it
 
@@ -146,7 +175,19 @@ Open `http://localhost:8443/admin/dashboard` (or `/admin/events`,
 `/admin/volunteers` — any non-home admin page). The AI panel's FAB
 ("Ask Passion AI") sits fixed bottom-right; click it to open, `Escape` or
 the panel's "Close" button to dismiss, or click the dimmed backdrop on a
-desktop-width viewport.
+desktop-width viewport. The panel itself still shows TICKET-10's static mock
+content — nothing in it calls the new backend yet (that's TICKET-5).
+
+To exercise the new backend endpoint directly (no frontend wiring exists to
+call it yet), set `OPENROUTER_API_KEY` before starting uvicorn and stream
+from it with curl:
+
+```sh
+export OPENROUTER_API_KEY=sk-or-...
+curl -N -X POST http://127.0.0.1:8000/api/v1/ai/chat \
+  -H "Content-Type: application/json" \
+  -d '{"messages": [{"role": "user", "content": "List upcoming events"}]}'
+```
 
 **Caution:** don't run `npm run format` repo-wide without reviewing the
 diff first — oxfmt's default style strips semicolons, which doesn't match
@@ -158,10 +199,10 @@ individual files by hand or via your editor's formatter instead.
 
 All backlog items — remaining tickets, their scope, dependencies, and open
 questions — live in [`tickets.md`](tickets.md). That's the single source of
-truth; don't duplicate it here. TICKET-9 is now done, so the remaining
-recommended order is: TICKET-2 (now able to wire `cancel_event` to the real
-`/cancel` endpoint from the start) → TICKET-3 → TICKET-1, then
-TICKET-5/TICKET-6 together, with TICKET-4/TICKET-7 parallel to the rest.
+truth; don't duplicate it here. TICKET-9, TICKET-2, TICKET-3, and TICKET-1
+are all done, so the recommended order now is: TICKET-5/TICKET-6 together
+(the backend they need to wire into now exists), with TICKET-4/TICKET-7
+parallel to the rest.
 
 ## Key decisions worth knowing the "why" of
 
@@ -173,7 +214,19 @@ TICKET-5/TICKET-6 together, with TICKET-4/TICKET-7 parallel to the rest.
 - **Tool dispatch is in-process, not an internal HTTP loopback.** All of
   this is server-side regardless of the calling device, and the audit
   confirmed route handlers are directly callable as plain Python functions
-  outside FastAPI's request cycle — no refactor needed.
+  outside FastAPI's request cycle — no refactor needed. In practice
+  `ai_assistant.py` passes `dispatch_tool_call` the same request-scoped
+  `Connection` it already gets from FastAPI's `Depends()` for the chat
+  request itself, rather than opening a second connection via
+  `backend.database.connect()` as TICKET-2 originally sketched — one
+  connection per request was simpler and there was no reason to open two.
+- **The AI endpoint resolves at most one round of tool-calling per user
+  turn**, not an open-ended agent loop: it calls whatever tools the model
+  asked for, feeds the results back, and streams the follow-up reply. This
+  is enough for the draft-then-approve flow — `publish_event` only fires
+  when the organizer explicitly confirms a draft on a separate, later turn,
+  so the model never needs to chain more than one tool call to get useful
+  work done in a single turn.
 - **Event cancellation gets its own column (`cancelled_at`), not a new
   `status` value.** `EVENT.status` is documented and consumed elsewhere
   purely as a registration open/closed toggle (dashboard queries, the

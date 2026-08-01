@@ -210,7 +210,10 @@ that message silently breaks the fallback. A stable `code` like
 - **Organizer-side event CRUD.** `backend/api/routes/events.py` only has
   list/detail/register — no `POST/PATCH/DELETE /events`,
   `/events/{id}/close`, `/reopen`, or `/reschedule`. Whoever builds the admin
-  event-management UI adds these to the same file.
+  event-management UI adds these to the same file. Note `events.event_time`
+  is `NOT NULL` (see `002_add_event_description.sql`), so the create-event
+  form needs a time input alongside the date picker, not just an optional
+  add-on.
 - **`/volunteer` and `/admin` route trees** aren't built yet. The
   `/participant/*` route in `src/App.tsx` is the precedent for mounting them
   the same way — a `<Route path="/x/*">` pointing at that portal's own

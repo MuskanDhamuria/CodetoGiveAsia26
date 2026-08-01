@@ -21,10 +21,13 @@ dashboard/events/volunteers pages in `src/App.tsx` (untouched):
   `<details>` summary at the top ("Past events (N)"), most-recent-month
   first when expanded. Calendar view has no Upcoming/Past toggle — every
   event shows on its date, colored grey if it's in the past, pastel
-  green/red by open/closed status otherwise.
-- `/participant/events/:eventId` — event detail, description/instructions,
-  sign-up or cancel
-- `/participant/my-events` — the signed-in participant's RSVP'd events
+  green/red by open/closed status otherwise. Each listing shows date and
+  time together (`formatEventDate`/`formatEventTime` in `dateFormat.ts`,
+  e.g. "15 Aug 2026 · 9:00 am").
+- `/participant/events/:eventId` — event detail (date, time, venue,
+  description/instructions), sign-up or cancel
+- `/participant/my-events` — the signed-in participant's RSVP'd events, with
+  date and time
 - `/participant/sign-in` — restore identity on a new device/browser by phone
   number, no event context or RSVP side effect. Only shown in the nav when
   no participant is currently identified.
@@ -40,10 +43,10 @@ that same cached identity on a fresh session via a phone-only lookup —
 [`backend/API_ENDPOINTS.md`](../backend/API_ENDPOINTS.md) inside the shared
 FastAPI + `sqlite3` structure:
 
-- `backend/api/routes/events.py` — `GET /events`, `GET /events/{id}`,
-  `POST /events/{id}/participants` (register an already-known participant),
-  `PATCH /events/{id}/participants/{participant_id}` (cancel / update
-  attendance)
+- `backend/api/routes/events.py` — `GET /events`, `GET /events/{id}` (both
+  return `event_time` alongside `event_date`), `POST /events/{id}/participants`
+  (register an already-known participant), `PATCH
+  /events/{id}/participants/{participant_id}` (cancel / update attendance)
 - `backend/api/routes/participants.py` — `GET/POST /participants`,
   `GET /participants/{id}`, `GET /participants/{id}/events` ("My Events"),
   `GET /participants/lookup?contact_number=...` (exact, side-effect-free

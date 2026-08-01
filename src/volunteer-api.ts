@@ -18,6 +18,12 @@ export type EventSummary = {
   venue: string
   event_date: string
   status: string
+  beneficiary_id: number | null
+}
+
+export type Beneficiary = {
+  id: number
+  name: string
 }
 
 export type VolunteerCounts = {
@@ -89,6 +95,10 @@ function postJson<T>(path: string, body?: unknown): Promise<T> {
 
 export function listEvents(): Promise<ListEnvelope<EventSummary>> {
   return getJson("/events")
+}
+
+export function listBeneficiaries(): Promise<ListEnvelope<Beneficiary>> {
+  return getJson("/beneficiaries")
 }
 
 export function listVolunteers(): Promise<ListEnvelope<VolunteerListItem>> {

@@ -3381,6 +3381,12 @@ button {
   outline: none;
 }
 
+.pts-phone-row {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 116px minmax(0, 1fr);
+}
+
 .pts-signup-eventmeta {
   color: #6b797e;
   font-size: 13px;
@@ -3506,4 +3512,329 @@ button {
   justify-self: center;
   margin-top: 6px;
   padding: 10px 18px;
+}
+
+/* Public events portal */
+.public-events-portal {
+  --public-teal: #149fc1;
+  --public-ink: #1c2b30;
+  --public-muted: #68787e;
+  background: #fff;
+  color: var(--public-ink);
+  min-height: 100vh;
+}
+
+.public-events-header {
+  align-items: center;
+  background: #fff;
+  border-bottom: 1px solid #edf1f2;
+  display: flex;
+  justify-content: space-between;
+  min-height: 84px;
+  padding: 10px clamp(20px, 5vw, 72px);
+}
+
+.public-events-brand {
+  align-items: center;
+  color: var(--public-teal);
+  display: inline-flex;
+  font-size: clamp(18px, 2vw, 25px);
+  font-weight: 800;
+  gap: 10px;
+  letter-spacing: -0.03em;
+  text-decoration: none;
+}
+
+.public-events-brand img {
+  height: 62px;
+  object-fit: contain;
+  width: 62px;
+}
+
+.public-events-nav {
+  align-items: center;
+  display: flex;
+  gap: clamp(16px, 3vw, 42px);
+}
+
+.public-events-nav-link,
+.public-events-volunteer-link {
+  color: var(--public-teal);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.public-events-nav-link {
+  text-decoration: none;
+}
+
+.public-events-volunteer-link {
+  background: transparent;
+  border: 1px solid var(--public-teal);
+  border-radius: 999px;
+  cursor: pointer;
+  padding: 10px 17px;
+}
+
+.public-events-hero {
+  align-items: center;
+  background-position: center;
+  background-size: cover;
+  display: flex;
+  min-height: clamp(280px, 35vw, 470px);
+  overflow: hidden;
+  position: relative;
+}
+
+.public-events-hero-overlay {
+  background: linear-gradient(90deg, rgba(4, 36, 44, 0.7), rgba(4, 36, 44, 0.08));
+  inset: 0;
+  position: absolute;
+}
+
+.public-events-hero-copy {
+  color: #fff;
+  margin: 0 auto;
+  max-width: 1200px;
+  padding: 54px clamp(20px, 6vw, 84px);
+  position: relative;
+  width: 100%;
+}
+
+.public-events-hero-copy p,
+.public-events-eyebrow,
+.public-event-category {
+  color: var(--public-teal);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.13em;
+  margin: 0 0 12px;
+  text-transform: uppercase;
+}
+
+.public-events-hero-copy p {
+  color: #bcecf6;
+}
+
+.public-events-hero-copy h1 {
+  font-size: clamp(35px, 5vw, 68px);
+  letter-spacing: -0.06em;
+  line-height: 0.98;
+  margin: 0 0 16px;
+  max-width: 590px;
+}
+
+.public-events-hero-copy span {
+  display: block;
+  font-size: clamp(15px, 2vw, 19px);
+  line-height: 1.5;
+  max-width: 510px;
+}
+
+.public-events-main {
+  margin: 0 auto;
+  max-width: 1260px;
+  padding: clamp(44px, 6vw, 78px) clamp(20px, 5vw, 72px) 92px;
+}
+
+.public-events-intro h2 {
+  font-size: clamp(30px, 4vw, 46px);
+  letter-spacing: -0.05em;
+  margin: 0 0 10px;
+}
+
+.public-events-intro > p:last-child {
+  color: var(--public-muted);
+  font-size: 16px;
+  margin: 0;
+}
+
+.public-events-filters {
+  align-items: center;
+  border-bottom: 1px solid #e7edef;
+  display: flex;
+  gap: 18px;
+  justify-content: space-between;
+  margin: 38px 0 28px;
+  padding-bottom: 16px;
+}
+
+.public-events-filter-tabs {
+  display: flex;
+  gap: 8px;
+}
+
+.public-events-filter-tabs button {
+  background: transparent;
+  border: 0;
+  border-radius: 999px;
+  color: var(--public-muted);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 800;
+  padding: 9px 13px;
+}
+
+.public-events-filter-tabs button.active {
+  background: #eaf8fb;
+  color: var(--public-teal);
+}
+
+.public-events-beneficiary-filter {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+}
+
+.public-events-beneficiary-filter span {
+  color: var(--public-muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.public-events-beneficiary-filter select {
+  background: #fff;
+  border: 1px solid #d5e0e3;
+  border-radius: 8px;
+  color: var(--public-ink);
+  font-size: 13px;
+  font-weight: 700;
+  padding: 10px 12px;
+}
+
+.public-events-grid {
+  display: grid;
+  gap: 24px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.public-event-card {
+  background: #fff;
+  border: 1px solid #e5edef;
+  border-radius: 14px;
+  box-shadow: 0 8px 24px rgba(22, 75, 88, 0.06);
+  overflow: hidden;
+  transition: box-shadow 0.18s ease, transform 0.18s ease;
+}
+
+.public-event-card:hover {
+  box-shadow: 0 14px 34px rgba(22, 75, 88, 0.13);
+  transform: translateY(-3px);
+}
+
+.public-event-card-image {
+  background-position: center;
+  background-size: cover;
+  min-height: 185px;
+  padding: 14px;
+}
+
+.public-event-card-image span {
+  background: rgba(255, 255, 255, 0.94);
+  border-radius: 999px;
+  color: var(--public-teal);
+  display: inline-flex;
+  font-size: 11px;
+  font-weight: 800;
+  padding: 7px 10px;
+}
+
+.public-event-card-body {
+  padding: 22px;
+}
+
+.public-event-category {
+  font-size: 10px;
+  letter-spacing: 0.09em;
+  margin-bottom: 9px;
+}
+
+.public-event-card h3 {
+  font-size: 22px;
+  letter-spacing: -0.04em;
+  line-height: 1.12;
+  margin: 0 0 12px;
+}
+
+.public-event-beneficiary {
+  color: #4f6870;
+  font-size: 13px;
+  font-weight: 700;
+  margin: 0 0 16px;
+}
+
+.public-event-meta {
+  border-top: 1px solid #edf1f2;
+  color: var(--public-muted);
+  display: grid;
+  font-size: 13px;
+  gap: 5px;
+  padding-top: 15px;
+}
+
+.public-event-details-button {
+  background: #f2fafb;
+  border: 0;
+  border-radius: 8px;
+  color: var(--public-teal);
+  cursor: not-allowed;
+  font-size: 13px;
+  font-weight: 800;
+  margin-top: 18px;
+  opacity: 0.75;
+  padding: 11px 13px;
+  width: 100%;
+}
+
+.public-events-state {
+  color: var(--public-muted);
+  font-size: 15px;
+  padding: 54px 0;
+  text-align: center;
+}
+
+.public-events-state.error {
+  color: #b3261e;
+}
+
+@media (max-width: 900px) {
+  .public-events-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .public-events-header {
+    align-items: flex-start;
+    gap: 14px;
+  }
+
+  .public-events-brand span {
+    max-width: 120px;
+  }
+
+  .public-events-nav {
+    gap: 10px;
+  }
+
+  .public-events-nav-link {
+    display: none;
+  }
+
+  .public-events-filters {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .public-events-beneficiary-filter {
+    justify-content: space-between;
+  }
+
+  .public-events-beneficiary-filter select {
+    flex: 1;
+  }
+
+  .public-events-grid {
+    grid-template-columns: 1fr;
+  }
 }

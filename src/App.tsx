@@ -6,8 +6,9 @@ import EventTaskHierarchyPrototype from "./EventTaskHierarchyPrototype";
 import EventOperationsMvp from "./EventOperationsMvp";
 import VolunteerDirectory from "./VolunteerDirectory";
 import VolunteerSignup from "./VolunteerSignup";
+import PublicEventsPortal from "./PublicEventsPortal";
 
-export type Page = "home" | "dashboard" | "events" | "volunteers" | "ai" | "signup";
+export type Page = "home" | "dashboard" | "events" | "volunteers" | "ai" | "signup" | "community";
 
 const navLinks: { label: string; page: Page }[] = [
   { label: "Dashboard", page: "dashboard" },
@@ -26,7 +27,7 @@ const pageLabels: Record<Page, string> = {
 
 function readInitialPage(): Page {
   const page = new URLSearchParams(window.location.search).get("page");
-  return page === "dashboard" || page === "events" || page === "volunteers" || page === "ai" || page === "signup"
+  return page === "dashboard" || page === "events" || page === "volunteers" || page === "ai" || page === "signup" || page === "community"
     ? page
     : "home";
 }
@@ -781,6 +782,15 @@ export default function App() {
     if (page !== "volunteers") setOpenVolunteerIndex(null);
   }
 
+  function navigateToSignup(eventId?: number) {
+    setActivePage("signup");
+    const url = new URL(window.location.href);
+    url.searchParams.set("page", "signup");
+    if (eventId === undefined) url.searchParams.delete("event");
+    else url.searchParams.set("event", String(eventId));
+    window.history.replaceState({}, "", url);
+  }
+
   function handleQuickAction(action: FlowAction) {
     if (action === "create-event") {
       setOpenEventIndex(0);
@@ -798,6 +808,15 @@ export default function App() {
 
   if (activePage === "signup") {
     return <VolunteerSignup />;
+  }
+
+  if (activePage === "community") {
+    return (
+      <PublicEventsPortal
+        onVolunteerSignup={() => navigateToSignup()}
+        onEventSignup={navigateToSignup}
+      />
+    );
   }
 
   return (

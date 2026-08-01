@@ -31,6 +31,7 @@ export default function VolunteerSignup() {
   const [eventId, setEventId] = useState<number | null>(null)
   const [roles, setRoles] = useState<Role[]>([])
   const [name, setName] = useState("")
+  const [countryCode, setCountryCode] = useState("+65")
   const [phone, setPhone] = useState("")
   const [email, setEmail] = useState("")
   const [selectedRoles, setSelectedRoles] = useState<Set<number>>(new Set())
@@ -77,13 +78,15 @@ export default function VolunteerSignup() {
     formEvent.preventDefault()
     if (eventId === null || !selectedEvent) return
     if (!name.trim()) return setError("Please enter your name.")
-    if (!phone.trim()) return setError("Please enter your phone number.")
+    const localPhone = phone.replace(/\D/g, "")
+    if (!localPhone) return setError("Please enter your phone number.")
+    if (localPhone.length < 6) return setError("Please enter a valid phone number.")
     setSubmitting(true)
     setError(null)
     try {
       const result = await publicSignup(eventId, {
         name: name.trim(),
-        contact_number: phone.trim(),
+        contact_number: `${countryCode}${localPhone}`,
         email: email.trim() || undefined,
         role_ids: [...selectedRoles],
       })
@@ -158,12 +161,31 @@ export default function VolunteerSignup() {
             </label>
             <label className="pts-field">
               <span>Phone number</span>
-              <input
-                value={phone}
-                onChange={(input) => setPhone(input.target.value)}
-                placeholder="+65 8123 4567"
-                inputMode="tel"
-              />
+              <div className="pts-phone-row">
+                <select
+                  aria-label="Country code"
+                  value={countryCode}
+                  onChange={(input) => setCountryCode(input.target.value)}
+                >
+                  <option value="+65">SG +65</option>
+                  <option value="+60">MY +60</option>
+                  <option value="+62">ID +62</option>
+                  <option value="+63">PH +63</option>
+                  <option value="+91">IN +91</option>
+                  <option value="+880">BD +880</option>
+                  <option value="+95">MM +95</option>
+                  <option value="+86">CN +86</option>
+                  <option value="+84">VN +84</option>
+                  <option value="+1">US/CA +1</option>
+                  <option value="+44">UK +44</option>
+                </select>
+                <input
+                  value={phone}
+                  onChange={(input) => setPhone(input.target.value)}
+                  placeholder="8123 4567"
+                  inputMode="tel"
+                />
+              </div>
             </label>
             <label className="pts-field">
               <span>Email <em>(optional)</em></span>

@@ -95,16 +95,28 @@ def event_detail(db, event_id: int) -> EventDetail:
 
 @router.post("/events", response_model=EventDetail, status_code=201)
 def create_event(payload: EventCreate, db: Connection) -> EventDetail:
-    template = db.execute(
-        "SELECT beneficiary_id, description FROM event_templates WHERE id = ?",
-        (payload.event_template_id,),
-    ).fetchone()
-    if template is None:
-        raise HTTPException(404, f"Event template {payload.event_template_id} was not found")
+    template = None
+    if payload.event_template_id is not None:
+        template = db.execute(
+            """
+            SELECT beneficiary_id, description FROM event_templates WHERE id = ?
+            """,
+            (payload.event_template_id,),
+        ).fetchone()
+        if template is None:
+            raise HTTPException(
+                404, f"Event template {payload.event_template_id} was not found"
+            )
+
     beneficiary_id = (
         payload.beneficiary_id
         if payload.beneficiary_id is not None
-        else template["beneficiary_id"]
+        else template["beneficiary_id"] if template is not None else None
+    )
+    description = (
+        payload.description
+        if payload.description is not None
+        else template["description"] if template is not None else ""
     )
 
     with db:
@@ -120,19 +132,23 @@ def create_event(payload: EventCreate, db: Connection) -> EventDetail:
                 payload.name,
                 payload.venue,
                 payload.event_date.isoformat(),
-                payload.description if payload.description is not None else template["description"],
+                description,
                 payload.start_time.isoformat() if payload.start_time else None,
                 payload.end_time.isoformat() if payload.end_time else None,
                 beneficiary_id,
             ),
         ).fetchone()
-        template_tasks = db.execute(
-            """
-            SELECT * FROM template_tasks
-            WHERE event_template_id = ? ORDER BY position
-            """,
-            (payload.event_template_id,),
-        ).fetchall()
+        template_tasks = (
+            db.execute(
+                """
+                SELECT * FROM template_tasks
+                WHERE event_template_id = ? ORDER BY position
+                """,
+                (payload.event_template_id,),
+            ).fetchall()
+            if payload.event_template_id is not None
+            else []
+        )
         for template_task in template_tasks:
             due_at = (
                 payload.event_date + timedelta(days=template_task["relative_due_days"])

@@ -25,7 +25,7 @@ class EventSummary(BaseModel):
 
 
 class EventCreate(BaseModel):
-    event_template_id: int
+    event_template_id: int | None
     name: NonEmptyText
     venue: NonEmptyText
     event_date: date
@@ -67,7 +67,7 @@ class EventTaskOut(BaseModel):
 
 
 class EventDetail(EventSummary):
-    event_template_id: int
+    event_template_id: int | None
     created_at: str
     updated_at: str
     tasks: list[EventTaskOut]

@@ -1,9 +1,11 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import AiCopilot from "./AiCopilot";
 import EventCollectionPrototype from "./EventCollectionPrototype";
 import EventCreationPrototype from "./EventCreationPrototype";
 import EventTaskHierarchyPrototype from "./EventTaskHierarchyPrototype";
 import EventOperationsMvp from "./EventOperationsMvp";
+import AdminEventsPage from "./AdminEventsPage";
+import { adminApi, type AdminApi, type DashboardSummary, type EventDetail, type UpcomingDeadline } from "./admin-api";
 import VolunteerDirectory from "./VolunteerDirectory";
 import VolunteerSignup from "./VolunteerSignup";
 import PublicEventsPortal from "./PublicEventsPortal";
@@ -41,31 +43,6 @@ function readInitialPage(): Page {
 
 const heroImage =
   "https://images.higgs.ai/?default=1&output=webp&url=https%3A%2F%2Fd8j0ntlcm91z4.cloudfront.net%2Fuser_38xzZboKViGWJOttwIXH07lWA1P%2Fhf_20260626_041422_4a459e05-abce-4150-9fb7-4ededc423cd1.png&w=1280&q=85";
-
-const kpis = [
-  { label: "Active Events", value: "6", helper: "Running this month" },
-  { label: "Upcoming Events", value: "14", helper: "Next 30 days" },
-  { label: "Total Volunteers", value: "312", helper: "Across all events" },
-  { label: "Pending Volunteer Confirmations", value: "27", helper: "Awaiting replies" },
-];
-
-const calendarEvents: Record<number, string[]> = {
-  3: ["Health Fair"],
-  7: ["Beach Cleanup"],
-  12: ["Food Drive"],
-  15: ["Volunteer Training"],
-  18: ["Health Fair"],
-  22: ["Town Hall"],
-  26: ["Orientation"],
-  28: ["Impact Night"],
-};
-
-const deadlines = [
-  { label: "Health Fair volunteer slots close", date: "Jul 3" },
-  { label: "Beach Cleanup briefing pack due", date: "Jul 5" },
-  { label: "Food Drive venue confirmation", date: "Jul 10" },
-  { label: "Workshop registration closes", date: "Jul 13" },
-];
 
 const activities = [
   "John Tan accepted invitation",
@@ -411,19 +388,59 @@ function KpiCard({
   );
 }
 
-function Calendar() {
+export function EventCalendar({
+  events,
+  onOpenWorkspace,
+}: {
+  events: EventDetail[];
+  onOpenWorkspace: (eventId: number) => void;
+}) {
   const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-  const leadingBlanks = 1;
+  const [visibleMonth, setVisibleMonth] = useState(() => {
+    const initialDate = (events.find((event) => event.status === "open") ?? events[0])?.event_date;
+    return initialDate
+      ? new Date(`${initialDate.slice(0, 7)}-01T00:00:00Z`)
+      : new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1));
+  });
+  const [hasPositionedInitialMonth, setHasPositionedInitialMonth] = useState(events.length > 0);
+  const [selectedEventId, setSelectedEventId] = useState<number | null>(null);
+  const year = visibleMonth.getUTCFullYear();
+  const month = visibleMonth.getUTCMonth();
+  const leadingBlanks = (new Date(Date.UTC(year, month, 1)).getUTCDay() + 6) % 7;
+  const daysInMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
   const cells = [
     ...Array.from({ length: leadingBlanks }, () => null),
-    ...Array.from({ length: 31 }, (_, index) => index + 1),
+    ...Array.from({ length: daysInMonth }, (_, index) => index + 1),
   ];
+  const monthEvents = useMemo(() => {
+    const grouped = new Map<number, EventDetail[]>();
+    for (const event of events) {
+      const [eventYear, eventMonth, eventDay] = event.event_date.split("-").map(Number);
+      if (eventYear !== year || eventMonth !== month + 1) continue;
+      grouped.set(eventDay, [...(grouped.get(eventDay) ?? []), event]);
+    }
+    return grouped;
+  }, [events, month, year]);
+  const selectedEvent = events.find((event) => event.id === selectedEventId);
+
+  useEffect(() => {
+    if (!events.length || hasPositionedInitialMonth) return;
+    const nextEvent = events.find((event) => event.status === "open") ?? events[0];
+    setVisibleMonth(new Date(`${nextEvent.event_date.slice(0, 7)}-01T00:00:00Z`));
+    setHasPositionedInitialMonth(true);
+  }, [events, hasPositionedInitialMonth]);
+
+  function moveMonth(offset: number) {
+    setSelectedEventId(null);
+    setVisibleMonth(new Date(Date.UTC(year, month + offset, 1)));
+  }
 
   return (
     <div className="calendar">
       <div className="calendar-top">
-        <h3>July 2026</h3>
-        <span>Monthly Calendar</span>
+        <button aria-label="Previous month" type="button" onClick={() => moveMonth(-1)}>←</button>
+        <h3>{new Intl.DateTimeFormat("en-SG", { month: "long", year: "numeric", timeZone: "UTC" }).format(visibleMonth)}</h3>
+        <button aria-label="Next month" type="button" onClick={() => moveMonth(1)}>→</button>
       </div>
       <div className="calendar-grid calendar-days">
         {days.map((day) => (
@@ -436,23 +453,102 @@ function Calendar() {
             {day && (
               <>
                 <strong>{day}</strong>
-                {calendarEvents[day]?.map((event) => (
-                  <span key={event}>{event}</span>
+                {monthEvents.get(day)?.map((event) => (
+                  <button
+                    aria-label={event.name}
+                    className={`calendar-event-button ${event.status}`}
+                    key={event.id}
+                    type="button"
+                    onClick={() => setSelectedEventId(event.id)}
+                  >
+                    {event.name}
+                  </button>
                 ))}
               </>
             )}
           </div>
         ))}
       </div>
+      {selectedEvent && (
+        <section
+          aria-label={selectedEvent.name}
+          aria-modal="false"
+          className="calendar-event-preview"
+          role="dialog"
+        >
+          <header>
+            <span className={`calendar-preview-status ${selectedEvent.status}`}>{selectedEvent.status}</span>
+            <button aria-label="Close Event preview" type="button" onClick={() => setSelectedEventId(null)}>×</button>
+          </header>
+          <h4>{selectedEvent.name}</h4>
+          <dl>
+            <div><dt>Date</dt><dd>{new Intl.DateTimeFormat("en-SG", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }).format(new Date(`${selectedEvent.event_date}T00:00:00Z`))}</dd></div>
+            <div><dt>Venue</dt><dd>{selectedEvent.venue}</dd></div>
+          </dl>
+          <p>{selectedEvent.tasks.filter((task) => task.status === "done").length} of {selectedEvent.tasks.length} Tasks completed</p>
+          <button className="calendar-preview-open" type="button" onClick={() => onOpenWorkspace(selectedEvent.id)}>Open workspace</button>
+        </section>
+      )}
     </div>
   );
 }
 
-function DashboardPage({
+export function DashboardPage({
   onQuickAction,
+  onOpenEvent,
+  api = adminApi,
 }: {
   onQuickAction: (action: FlowAction) => void;
+  onOpenEvent: (eventId: number) => void;
+  api?: AdminApi;
 }) {
+  const [dashboardEvents, setDashboardEvents] = useState<EventDetail[]>([]);
+  const [calendarError, setCalendarError] = useState("");
+  const [summary, setSummary] = useState<DashboardSummary | null>(null);
+  const [summaryError, setSummaryError] = useState("");
+  const [dashboardDeadlines, setDashboardDeadlines] = useState<UpcomingDeadline[]>([]);
+  const [deadlinesLoading, setDeadlinesLoading] = useState(true);
+  const [deadlinesError, setDeadlinesError] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    api.listEvents()
+      .then((events) => {
+        if (active) setDashboardEvents(events);
+      })
+      .catch(() => {
+        if (active) setCalendarError("Unable to load Events.");
+      });
+    api.getDashboardSummary()
+      .then((data) => {
+        if (active) setSummary(data);
+      })
+      .catch(() => {
+        if (active) setSummaryError("Unable to load dashboard summary.");
+      });
+    api.listUpcomingDeadlines()
+      .then((items) => {
+        if (active) setDashboardDeadlines(items);
+      })
+      .catch(() => {
+        if (active) setDeadlinesError("Unable to load upcoming deadlines.");
+      })
+      .finally(() => {
+        if (active) setDeadlinesLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [api]);
+
+  const dashboardKpis = summary ? [
+    { label: "Upcoming Events", value: String(summary.upcoming_events), helper: "Scheduled from today" },
+    { label: "Total Volunteers", value: String(summary.total_volunteers), helper: "Across all Events" },
+    { label: "Pending Confirmations", value: String(summary.pending_volunteer_confirmations), helper: "Awaiting review" },
+    { label: "Overdue Tasks", value: String(summary.overdue_tasks), helper: "Needs attention" },
+    { label: "Tasks Due Soon", value: String(summary.tasks_due_soon), helper: "Within 14 days" },
+  ] : [];
+
   return (
     <section className="dashboard-page">
       <div className="dashboard-shell">
@@ -462,26 +558,32 @@ function DashboardPage({
           <span>Here's what's happening across your events today.</span>
         </header>
 
-        <div className="kpi-grid">
-          {kpis.map((kpi) => (
+        <div aria-label="Dashboard summary" className="kpi-grid dashboard-kpi-strip">
+          {dashboardKpis.map((kpi) => (
             <KpiCard key={kpi.label} {...kpi} />
           ))}
+          {!summary && !summaryError && Array.from({ length: 5 }, (_, index) => <article aria-label="Loading metric" className="kpi-card dashboard-kpi-loading" key={index}><span>Loading…</span></article>)}
         </div>
+        {summaryError && <p className="dashboard-data-error" role="alert">{summaryError}</p>}
 
         <div className="dashboard-main-grid">
           <div className="dashboard-card calendar-card">
-            <Calendar />
+            <EventCalendar events={dashboardEvents} onOpenWorkspace={onOpenEvent} />
+            {calendarError && <p role="alert">{calendarError}</p>}
           </div>
           <aside className="dashboard-side">
             <div className="dashboard-card">
               <h2>Upcoming Deadlines</h2>
               <div className="deadline-list">
-                {deadlines.map((deadline) => (
-                  <div className="deadline-item" key={deadline.label}>
-                    <span>{deadline.label}</span>
-                    <strong>{deadline.date}</strong>
-                  </div>
+                {dashboardDeadlines.map((deadline) => (
+                  <button aria-label={`${deadline.name} for ${deadline.event_name}`} className="deadline-item deadline-button" key={deadline.id} type="button" onClick={() => onOpenEvent(deadline.event_id)}>
+                    <span><strong>{deadline.name}</strong><small>{deadline.event_name}</small></span>
+                    <time dateTime={deadline.due_at}>{new Intl.DateTimeFormat("en-SG", { day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(`${deadline.due_at.slice(0, 10)}T00:00:00Z`))}</time>
+                  </button>
                 ))}
+                {deadlinesLoading && <p role="status">Loading deadlines…</p>}
+                {!deadlinesLoading && !deadlinesError && !dashboardDeadlines.length && <p>No Tasks due in the next 14 days.</p>}
+                {deadlinesError && <p className="dashboard-data-error" role="alert">{deadlinesError}</p>}
               </div>
             </div>
             <div className="dashboard-card">
@@ -581,7 +683,7 @@ function EventCard({
 function EventsPage({ initialEventIndex }: { initialEventIndex: number | null }) {
   const prototype = new URLSearchParams(window.location.search).get("prototype");
   if (!prototype) {
-    return <EventOperationsMvp />;
+    return <AdminEventsPage initialEventId={initialEventIndex} />;
   }
   if (prototype === "event-collection") {
     return <EventCollectionPrototype />;
@@ -823,6 +925,11 @@ export default function App() {
 
   }
 
+  function openEventWorkspace(eventId: number) {
+    setOpenEventIndex(eventId);
+    navigate("events");
+  }
+
   if (activePage === "signup") {
     return <VolunteerSignup />;
   }
@@ -862,7 +969,7 @@ export default function App() {
         <div className="product-frame">
           <div className="product-page-content">
             {activePage === "dashboard" && (
-              <DashboardPage onQuickAction={handleQuickAction} />
+              <DashboardPage onQuickAction={handleQuickAction} onOpenEvent={openEventWorkspace} />
             )}
             {activePage === "events" && (
               <EventsPage

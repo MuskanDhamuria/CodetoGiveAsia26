@@ -11,8 +11,8 @@ import sqlite3
 from pathlib import Path
 
 
-MIGRATIONS_DIR = Path(__file__).with_name("migrations")
-SCHEMA_PATH = MIGRATIONS_DIR / "001_initial_schema.sql"
+MIGRATIONS_PATH = Path(__file__).with_name("migrations")
+SCHEMA_PATH = MIGRATIONS_PATH / "001_initial_schema.sql"
 DEFAULT_DATABASE_PATH = Path(__file__).with_name("data") / "passion_to_serve.sqlite3"
 
 
@@ -25,27 +25,98 @@ def connect(database_path: str | Path) -> sqlite3.Connection:
     return connection
 
 
-def _applied_migration_versions(connection: sqlite3.Connection) -> set[int]:
-    try:
-        rows = connection.execute("SELECT version FROM schema_migrations").fetchall()
-    except sqlite3.OperationalError:
-        return set()
-    return {row[0] for row in rows}
+def _repair_event_columns_before_optional_template(
+    connection: sqlite3.Connection,
+) -> None:
+    """Repair databases where the old migration 002 removed later columns.
+
+    Migration 002 existed briefly on the organizer branch with a table rebuild
+    that only copied the original event columns. A database that had already
+    applied migrations 003 and 005 could therefore retain their version records
+    while losing their columns. Restore any missing columns before migration 006
+    performs the final, column-preserving rebuild.
+    """
+
+    table_exists = connection.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'events'"
+    ).fetchone()
+    if table_exists is None:
+        return
+
+    columns = {
+        row["name"] for row in connection.execute("PRAGMA table_info(events)")
+    }
+    additions = {
+        "beneficiary_id": (
+            "ALTER TABLE events ADD COLUMN beneficiary_id INTEGER "
+            "REFERENCES beneficiaries(id) ON DELETE SET NULL"
+        ),
+        "description": (
+            "ALTER TABLE events ADD COLUMN description TEXT NOT NULL DEFAULT ''"
+        ),
+        "start_time": "ALTER TABLE events ADD COLUMN start_time TEXT",
+        "end_time": "ALTER TABLE events ADD COLUMN end_time TEXT",
+    }
+    for name, statement in additions.items():
+        if name not in columns:
+            connection.execute(statement)
+
+    connection.execute(
+        """
+        UPDATE events
+        SET beneficiary_id = (
+            SELECT id FROM beneficiaries WHERE name = 'Migrant workers'
+        )
+        WHERE beneficiary_id IS NULL
+        """
+    )
+    connection.execute(
+        """
+        UPDATE events
+        SET description = COALESCE(
+            (
+                SELECT description FROM event_templates
+                WHERE event_templates.id = events.event_template_id
+            ),
+            ''
+        )
+        WHERE description = ''
+        """
+    )
+    connection.commit()
 
 
 def initialize_database(database_path: str | Path = DEFAULT_DATABASE_PATH) -> Path:
-    """Create the database and apply every migration idempotently, in order."""
+    """Create the database and apply pending SQL migrations in order."""
 
     path = Path(database_path)
     path.parent.mkdir(parents=True, exist_ok=True)
 
     with connect(path) as connection:
-        for migration_path in sorted(MIGRATIONS_DIR.glob("*.sql")):
+        has_migrations_table = connection.execute(
+            """
+            SELECT 1 FROM sqlite_master
+            WHERE type = 'table' AND name = 'schema_migrations'
+            """
+        ).fetchone()
+        applied_versions = (
+            {
+                row[0]
+                for row in connection.execute(
+                    "SELECT version FROM schema_migrations"
+                ).fetchall()
+            }
+            if has_migrations_table
+            else set()
+        )
+        for migration_path in sorted(MIGRATIONS_PATH.glob("[0-9][0-9][0-9]_*.sql")):
             version = int(migration_path.name.split("_", 1)[0])
-            applied = _applied_migration_versions(connection)
-            if version in applied:
+            if version in applied_versions:
                 continue
+            if version == 6:
+                _repair_event_columns_before_optional_template(connection)
             connection.executescript(migration_path.read_text(encoding="utf-8"))
+            applied_versions.add(version)
 
     return path
 

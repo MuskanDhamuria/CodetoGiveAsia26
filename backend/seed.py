@@ -1,5 +1,5 @@
-"""Demo data for the Volunteer segment, modelled on Passion to Serve's own
-Wellness and Distribution event use cases.
+"""Demo data for organizer and volunteer development, modelled on Passion to
+Serve's Wellness and Distribution event use cases.
 
 Run with:
 
@@ -16,8 +16,22 @@ ROLE_CATEGORY = "volunteer"
 
 
 def seed(db) -> None:
+    for name, email in [
+        ("John Tan", "john.tan@passiontoserve.org"),
+        ("Priya Nair", "priya.nair@passiontoserve.org"),
+        ("Marcus Lee", "marcus.lee@passiontoserve.org"),
+        ("Aisha Rahman", "aisha.rahman@passiontoserve.org"),
+    ]:
+        db.execute(
+            """
+            INSERT OR IGNORE INTO team_members (name, email)
+            VALUES (?, ?)
+            """,
+            (name, email),
+        )
+
     if db.execute("SELECT COUNT(*) FROM events").fetchone()[0] > 0:
-        print("Database already has Events; skipping seed.")
+        print("Database already has Events; refreshed safe seed records only.")
         return
 
     migrant_workers_id = db.execute(

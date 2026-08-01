@@ -221,7 +221,9 @@ Create event body:
 }
 ```
 
-Creating an event should copy the selected template's tasks and subtasks into
+`event_template_id` may be `null` when the organizer chooses **Start from
+scratch**. That creates an Event with an empty Task plan. Otherwise, creating an
+event copies the selected template's tasks and subtasks into
 `event_tasks` and `event_subtasks`. It should calculate every `due_at` from the
 event date and `relative_due_days`. Later edits to the template must not change
 already-created events.
@@ -229,7 +231,7 @@ already-created events.
 | Method | Path | Parameters/body | Description |
 | --- | --- | --- | --- |
 | `GET` | `/events` | Query: `status?`, `date_from?`, `date_to?`, `template_id?`, `q?`, `limit`, `offset`, `sort=event_date`, `order=asc|desc` | List events for the event list or calendar. `q` searches name and venue. |
-| `POST` | `/events` | Body: create event fields above | Create an event and instantiate its template workflow atomically. |
+| `POST` | `/events` | Body: create event fields above; `event_template_id` may be `null` | Create an Event from a template or start from an empty Task plan. |
 | `GET` | `/events/{event_id}` | Query: `include=tasks,subtasks,counts` (optional) | Get event details. Optional includes prevent multiple frontend requests. |
 | `PATCH` | `/events/{event_id}` | Body: `name?`, `venue?`, `event_date?`, `status?` | Update event details. Changing the date does not silently move task deadlines; use the reschedule endpoint for that. |
 | `DELETE` | `/events/{event_id}` | Path: `event_id` | Permanently delete an event and dependent tasks/signups. The UI should require confirmation. |

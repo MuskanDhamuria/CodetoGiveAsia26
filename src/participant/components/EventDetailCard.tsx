@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useOutletContext, useParams } from "react-router-dom";
 import {
+  ApiError,
   cancelRegistration,
   getEvent,
   getMyEvents,
@@ -11,9 +12,16 @@ import { formatEventDateLong } from "../dateFormat";
 import type { ParticipantOutletContext } from "../ParticipantApp";
 import SignupForm from "./SignupForm";
 
+// The backend uses this exact message when a participant_id doesn't exist —
+// distinguishing it from other 404s (e.g. "Event not found") matters so we
+// only clear the saved identity when it's actually the identity that's bad.
+function isStaleIdentityError(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 404 && error.message === "Participant not found";
+}
+
 export default function EventDetailCard() {
   const { eventId } = useParams<{ eventId: string }>();
-  const { participant, onIdentified } = useOutletContext<ParticipantOutletContext>();
+  const { participant, onIdentified, onIdentityInvalid } = useOutletContext<ParticipantOutletContext>();
   const numericEventId = Number(eventId);
 
   const [event, setEvent] = useState<EventSummary | null>(null);
@@ -45,13 +53,21 @@ export default function EventDetailCard() {
       return;
     }
     let cancelled = false;
-    getMyEvents(participant.participantId).then((response) => {
-      if (!cancelled) setIsSignedUp(response.items.some((item) => item.id === numericEventId));
-    });
+    getMyEvents(participant.participantId)
+      .then((response) => {
+        if (!cancelled) setIsSignedUp(response.items.some((item) => item.id === numericEventId));
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        if (isStaleIdentityError(error)) {
+          onIdentityInvalid();
+        }
+        setIsSignedUp(false);
+      });
     return () => {
       cancelled = true;
     };
-  }, [participant, numericEventId]);
+  }, [participant, numericEventId, onIdentityInvalid]);
 
   async function handleSignup(participantId: number) {
     setActionPending(true);
@@ -60,7 +76,12 @@ export default function EventDetailCard() {
       await registerForEvent(numericEventId, participantId);
       setIsSignedUp(true);
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : "Couldn't sign up.");
+      if (isStaleIdentityError(error)) {
+        onIdentityInvalid();
+        setActionError("Your saved sign-in has expired — please sign up again.");
+      } else {
+        setActionError(error instanceof Error ? error.message : "Couldn't sign up.");
+      }
     } finally {
       setActionPending(false);
     }

@@ -45,6 +45,16 @@ export type PublicRsvpResult = {
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "/api/v1";
 
+export class ApiError extends Error {
+  status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
     headers: { "Content-Type": "application/json" },
@@ -52,7 +62,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (!response.ok) {
     const body = await response.json().catch(() => null);
-    throw new Error(body?.detail ?? `Request failed (${response.status})`);
+    throw new ApiError(response.status, body?.detail ?? `Request failed (${response.status})`);
   }
   if (response.status === 204) return undefined as T;
   return (await response.json()) as T;

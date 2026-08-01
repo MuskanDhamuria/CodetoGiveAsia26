@@ -1,11 +1,15 @@
 import { useEffect, useState } from "react";
 import { Link, useOutletContext } from "react-router-dom";
-import { getMyEvents, type EventForParticipant } from "../api/client";
+import { ApiError, getMyEvents, type EventForParticipant } from "../api/client";
 import { formatEventDate } from "../dateFormat";
 import type { ParticipantOutletContext } from "../ParticipantApp";
 
+function isStaleIdentityError(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 404 && error.message === "Participant not found";
+}
+
 export default function MyEventsList() {
-  const { participant } = useOutletContext<ParticipantOutletContext>();
+  const { participant, onIdentityInvalid } = useOutletContext<ParticipantOutletContext>();
   const [events, setEvents] = useState<EventForParticipant[]>([]);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
 
@@ -24,13 +28,20 @@ export default function MyEventsList() {
           setStatus("ready");
         }
       })
-      .catch(() => {
-        if (!cancelled) setStatus("error");
+      .catch((error) => {
+        if (cancelled) return;
+        if (isStaleIdentityError(error)) {
+          // Falls back to the "sign up to see it here" empty state below,
+          // since `participant` becomes null once this clears.
+          onIdentityInvalid();
+          return;
+        }
+        setStatus("error");
       });
     return () => {
       cancelled = true;
     };
-  }, [participant]);
+  }, [participant, onIdentityInvalid]);
 
   if (!participant) {
     return (

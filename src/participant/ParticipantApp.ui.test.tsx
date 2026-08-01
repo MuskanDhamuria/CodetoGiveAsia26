@@ -51,6 +51,9 @@ function mockFetch() {
           offset: 0,
         })
       }
+      if (url === "/api/v1/participants/999/events?limit=100" && method === "GET") {
+        return jsonResponse({ detail: "Participant not found" }, 404)
+      }
       throw new Error(`Unhandled request in test: ${method} ${url}`)
     }),
   )
@@ -80,5 +83,31 @@ describe("Participant signup journey", () => {
     await user.click(screen.getByRole("button", { name: "Sign up" }))
 
     expect(await screen.findByText("You're signed up for this event.")).toBeTruthy()
+  })
+})
+
+describe("Stale local identity", () => {
+  it("falls back to the signup form when the saved participant no longer exists", async () => {
+    localStorage.setItem(
+      "p2s.participant",
+      JSON.stringify({
+        participantId: 999,
+        name: "Old Alice",
+        contactNumber: "+6590000000",
+        email: null,
+      }),
+    )
+
+    render(
+      <MemoryRouter initialEntries={["/participant/events/1"]}>
+        <Routes>
+          <Route path="/participant/*" element={<ParticipantApp />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByText("Bring a water bottle.")).toBeTruthy()
+    expect(await screen.findByLabelText("Name")).toBeTruthy()
+    expect(screen.queryByText(/Signed in as Old Alice/)).toBeNull()
   })
 })

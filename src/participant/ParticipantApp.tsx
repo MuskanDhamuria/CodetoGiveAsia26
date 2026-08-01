@@ -1,6 +1,11 @@
 import { useState } from "react";
 import { NavLink, Outlet, Route, Routes } from "react-router-dom";
-import { getStoredParticipant, storeParticipant, type StoredParticipant } from "./identity";
+import {
+  clearStoredParticipant,
+  getStoredParticipant,
+  storeParticipant,
+  type StoredParticipant,
+} from "./identity";
 import EventBrowseList from "./components/EventBrowseList";
 import EventDetailCard from "./components/EventDetailCard";
 import MyEventsList from "./components/MyEventsList";
@@ -9,6 +14,7 @@ import "./participant.css";
 export type ParticipantOutletContext = {
   participant: StoredParticipant | null;
   onIdentified: (participant: StoredParticipant) => void;
+  onIdentityInvalid: () => void;
 };
 
 function ParticipantLayout() {
@@ -19,7 +25,16 @@ function ParticipantLayout() {
     setParticipant(next);
   }
 
-  const context: ParticipantOutletContext = { participant, onIdentified: handleIdentified };
+  function handleIdentityInvalid() {
+    clearStoredParticipant();
+    setParticipant(null);
+  }
+
+  const context: ParticipantOutletContext = {
+    participant,
+    onIdentified: handleIdentified,
+    onIdentityInvalid: handleIdentityInvalid,
+  };
 
   return (
     <div className="participant-shell">

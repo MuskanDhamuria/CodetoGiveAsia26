@@ -30,6 +30,15 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
         "everywhere it's shown. This does not delete the event or its "
         "history."
     ),
+    "list_event_templates": (
+        "List existing event templates (id, name, description). Call this "
+        "before create_event_draft whenever the organizer mentions a "
+        "template by name or you need to check what templates exist — "
+        "match by name to find the right id rather than asking the "
+        "organizer for a raw numeric id. event_template_id is optional: "
+        "if nothing matches, proceed with null instead of treating it as "
+        "missing required information."
+    ),
 }
 
 

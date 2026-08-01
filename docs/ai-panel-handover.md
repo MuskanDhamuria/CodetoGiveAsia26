@@ -24,192 +24,70 @@ breakdown are in `tickets.md`.
 
 ## What's built so far
 
-**TICKET-0 (Phase 0 compatibility audit) — done.** Full findings in
-[`ai-panel-compatibility-report.md`](ai-panel-compatibility-report.md).
-Headline results, since they shape everything downstream:
+Everything below is done; each ticket's full technical detail (files,
+function names, exact bugs and fixes, test breakdowns) lives in
+`tickets.md` — this section only summarizes what a feature *does* and how
+the pieces fit together, grouped by theme rather than ticket number.
 
-- The admin/organizer backend has **no authentication at all** — decided:
-  ship this milestone without adding any (see "Key decisions" below).
-- There's no service layer — `backend/api/routes/events.py`'s route
-  handlers *are* the business logic, and are directly callable in-process
-  (FastAPI's `Depends()` wiring doesn't matter outside an HTTP request).
-- `httpx` (already a backend dependency) is sufficient for the OpenRouter
-  call; no new dependency needed.
-- `src/AiCopilot.tsx` already existed as a static UI mock, already mounted
-  into the admin layout — see TICKET-10 below for what happened to it.
+**Foundation.** The Phase-0 audit (TICKET-0) confirmed the admin backend
+has no auth to work around, no service layer to extract (route handlers
+are directly callable in-process), and no new dependency needed for
+OpenRouter. Event cancellation (TICKET-9) got its own distinct state from
+"registration closed," so the AI's cancel action and the admin UI can't be
+confused with an ordinarily-closed event. The AI panel itself
+(TICKET-10) is a collapsible FAB + overlay, closed by default on every
+page, accessible (focus management, `Escape`, ARIA roles), built on a
+dead CSS design that was rebuilt rather than retrofitting the old
+always-open sidebar.
 
-**TICKET-10 (collapsible AI panel, mobile + desktop) — done.** The audit
-turned up a complete, entirely unused floating-action-button +
-slide-in-overlay design sitting dead in `src/index.css` (`.copilot-fab`,
-`.copilot-panel`, `.copilot-header`, `.copilot-chat`, `.copilot-message`,
-`.suggestion-card`, `.copilot-composer`) — apparently an earlier iteration
-of the AI copilot, superseded by a permanent-grid-sidebar version without
-ever being deleted. `src/AiCopilot.tsx` has been rebuilt on top of that dead
-CSS instead of the sidebar:
+**Backend AI framework (TICKET-1–4).** `POST /api/v1/ai/chat` streams a
+conversation through OpenRouter and back to the frontend over
+Server-Sent Events, holding the API key server-side only. The model can
+call a constrained set of tools — creating/publishing/updating/cancelling
+events, listing events, and looking up event templates — each a thin
+wrapper around the same backend logic the human-driven admin pages use,
+so nothing bypasses existing validation. Every tool call runs through a
+schema → business-rule → permission pipeline and returns a structured
+result instead of raising, and every call (success or failure) is written
+to an audit log.
 
-- Collapsed by default on every breakpoint; a fixed bottom-right FAB opens a
-  right-anchored overlay panel (desktop: `min(440px, 100vw)` with a
-  click-outside-to-close backdrop; mobile, under 810px: full-viewport, no
-  backdrop needed).
-- `Escape` closes it; focus moves to the panel's close button on open and
-  back to the FAB on close (via a `useEffect` keyed on the `open` boolean —
-  an inline focus call in the click handler doesn't work here, because the
-  FAB and close button are never mounted at the same time, so the ref you'd
-  focus doesn't exist yet at the moment the handler runs).
-- `role="dialog"` / `aria-modal` / `aria-hidden` / `aria-expanded` /
-  `aria-controls` wired for basic screen-reader correctness.
-- `App.tsx`'s `.product-frame`/`.product-page-content` grid-reservation
-  layout (which used to reserve permanent screen space for the old
-  always-visible sidebar) is gone — the panel is a fixed overlay over
-  full-width page content now.
-- Cleanup beyond the original ticket scope: also deleted a *third*,
-  already-dead "workflow-wizard" copilot design
-  (`.copilot-workflow-*`/`.copilot-steps`/`.copilot-prompts`) found in the
-  same CSS region, and a leftover reference to the now-removed
-  `--copilot-sidebar-width` variable in `EventOperationsMvp.css`.
-- Content inside the panel is still the same mock data it always was
-  (`recommendedActions`, the one hardcoded "Broadcast draft" card, a
-  free-text box that just echoes "Preparing: …" locally) — **no backend
-  wiring exists yet.** That's TICKET-1/TICKET-5's job, not done here.
+**Frontend chat experience (TICKET-5, 6, 11, 12).** The panel is wired to
+real conversation history and streams the model's reply live, rendered as
+markdown so lists and formatting show up properly instead of raw text.
+When the AI proposes a new event, it shows as an editable draft card the
+organizer must explicitly confirm before anything is created — no
+tool ever executes silently. Status messages about what the AI did behind
+the scenes only appear when they add information a human wouldn't
+otherwise have (a failure, or a result the model didn't already describe
+in its own reply), to keep the conversation readable rather than
+duplicating everything twice.
 
-Verified in-browser at desktop and mobile viewports (open/close, Escape,
-backdrop, focus handling) plus `npx tsc --noEmit` and `npm test -- --run`
-(75 tests) both passing. See TICKET-10 in `tickets.md` for the full
-before/after and a process note about an `npm run format` mishap that got
-caught and reverted before landing.
-
-**Update: `src/AiCopilot.test.tsx` added (new file — none existed before).**
-The verification above was manual/in-browser only; the new suite locks in
-the same behavior without a browser: collapsed-by-default state, FAB → panel
-open with focus moving to the close button, Escape and the close button both
-closing and returning focus to the FAB, backdrop click-to-close, and the
-FAB's `aria-expanded`/`aria-controls` pointing at the panel. One quirk worth
-knowing if you touch this file: the panel is `aria-hidden` while closed,
-which removes it from the accessibility tree, so `getByRole("dialog", ...)`
-can't find it then — the tests look it up by `id` (`#ai-copilot-panel`)
-directly instead. The 810px mobile breakpoint hiding the backdrop is plain
-CSS (`display: none` in a media query), which jsdom doesn't evaluate, so
-that part of TICKET-10 stays manual-verification-only.
-
-**TICKET-9 (event cancellation as a distinct state) — done.** New additive
-migration `008_event_cancellation.sql` adds nullable `events.cancelled_at`,
-kept separate from `status` (see "Key decisions" below for why). New
-`POST /events/{id}/cancel` sets `cancelled_at` and `status='closed'`
-together. `EventSummary`/`EventDetail` expose a derived `is_cancelled: bool`.
-`dashboard_summary` and `calendar_events` both exclude cancelled events via
-`AND cancelled_at IS NULL`. The admin Events page
-(`EventCollectionPrototype.tsx`/`AdminEventsPage.tsx`) shows a distinct
-"Cancelled" badge, hides cancelled events by default behind a new "Show
-cancelled" toggle, and has a "Cancel Event" action with a confirmation
-dialog. The participant portal excludes cancelled events from browsing
-(`EventBrowseList`) but still flags them "Cancelled" for a participant
-already RSVP'd (`MyEventsList`, `EventDetailCard`) instead of silently
-dropping them. This is what `cancel_event` (TICKET-2) should call —
-**do not** wire `cancel_event` to `close_event` or `delete_event` as a
-stand-in; see TICKET-9/TICKET-2 in `tickets.md` for why.
-
-One loose end found while implementing, noted in `tickets.md`'s TICKET-9
-entry: the existing `reopen_event` endpoint doesn't clear `cancelled_at`,
-so a direct API call (not reachable through the admin UI, which hides
-"Reopen" for cancelled events) could leave `status='open'` with
-`cancelled_at` still set. The dashboard/calendar queries filter on
-`cancelled_at IS NULL` explicitly (not just `status`) to stay correct even
-in that state. Whether "reopen" should actually clear `cancelled_at`
-(true un-cancel) is still an open question — see TICKET-9's "Open
-questions" in `tickets.md`.
-
-Test coverage added on both sides — see the fuller breakdown in
-`tickets.md`'s TICKET-9 entry, summarized here: `test_admin_api.py` (cancel
-+ 404, dashboard/calendar exclusion) and `test_participants.py` (a new test
-since `/participants/{id}/events` derives `is_cancelled` on its own code
-path, separate from `events.py`'s); `AdminEventsPage.test.tsx` (cancel
-dialog → badge → Reopen/Close hidden; the "Show cancelled" toggle);
-`EventBrowseList.test.tsx` and `EventDetailCard.test.tsx` (both extended);
-and a brand-new `MyEventsList.test.tsx` (this component had zero test
-coverage before this pass).
-
-**TICKET-2 (AI tool functions), TICKET-3 (validation pipeline), and
-TICKET-1 (backend OpenRouter endpoint) — all done.** New `backend/ai_tools/`
-package (`tools.py`, `schemas.py`, `dispatch.py`, `specs.py`) implements the
-six-tool set the proposal names — `create_event_draft`, `publish_event`,
-`update_event`, `get_event`, `list_events`, `cancel_event` — each a thin
-in-process wrapper around the matching `backend/api/routes/events.py`
-handler, dispatched through `dispatch_tool_call(db, tool_name, arguments)`.
-That function runs the three-stage pipeline TICKET-3 asked for (schema
-validation via the same `EventCreate`/`EventUpdate` Pydantic models the
-human HTTP routes use; business validation reused from `events.py`'s own
-checks rather than re-implemented; permission validation as an explicit
-named no-op, since the admin backend still has no auth/role concept) and
-always returns a structured `{"success": bool, ...}` result instead of
-raising. `cancel_event` correctly targets `POST /events/{id}/cancel`
-(TICKET-9), never `close_event`/`delete_event`. New
-`backend/api/routes/ai_assistant.py` exposes `POST /api/v1/ai/chat`: holds
-`OPENROUTER_API_KEY` server-side only, streams Server-Sent Events back to
-the frontend, registers `ai_tools.TOOL_SPECS` with the OpenRouter call as
-real function-calling tools, and dispatches any tool call the model makes
-straight to `dispatch_tool_call` — the route itself has no business logic.
-It resolves one round of tool-calling per user turn (not an open-ended agent
-loop), which is enough for the draft-then-approve flow since `publish_event`
-only fires on a separate, later user turn once the organizer confirms.
-See TICKET-1/2/3 in `tickets.md` for the full design rationale and test
-breakdown (22 new backend tests across `test_ai_tools.py` and
-`test_ai_assistant.py`, none of which need a real OpenRouter key —
-`httpx.MockTransport` fakes the streaming response).
-
-**TICKET-4 (audit logging) — done.** New additive migration
-`009_ai_audit_log.sql` adds an `ai_audit_log` table (timestamp, tool name,
-arguments as JSON, success flag, resulting entity id, failure reason — no
-acting-user column, per TICKET-0's decision). `dispatch_tool_call`
-(`backend/ai_tools/dispatch.py`) now logs a row on every dispatch path —
-unknown tool name, schema-validation rejection, business-validation/
-execution failure, and success — including `create_event_draft`, which is
-audited even though it never writes an `events` row. Whether this log
-should later expand to cover human-driven admin mutations too is still an
-open question (see TICKET-4 in `tickets.md`), not resolved by this pass.
-
-**TICKET-5 (wire real chat into the panel) — done.** New `src/ai-api.ts`
-(`streamChat`) is the only thing in the frontend that talks to
-`/api/v1/ai/chat` — it holds no API key and never calls OpenRouter
-directly, per the proposal's constraint. `AiCopilot.tsx`'s old mock
-(`recommendedActions`, the hardcoded "Broadcast draft" card, the
-`goal`/`draft` local state) is gone, replaced by a real `conversation`
-array sent in full on every turn (the backend is stateless). `token`
-events stream into a live assistant bubble; `tool_call`/`tool_result`
-render as a lightweight inline status line (`"<tool> succeeded."` /
-`"<tool> failed: <reason>"`) — the full `.suggestion-card` draft-review UI
-is still TICKET-6's job, not built here. A CSS bug turned up during
-in-browser verification and got fixed in the same pass: `.copilot-chat`'s
-grid rows were stretching to fill the panel's height when there were only
-one or two messages (`align-content: normal` behaves like `stretch` for
-auto-sized grid tracks) — fixed with `align-content: start`. New
-`src/AiCopilot.chat.test.tsx` covers the request payload, streamed tokens,
-tool activity rendering, error surfacing, and multi-turn history; verified
-live against a running backend with no `OPENROUTER_API_KEY` set (the 500's
-`detail` renders as a readable inline error, not a blank panel).
-
-**TICKET-6 (draft preview + approval flow) — done.** New backend endpoint
-`POST /api/v1/ai/tools/{tool_name}` dispatches one named tool call directly
-(same validation/audit pipeline as an LLM-issued call, just without the
-model in the loop) — `src/ai-api.ts`'s `invokeTool` calls it. A successful
-`create_event_draft` now renders a `.suggestion-card` with Edit/Create
-Event buttons instead of a generic status line; Edit patches the draft
-fields client-side, and only the explicit "Create Event" click fires
-`publish_event`, with the outcome (including a plain-language failure
-reason) rendering inline and the card clearing on success. Verified live
-end-to-end: drafted an event via the real OpenRouter-backed chat, edited
-the name in the card, confirmed, and the edited event landed in the
-database.
-
-**Not started:** TICKET-7 (system prompt — `ai_assistant.py` ships a
-first-pass `SYSTEM_PROMPT`, but TICKET-7's eval/adversarial-testing work is
-separate; TICKET-6's verification also surfaced a concrete case worth
-covering there — the model refusing to omit the optional
-`event_template_id` field even when told there was no template), TICKET-8
-(future tool backlog, tracking only).
+**Not started:** TICKET-7 (system-prompt iteration — live testing surfaced
+a couple of concrete cases worth tuning, like the model over-verifying
+information it already has) and TICKET-8 (future tool backlog — see
+`tickets.md` for candidate additions, notably volunteer management, which
+currently has no AI coverage at all).
 
 ## How to run and see it
 
-Same as the repo's standard local setup (see the root `CLAUDE.md`):
+**One-time setup — add your OpenRouter key to your shell's rc file** so
+it's available in every new terminal without re-exporting it each time.
+The backend only reads it from the process environment (no `.env` file is
+wired up), so it must land in an actual shell startup file, not a config
+the app reads. Append to `~/.zshrc` (default on macOS) or `~/.bashrc` if
+you use bash, then reload the shell:
+
+```sh
+echo 'export OPENROUTER_API_KEY="sk-or-your-key-here"' >> ~/.zshrc
+echo 'export OPENROUTER_MODEL="anthropic/claude-3.5-sonnet"' >> ~/.zshrc   # optional — this is already the default
+source ~/.zshrc
+```
+
+`OPENROUTER_MODEL` is optional and only needed to override the default
+model slug. Never commit a real key to any file in this repo.
+
+Then run the app same as the repo's standard local setup (see the root
+`CLAUDE.md`):
 
 ```sh
 .venv/bin/python -m uvicorn backend.main:app --reload   # terminal 1
@@ -220,15 +98,13 @@ Open `http://localhost:8443/admin/dashboard` (or `/admin/events`,
 `/admin/volunteers` — any non-home admin page). The AI panel's FAB
 ("Ask Passion AI") sits fixed bottom-right; click it to open, `Escape` or
 the panel's "Close" button to dismiss, or click the dimmed backdrop on a
-desktop-width viewport. The panel itself still shows TICKET-10's static mock
-content — nothing in it calls the new backend yet (that's TICKET-5).
+desktop-width viewport. It's a real chat against the backend above — ask
+it to list events, look up templates, or draft a new event.
 
-To exercise the new backend endpoint directly (no frontend wiring exists to
-call it yet), set `OPENROUTER_API_KEY` before starting uvicorn and stream
-from it with curl:
+You can also exercise the backend endpoint directly with curl, bypassing
+the frontend entirely:
 
 ```sh
-export OPENROUTER_API_KEY=sk-or-...
 curl -N -X POST http://127.0.0.1:8000/api/v1/ai/chat \
   -H "Content-Type: application/json" \
   -d '{"messages": [{"role": "user", "content": "List upcoming events"}]}'
@@ -245,9 +121,12 @@ individual files by hand or via your editor's formatter instead.
 All backlog items — remaining tickets, their scope, dependencies, and open
 questions — live in [`tickets.md`](tickets.md). That's the single source of
 truth; don't duplicate it here. TICKET-9, TICKET-2, TICKET-3, TICKET-1,
-TICKET-4, TICKET-5, TICKET-6, and TICKET-11 (a formatting bug found after
-TICKET-5 shipped) are all done. What's left: TICKET-7 (system prompt
-iteration) and TICKET-8 (future tool backlog, tracking only).
+TICKET-4, TICKET-5, TICKET-6, TICKET-11 (a formatting bug found after
+TICKET-5 shipped), and TICKET-12 (template visibility, found during
+TICKET-6's verification) are all done. What's left: TICKET-7 (system
+prompt iteration — now with two concrete cases to test against) and
+TICKET-8 (future tool backlog — audited with concrete candidates, none
+scoped yet).
 
 ## Key decisions worth knowing the "why" of
 

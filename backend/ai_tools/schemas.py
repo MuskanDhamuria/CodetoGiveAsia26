@@ -53,6 +53,15 @@ class ListEventsArgs(BaseModel):
     offset: int = Field(default=0, ge=0)
 
 
+class ListEventTemplatesArgs(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    is_built_in: bool | None = None
+    q: str | None = None
+    limit: int = Field(default=DEFAULT_LIMIT, ge=1, le=MAX_LIMIT)
+    offset: int = Field(default=0, ge=0)
+
+
 class CancelEventArgs(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -66,4 +75,5 @@ TOOL_ARG_MODELS: dict[str, type[BaseModel]] = {
     "get_event": GetEventArgs,
     "list_events": ListEventsArgs,
     "cancel_event": CancelEventArgs,
+    "list_event_templates": ListEventTemplatesArgs,
 }

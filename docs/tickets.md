@@ -528,6 +528,51 @@ as pure tool definitions without touching the assistant framework itself,
 per the proposal's "Future Expansion" section. Not scoped until the core
 framework ships and proves that pattern actually holds.
 
+### Audit update (post-TICKET-6): concrete candidates, not yet scoped
+
+A pass over `backend/ai_tools/`'s six existing tools found **no
+redundancy** — each wraps a distinct `events.py` handler
+(`create_event_draft`/`publish_event` are a deliberate two-step
+draft-then-approve pair per TICKET-2, not overlap; `cancel_event` is
+explicitly kept separate from `close_event`, which stays unexposed to the
+AI, per TICKET-9). A pass over the rest of the app's already-implemented
+(not just proposed) backend surface turned up real candidates for
+expansion, every one mapping to a handler function that already exists and
+is already used by some admin page today — nothing here requires new
+backend logic:
+
+- **`list_event_templates`** → `event_templates.list_templates`
+  (`GET /event-templates`) — **scoped and picked up as TICKET-12**, since
+  TICKET-6's live verification hit exactly the gap this fills.
+- **Volunteer management** (flagged as a promising area — the admin side
+  has real signup/approval workflows today with no AI tool touching them
+  at all):
+  - `list_volunteers` → `volunteers.list_volunteers`
+    (`GET /volunteers`) — e.g. "find approved volunteers with a first-aid
+    skill."
+  - `list_event_signups` → `volunteers.list_event_signups`
+    (`GET /events/{event_id}/volunteer-signups`) — "who's signed up for
+    Saturday's cleanup and what's their status?"
+  - `approve_event_signup` / `reject_event_signup` →
+    `volunteers.approve_event_signup` /
+    `volunteers.reject_event_signup` — lets an organizer approve/reject a
+    signup by name in one chat turn instead of opening `EventRoster.tsx`.
+    These are the closest analog to `cancel_event`'s "the AI can execute
+    a real state change" precedent, so should get the same drafted-then-
+    confirmed treatment TICKET-6 built if picked up, not fire-and-forget.
+- **`update_event_task`** → `events.update_event_task`
+  (`PATCH /events/{event_id}/tasks/{task_id}`, supports setting
+  `team_member_id`) — "assign Alvin to the venue-setup task," the actual
+  mechanism `AdminEventsPage.tsx` already uses for task assignment.
+- **`dashboard_summary`** → `dashboard.dashboard_summary`
+  (`GET /dashboard/summary`) — read-only, lets the AI answer "how are we
+  doing this week" without the organizer opening the dashboard page.
+
+None of these are scoped into a ticket yet except TICKET-12 — listed here
+so a future pass doesn't have to re-derive candidates from scratch.
+Volunteer-management tools in particular are flagged as high-value since
+that whole workflow currently has zero AI coverage.
+
 ---
 
 ~~TICKET-9: Event cancellation as a distinct state from closed registration~~
@@ -847,3 +892,183 @@ instead of bold text or list markup.
   response, not just a canned test string.
 
 </details>
+
+---
+
+~~TICKET-12: AI needs visibility into existing event templates~~
+— **Done.** New seventh tool `list_event_templates` (thin wrapper around
+`event_templates.list_templates`, registered in `backend/ai_tools/tools.py`/
+`schemas.py`/`specs.py` exactly like the existing six), plus a
+`SYSTEM_PROMPT` addition (`backend/api/routes/ai_assistant.py`) telling the
+model to call it and match by name instead of asking the organizer for a
+raw id, and that `event_template_id: null` is valid input, not missing
+information. `test_tool_specs_expose_exactly_the_named_tool_set` extended
+to the new seven-tool set; three new tests in `backend/tests/test_ai_tools.py`
+cover the tool returning id/name, filtering by search text, and rejecting
+unknown arguments.
+
+**Two real bugs found and fixed during live verification** (not present in
+the ticket's original scope, but directly blocking the flow this ticket
+exists to fix):
+- **A whitespace-only assistant turn broke the next message.** When a turn
+  only makes a tool call (e.g. `list_event_templates`) with no trailing
+  commentary, OpenRouter can stream a content-free or whitespace-only
+  reply (observed live: a lone `"\n\n"`). That message stayed in
+  `conversation` and got resent as history on the next turn —
+  `ChatMessage.content`'s `NonEmptyText` validation rejects it, so the next
+  message 422'd. Fixed in `AiCopilot.tsx`'s `sendMessage` by filtering
+  `conversation` on `message.content.trim()` before building the history
+  sent to the backend, matching the same trim check now used when deciding
+  whether to render a message bubble at all (an empty/whitespace-only
+  bubble is confusing to a human reader, flagged during review — fixed in
+  the same pass rather than filed separately).
+- **A validation-error 422 rendered as literal `"[object Object]"`.**
+  FastAPI's `detail` is a plain string for a raised `HTTPException`, but a
+  *list* of `{loc, msg, type}` objects for a Pydantic validation failure —
+  `ai-api.ts` was interpolating `detail` directly into `Error(...)`, and
+  `Array.prototype.toString` on a list of objects produces exactly
+  `"[object Object]"`. New `formatErrorDetail` in `src/ai-api.ts` extracts
+  and joins the `msg` fields when `detail` is an array, falling back to a
+  generic "Request failed with status N" only if no message can be
+  extracted. Both used by `streamChat` and `invokeTool`'s error paths.
+
+Two new regression tests in `src/AiCopilot.chat.test.tsx` lock these in:
+one streams a whitespace-only token then a second turn, asserting no
+`.copilot-message-assistant` bubble renders and the resent history omits
+the blank turn; the other asserts a FastAPI-style `detail` array renders
+its `msg` text, not `[object Object]`.
+
+Verified live end-to-end against the running backend and a real
+OpenRouter key, reproducing the exact scenario that surfaced these bugs:
+asked the panel to draft an event naming "Skill Enhancement" by name — the
+model called `list_event_templates` with `q: "Skill Enhancement"` (matched
+by name, confirmed via `ai_audit_log`), and confirming afterward no longer
+422'd or showed a raw `[object Object]`/empty bubble. Also reproduced the
+original TICKET-6 confusion directly: asking for a draft naming no
+template now proceeds immediately with `event_template_id: null` instead
+of the model refusing to continue without a raw id.
+
+**Found but not chased further, flagging for TICKET-7:** on the
+confirmation turn the model sometimes re-calls `list_event_templates`
+instead of proceeding straight to `create_event_draft` with the id it
+already resolved — a conversational-efficiency nuance, not a correctness
+bug (the tool still resolves correctly each time), better addressed by
+TICKET-7's prompt-iteration work than by further changes here.
+
+**Third fix, prompted by user feedback during live verification:** a turn
+where `list_event_templates` is the only thing that happens (no trailing
+model commentary, which the whitespace-only-content case above shows does
+happen) used to leave the organizer looking at a bare
+"list_event_templates succeeded." line with no way to tell what templates
+exist or that it's their turn to respond. `AiCopilot.tsx`'s tool-activity
+rendering now special-cases a successful `list_event_templates` result to
+render the templates themselves — name, description, "No matching
+templates found." when the list is empty — instead of the generic status
+line, so the organizer always has something concrete to act on regardless
+of whether the model adds its own prose. Two more tests in
+`src/AiCopilot.chat.test.tsx` cover the populated and empty-results cases.
+
+**Fourth and fifth fixes, from the same live-verification pass (user
+watched and flagged both):**
+- The `list_event_templates` fallback list initially duplicated the
+  model's own text whenever the model *did* narrate the results — the
+  organizer would see the same template names twice. Generalized the
+  fallback policy to every tool activity, not just templates: a **failure
+  always shows** (a silently swallowed failure is a trust problem,
+  independent of whether the model's text mentions it), but a **success
+  only shows when the model's own reply ends up empty** — `modelRepliedWithText`
+  is computed once from the turn's final assistant message and gates every
+  tool-activity success line, including the `list_event_templates` list.
+- That fallback decision was also being made too early — right when
+  `tool_result` arrived, before any trailing tokens had streamed in —
+  causing a visible flash-then-hide once real text caught up a moment
+  later. Fixed by not rendering a "done" entry's outcome at all while
+  `isStreaming` is still true; only "Running `<tool>`…" renders during the
+  stream, and the final success/failure/fallback content resolves once
+  the turn is fully settled.
+- One more subtlety caught by a test failure while fixing this: TICKET-6's
+  `confirmDraft` fires `publish_event` directly via `invokeTool`, outside
+  any chat turn — there is no model text to ever defer to for that action.
+  `ToolActivity` gained an `origin: "chat" | "direct"` tag so the
+  success-suppression rule only applies to `"chat"`-origin entries;
+  `"direct"` ones (currently just the confirm button's `publish_event`)
+  always show their outcome.
+
+Four new/updated tests in `src/AiCopilot.chat.test.tsx` cover: a
+tool-with-text turn correctly suppressing the redundant status line, a
+tool-with-no-text turn still falling back to it, a failure always showing
+even alongside model text, and (in `AiCopilot.draft.test.tsx`, already
+covered) `confirmDraft`'s `publish_event` outcome still showing regardless
+of prior conversation text.
+
+`npx tsc --noEmit`, `npm test -- --run` (105 frontend tests), and the full
+backend suite (104 tests) all pass. Verified live end-to-end with a full
+multi-turn conversation against the real OpenRouter-backed chat: template
+lookup, a template-based draft, confirming via the suggestion-card,
+listing events to verify, and cancelling — the fixed status-line policy
+held up cleanly throughout (no duplication, no flicker, the direct-publish
+outcome still visible after prior turns had text).
+
+**Found but not chased further, flagging for TICKET-7 (second instance):**
+during the same live conversation, asked to cancel an event by name, the
+model called `list_events` twice with an identical query before finally
+calling `cancel_event` on an explicit follow-up — re-verifying instead of
+proceeding with information it already had. Same class of issue as the
+template-recall case above; a prompting/confidence concern, not a tool or
+UI defect, since every call still resolved correctly.
+
+<details>
+<summary>Original ticket text</summary>
+
+## TICKET-12: AI needs visibility into existing event templates
+
+**Priority:** Medium — blocks the draft flow in practice, found live during
+TICKET-6's verification
+**Area:** `backend/ai_tools/` (new tool), `backend/api/routes/ai_assistant.py`
+(system prompt)
+
+### Problem
+
+`create_event_draft`/`publish_event`'s `event_template_id` field is
+optional (`int | None` on `EventCreate`) — omitting it is valid and means
+"no template." But the model has no way to know what templates exist, so
+when asked to draft an event it either guesses an id (risking a wrong
+match) or — what actually happened live — refuses to proceed without one,
+even after being told there's no template to use, because it can't
+distinguish "the field is optional" from "I'm missing required
+information." The organizer ends up manually looking up a template's raw
+numeric id outside the chat, defeating the point of a natural-language
+draft flow.
+
+### Scope
+
+- New tool `list_event_templates`, wrapping
+  `backend.api.routes.event_templates.list_templates` the same thin way
+  every other tool in `backend/ai_tools/tools.py` wraps its `events.py`
+  handler — no new business logic. Minimally returns `id` and `name` per
+  template (per this ticket's own title); include `description` too if
+  free, since it's already on the response model and costs nothing extra
+  to pass through.
+  - Registered in `backend/ai_tools/dispatch.py`'s `TOOL_EXECUTORS` /
+    `backend/ai_tools/specs.py`'s `TOOL_SPECS` / `backend/ai_tools/schemas.py`'s
+    `TOOL_ARG_MODELS` alongside the existing six, following the exact same
+    pattern (see `list_events` for the closest analog — a read-only,
+    no-argument-required list tool).
+- Update `SYSTEM_PROMPT` (`backend/api/routes/ai_assistant.py`) to tell the
+  model: call `list_event_templates` when drafting an event if the
+  organizer didn't name a template, match by name rather than asking the
+  organizer for a raw id, and that `event_template_id` is genuinely
+  optional — proceeding with `null` when nothing matches is correct
+  behavior, not a missing-information error requiring a clarifying
+  question.
+- Add this seventh tool to the existing "exactly this set" assertions in
+  `backend/tests/test_ai_tools.py` (`test_tool_specs_expose_exactly_the_named_tool_set`)
+  so the constrained-tool-set guarantee still holds with one more name in
+  it.
+
+### Out of scope
+
+Not building `get_event_template` (single-template detail) in this pass —
+`list_event_templates` alone resolves the observed problem (name → id
+lookup); a detail-fetch tool is a TICKET-8-style future candidate if a
+concrete need for template task-lists in chat shows up later.

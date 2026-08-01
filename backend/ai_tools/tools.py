@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import sqlite3
 
+from backend.api.routes import event_templates as event_templates_routes
 from backend.api.routes import events as events_routes
 from backend.api.routes._common import Pagination
 from backend.ai_tools.schemas import (
@@ -17,6 +18,7 @@ from backend.ai_tools.schemas import (
     CreateEventDraftArgs,
     GetEventArgs,
     ListEventsArgs,
+    ListEventTemplatesArgs,
     PublishEventArgs,
     UpdateEventArgs,
 )
@@ -76,6 +78,24 @@ def cancel_event(db: sqlite3.Connection, args: CancelEventArgs) -> dict:
     return detail.model_dump(mode="json")
 
 
+def list_event_templates(db: sqlite3.Connection, args: ListEventTemplatesArgs) -> dict:
+    """Look up existing templates by name — lets the AI resolve a template
+
+    the organizer named in conversation to its id, or confirm none fits and
+    proceed with `event_template_id: null`, instead of asking the organizer
+    for a raw id it has no way to know (TICKET-12).
+    """
+
+    pagination = Pagination(limit=args.limit, offset=args.offset)
+    envelope = event_templates_routes.list_templates(
+        db, pagination, is_built_in=args.is_built_in, q=args.q
+    )
+    return {
+        **envelope,
+        "items": [item.model_dump(mode="json") for item in envelope["items"]],
+    }
+
+
 TOOL_EXECUTORS = {
     "create_event_draft": create_event_draft,
     "publish_event": publish_event,
@@ -83,4 +103,5 @@ TOOL_EXECUTORS = {
     "get_event": get_event,
     "list_events": list_events,
     "cancel_event": cancel_event,
+    "list_event_templates": list_event_templates,
 }

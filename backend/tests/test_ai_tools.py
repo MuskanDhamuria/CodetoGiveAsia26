@@ -41,6 +41,7 @@ class AiToolsTest(unittest.TestCase):
                 "get_event",
                 "list_events",
                 "cancel_event",
+                "list_event_templates",
             },
         )
 
@@ -187,6 +188,29 @@ class AiToolsTest(unittest.TestCase):
         self.assertEqual(
             result, {"success": False, "reason": "Unknown tool 'delete_event'"}
         )
+
+    # -- list_event_templates (TICKET-12) ----------------------------------
+
+    def test_list_event_templates_returns_id_and_name(self) -> None:
+        template_id = self.create_template()
+        result = dispatch_tool_call(self.db, "list_event_templates", {})
+        self.assertTrue(result["success"])
+        names = {item["name"]: item["id"] for item in result["result"]["items"]}
+        self.assertEqual(names["Wellness"], template_id)
+
+    def test_list_event_templates_filters_by_search_text(self) -> None:
+        self.create_template()
+        result = dispatch_tool_call(
+            self.db, "list_event_templates", {"q": "does not exist"}
+        )
+        self.assertTrue(result["success"])
+        self.assertEqual(result["result"]["items"], [])
+
+    def test_list_event_templates_rejects_unknown_arguments(self) -> None:
+        result = dispatch_tool_call(
+            self.db, "list_event_templates", {"run_sql": "DROP TABLE event_templates"}
+        )
+        self.assertFalse(result["success"])
 
     def test_unknown_tool_name_never_touches_the_database(self) -> None:
         # There is deliberately no "execute_sql"/"run_code" tool at all —

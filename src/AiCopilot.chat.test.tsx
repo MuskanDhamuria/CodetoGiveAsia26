@@ -53,11 +53,12 @@ describe("AiCopilot chat (TICKET-5)", () => {
     })
   })
 
-  it("renders tool_call/tool_result activity inline in the chat", async () => {
+  it("suppresses the generic status line once the model's own text narrates the result", async () => {
     // create_event_draft is exercised separately in AiCopilot.draft.test.tsx
     // (TICKET-6) since a successful draft renders a suggestion-card instead
-    // of this generic status line — list_events keeps this test focused on
-    // the plain activity-line mechanism itself.
+    // of this generic status line. When the model already says "No events
+    // found.", a second "list_events succeeded." line under it would just
+    // be noise — it must not render.
     vi.mocked(fetch).mockResolvedValue(
       sseResponse([
         { event: "tool_call", data: { tool: "list_events", arguments: {} } },
@@ -77,8 +78,112 @@ describe("AiCopilot chat (TICKET-5)", () => {
     await user.type(screen.getByLabelText("Message Passion AI"), "List events")
     await user.click(screen.getByRole("button", { name: "Send message" }))
 
+    await waitFor(() => expect(screen.getByText("No events found.")).toBeTruthy())
+    expect(screen.queryByText("list_events succeeded.")).toBeNull()
+  })
+
+  it("falls back to the generic status line when the model leaves no trailing text", async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      sseResponse([
+        { event: "tool_call", data: { tool: "list_events", arguments: {} } },
+        {
+          event: "tool_result",
+          data: { tool: "list_events", result: { success: true, result: { items: [] } } },
+        },
+        { event: "done", data: {} },
+      ]),
+    )
+
+    const user = await openPanel()
+    await user.type(screen.getByLabelText("Message Passion AI"), "List events")
+    await user.click(screen.getByRole("button", { name: "Send message" }))
+
     await waitFor(() => expect(screen.getByText("list_events succeeded.")).toBeTruthy())
-    expect(screen.getByText("No events found.")).toBeTruthy()
+  })
+
+  it("always shows a tool failure, even when the model also produced text", async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      sseResponse([
+        { event: "tool_call", data: { tool: "cancel_event", arguments: { event_id: 999 } } },
+        {
+          event: "tool_result",
+          data: {
+            tool: "cancel_event",
+            result: { success: false, reason: "Event 999 was not found" },
+          },
+        },
+        { event: "token", data: { delta: "Sorry, I couldn't find that event." } },
+        { event: "done", data: {} },
+      ]),
+    )
+
+    const user = await openPanel()
+    await user.type(screen.getByLabelText("Message Passion AI"), "Cancel event 999")
+    await user.click(screen.getByRole("button", { name: "Send message" }))
+
+    await waitFor(() =>
+      expect(screen.getByText("cancel_event failed: Event 999 was not found")).toBeTruthy(),
+    )
+    expect(screen.getByText("Sorry, I couldn't find that event.")).toBeTruthy()
+  })
+
+  it("renders template names and descriptions instead of a bare status line (TICKET-12)", async () => {
+    // list_event_templates can be the only thing that happens in a turn —
+    // the organizer needs to see the actual templates, not just
+    // "list_event_templates succeeded.", to know it's their turn to act.
+    vi.mocked(fetch).mockResolvedValue(
+      sseResponse([
+        { event: "tool_call", data: { tool: "list_event_templates", arguments: {} } },
+        {
+          event: "tool_result",
+          data: {
+            tool: "list_event_templates",
+            result: {
+              success: true,
+              result: {
+                items: [
+                  { id: 1, name: "Skill Enhancement", description: "Coordinate a learning session." },
+                  { id: 2, name: "Wellness", description: "Run a wellbeing session." },
+                ],
+              },
+            },
+          },
+        },
+        { event: "done", data: {} },
+      ]),
+    )
+
+    const user = await openPanel()
+    await user.type(screen.getByLabelText("Message Passion AI"), "What templates do we have?")
+    await user.click(screen.getByRole("button", { name: "Send message" }))
+
+    await waitFor(() => expect(screen.getByText("Templates found:")).toBeTruthy())
+    expect(screen.queryByText("list_event_templates succeeded.")).toBeNull()
+    expect(screen.getByText("Skill Enhancement", { exact: false })).toBeTruthy()
+    expect(screen.getByText("Coordinate a learning session.", { exact: false })).toBeTruthy()
+    expect(screen.getByText("Wellness", { exact: false })).toBeTruthy()
+  })
+
+  it("says so when a template search comes back empty", async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      sseResponse([
+        { event: "tool_call", data: { tool: "list_event_templates", arguments: { q: "nope" } } },
+        {
+          event: "tool_result",
+          data: {
+            tool: "list_event_templates",
+            result: { success: true, result: { items: [] } },
+          },
+        },
+        { event: "done", data: {} },
+      ]),
+    )
+
+    const user = await openPanel()
+    await user.type(screen.getByLabelText("Message Passion AI"), "Any templates for X?")
+    await user.click(screen.getByRole("button", { name: "Send message" }))
+
+    await waitFor(() => expect(screen.getByText("No matching templates found.")).toBeTruthy())
   })
 
   it("shows the backend's plain-language error when the stream reports one", async () => {
@@ -149,5 +254,70 @@ describe("AiCopilot chat (TICKET-5)", () => {
         { role: "user", content: "Follow up" },
       ],
     })
+  })
+
+  it("drops a whitespace-only assistant turn from history and doesn't render an empty bubble", async () => {
+    // A turn that only makes a tool call (e.g. list_event_templates) can
+    // leave the assistant message as whitespace-only ("\n\n" observed live,
+    // not necessarily fully empty). The backend's ChatMessage.content
+    // rejects both empty and whitespace-only strings — sending one back on
+    // the next turn used to 422. It's also confusing to show a human an
+    // empty chat bubble, so it must not render either.
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(
+        sseResponse([
+          { event: "tool_call", data: { tool: "list_events", arguments: {} } },
+          {
+            event: "tool_result",
+            data: { tool: "list_events", result: { success: true, result: { items: [] } } },
+          },
+          { event: "token", data: { delta: "\n\n" } },
+          { event: "done", data: {} },
+        ]),
+      )
+      .mockResolvedValueOnce(
+        sseResponse([{ event: "token", data: { delta: "Sure." } }, { event: "done", data: {} }]),
+      )
+
+    const user = await openPanel()
+    await user.type(screen.getByLabelText("Message Passion AI"), "Any events?")
+    await user.click(screen.getByRole("button", { name: "Send message" }))
+    await waitFor(() => expect(screen.getByText("list_events succeeded.")).toBeTruthy())
+
+    expect(document.querySelectorAll(".copilot-message-assistant").length).toBe(0)
+
+    await user.type(screen.getByLabelText("Message Passion AI"), "Follow up")
+    await user.click(screen.getByRole("button", { name: "Send message" }))
+    await waitFor(() => expect(screen.getByText("Sure.")).toBeTruthy())
+
+    const [, secondInit] = vi.mocked(fetch).mock.calls[1]
+    expect(JSON.parse((secondInit as RequestInit).body as string)).toEqual({
+      messages: [
+        { role: "user", content: "Any events?" },
+        { role: "user", content: "Follow up" },
+      ],
+    })
+  })
+
+  it("renders a readable message instead of [object Object] for a validation error", async () => {
+    // FastAPI's 422 `detail` is a list of {loc, msg, type} objects, not a
+    // string — stringifying it directly used to render "[object Object]".
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          detail: [{ loc: ["body", "messages", 0, "content"], msg: "String should have at least 1 character", type: "string_too_short" }],
+        }),
+        { status: 422, headers: { "Content-Type": "application/json" } },
+      ),
+    )
+
+    const user = await openPanel()
+    await user.type(screen.getByLabelText("Message Passion AI"), "Hi")
+    await user.click(screen.getByRole("button", { name: "Send message" }))
+
+    await waitFor(() =>
+      expect(screen.getByText("String should have at least 1 character")).toBeTruthy(),
+    )
+    expect(screen.queryByText("[object Object]")).toBeNull()
   })
 })

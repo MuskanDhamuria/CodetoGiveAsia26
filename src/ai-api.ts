@@ -20,6 +20,20 @@ export type ChatStreamEvent =
   | { type: "error"; reason: string }
   | { type: "done" }
 
+// FastAPI's `detail` is a plain string for HTTPException, but a list of
+// {loc, msg, type} objects for a Pydantic 422 — stringifying the latter
+// directly renders as "[object Object]", so pull out just the messages.
+function formatErrorDetail(detail: unknown, status: number): string {
+  if (typeof detail === "string") return detail
+  if (Array.isArray(detail)) {
+    const messages = detail
+      .map((issue) => (issue && typeof issue === "object" && "msg" in issue ? String(issue.msg) : null))
+      .filter((msg): msg is string => msg !== null)
+    if (messages.length > 0) return messages.join("; ")
+  }
+  return `Request failed with status ${status}`
+}
+
 function parseSseChunk(chunk: string): ChatStreamEvent | null {
   const lines = chunk.split("\n")
   const eventLine = lines.find((line) => line.startsWith("event: "))
@@ -59,7 +73,7 @@ export async function* streamChat(
 
   if (!response.ok || !response.body) {
     const payload = await response.json().catch(() => null)
-    throw new Error(payload?.detail ?? `Request failed with status ${response.status}`)
+    throw new Error(formatErrorDetail(payload?.detail, response.status))
   }
 
   const reader = response.body.getReader()
@@ -97,7 +111,7 @@ export async function invokeTool(
 
   if (!response.ok) {
     const payload = await response.json().catch(() => null)
-    throw new Error(payload?.detail ?? `Request failed with status ${response.status}`)
+    throw new Error(formatErrorDetail(payload?.detail, response.status))
   }
 
   return response.json()

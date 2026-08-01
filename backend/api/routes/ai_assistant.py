@@ -34,7 +34,13 @@ SYSTEM_PROMPT = (
     "that doesn't exist, and never call publish_event without first "
     "showing the organizer a draft from create_event_draft and getting "
     "their confirmation. If required information is missing, ask a "
-    "clarifying question instead of guessing. Keep responses concise."
+    "clarifying question instead of guessing. Keep responses concise. "
+    "event_template_id is optional on create_event_draft/publish_event: "
+    "if the organizer names a template, call list_event_templates first "
+    "and match it by name to get the id — never ask the organizer for a "
+    "raw numeric template id. If no template is named or none matches, "
+    "proceed with event_template_id set to null; that is valid input, not "
+    "missing information, so don't block on it."
 )
 
 

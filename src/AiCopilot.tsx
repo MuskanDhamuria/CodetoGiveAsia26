@@ -15,6 +15,19 @@ type ToolActivity = {
   tool: string;
   status: "running" | "done";
   result?: ToolResult;
+  // "chat": the model called this during a streamed turn, which may also
+  // produce its own trailing narration — success can defer to that text.
+  // "direct": triggered by a human action outside any chat turn (e.g.
+  // confirmDraft's publish_event via invokeTool) — there's no other
+  // narration to defer to, so its outcome must always be shown.
+  origin: "chat" | "direct";
+};
+
+// Mirrors backend/schema/event_templates.py's TemplateOut (subset).
+type EventTemplateSummary = {
+  id: number;
+  name: string;
+  description: string;
 };
 
 // Mirrors backend/schema/events.py's EventCreate — the shape
@@ -83,7 +96,16 @@ export default function AiCopilot({ activePage }: { activePage: Page }) {
     if (!trimmed || isStreaming) return;
 
     const userMessage: ChatMessage = { role: "user", content: trimmed };
-    const historyForApi = [...conversation, userMessage];
+    // A prior assistant turn can end with no real text — either genuinely
+    // empty (it only made a tool call, like list_event_templates, and left
+    // the follow-up commentary to the next turn) or whitespace-only
+    // (observed live: a lone "\n\n"). The backend's ChatMessage.content
+    // rejects both, so drop them before sending history, same as they're
+    // already skipped when rendering the conversation below.
+    const historyForApi = [
+      ...conversation.filter((message) => message.content.trim()),
+      userMessage,
+    ];
 
     setConversation([...historyForApi, { role: "assistant", content: "" }]);
     setInput("");
@@ -101,7 +123,10 @@ export default function AiCopilot({ activePage }: { activePage: Page }) {
             return next;
           });
         } else if (event.type === "tool_call") {
-          setToolActivity((previous) => [...previous, { tool: event.tool, status: "running" }]);
+          setToolActivity((previous) => [
+            ...previous,
+            { tool: event.tool, status: "running", origin: "chat" },
+          ]);
         } else if (event.type === "tool_result") {
           if (event.tool === "create_event_draft" && event.result.success) {
             // Render this as the suggestion-card below instead of a plain
@@ -141,7 +166,10 @@ export default function AiCopilot({ activePage }: { activePage: Page }) {
     if (!draftPreview || isPublishing) return;
 
     setIsPublishing(true);
-    setToolActivity((previous) => [...previous, { tool: "publish_event", status: "running" }]);
+    setToolActivity((previous) => [
+      ...previous,
+      { tool: "publish_event", status: "running", origin: "direct" },
+    ]);
 
     let result: ToolResult;
     try {
@@ -169,6 +197,8 @@ export default function AiCopilot({ activePage }: { activePage: Page }) {
   const lastMessage = conversation[conversation.length - 1];
   const isWaitingForFirstToken =
     isStreaming && lastMessage?.role === "assistant" && lastMessage.content === "";
+  const modelRepliedWithText =
+    lastMessage?.role === "assistant" && lastMessage.content.trim() !== "";
 
   return (
     <>
@@ -214,7 +244,7 @@ export default function AiCopilot({ activePage }: { activePage: Page }) {
           )}
 
           {conversation.map((message, index) =>
-            message.content ? (
+            message.content.trim() ? (
               <div
                 key={index}
                 className={`copilot-message copilot-message-${message.role}`}
@@ -228,17 +258,67 @@ export default function AiCopilot({ activePage }: { activePage: Page }) {
             ) : null,
           )}
 
-          {toolActivity.map((activity, index) => (
-            <div key={`tool-${index}`} className="copilot-message copilot-message-tool">
-              <p>
-                {activity.status === "running"
-                  ? `Running ${activity.tool}…`
-                  : activity.result?.success
-                    ? `${activity.tool} succeeded.`
-                    : `${activity.tool} failed: ${activity.result?.reason}`}
-              </p>
-            </div>
-          ))}
+          {toolActivity.map((activity, index) => {
+            if (activity.status === "running") {
+              return (
+                <div key={`tool-${index}`} className="copilot-message copilot-message-tool">
+                  <p>Running {activity.tool}…</p>
+                </div>
+              );
+            }
+
+            // Don't decide what a "done" entry shows until the whole turn's
+            // streaming is finished — deciding earlier (right when
+            // tool_result arrives, before any trailing text has streamed
+            // in) causes a flash: a fallback line/list appears, then
+            // disappears once real text catches up a moment later.
+            if (isStreaming) return null;
+
+            if (!activity.result?.success) {
+              // Failures always show, regardless of whether the model's own
+              // text also mentions it — a silently swallowed failure is a
+              // trust problem, not noise.
+              return (
+                <div key={`tool-${index}`} className="copilot-message copilot-message-tool">
+                  <p>
+                    {activity.tool} failed: {activity.result?.reason}
+                  </p>
+                </div>
+              );
+            }
+
+            // Success: for a chat-turn tool call, only show something if the
+            // model's own reply is empty — once it has real text, trust
+            // that instead of duplicating the same information a second
+            // time. A "direct" action (confirmDraft's publish_event) has no
+            // other narration to defer to, so it always shows.
+            if (activity.origin === "chat" && modelRepliedWithText) return null;
+
+            if (activity.tool === "list_event_templates") {
+              const items = (activity.result.result as { items: EventTemplateSummary[] }).items;
+              return (
+                <div key={`tool-${index}`} className="copilot-message copilot-message-tool">
+                  <p>{items.length > 0 ? "Templates found:" : "No matching templates found."}</p>
+                  {items.length > 0 && (
+                    <ul>
+                      {items.map((item) => (
+                        <li key={item.id}>
+                          <strong>{item.name}</strong>
+                          {item.description ? ` — ${item.description}` : ""}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              );
+            }
+
+            return (
+              <div key={`tool-${index}`} className="copilot-message copilot-message-tool">
+                <p>{activity.tool} succeeded.</p>
+              </div>
+            );
+          })}
 
           {draftPreview && (
             <article className="suggestion-card">

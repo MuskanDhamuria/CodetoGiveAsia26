@@ -187,11 +187,25 @@ tool activity rendering, error surfacing, and multi-turn history; verified
 live against a running backend with no `OPENROUTER_API_KEY` set (the 500's
 `detail` renders as a readable inline error, not a blank panel).
 
-**Not started:** TICKET-6 (draft/approval cards — the natural next step now
-that TICKET-5's chat shell is real), TICKET-7 (system prompt —
-`ai_assistant.py` ships a first-pass `SYSTEM_PROMPT`, but TICKET-7's
-eval/adversarial-testing work is separate), TICKET-8 (future tool backlog,
-tracking only).
+**TICKET-6 (draft preview + approval flow) — done.** New backend endpoint
+`POST /api/v1/ai/tools/{tool_name}` dispatches one named tool call directly
+(same validation/audit pipeline as an LLM-issued call, just without the
+model in the loop) — `src/ai-api.ts`'s `invokeTool` calls it. A successful
+`create_event_draft` now renders a `.suggestion-card` with Edit/Create
+Event buttons instead of a generic status line; Edit patches the draft
+fields client-side, and only the explicit "Create Event" click fires
+`publish_event`, with the outcome (including a plain-language failure
+reason) rendering inline and the card clearing on success. Verified live
+end-to-end: drafted an event via the real OpenRouter-backed chat, edited
+the name in the card, confirmed, and the edited event landed in the
+database.
+
+**Not started:** TICKET-7 (system prompt — `ai_assistant.py` ships a
+first-pass `SYSTEM_PROMPT`, but TICKET-7's eval/adversarial-testing work is
+separate; TICKET-6's verification also surfaced a concrete case worth
+covering there — the model refusing to omit the optional
+`event_template_id` field even when told there was no template), TICKET-8
+(future tool backlog, tracking only).
 
 ## How to run and see it
 
@@ -230,10 +244,10 @@ individual files by hand or via your editor's formatter instead.
 
 All backlog items — remaining tickets, their scope, dependencies, and open
 questions — live in [`tickets.md`](tickets.md). That's the single source of
-truth; don't duplicate it here. TICKET-9, TICKET-2, TICKET-3, TICKET-1, and
-TICKET-4 are all done, so the recommended order now is: TICKET-5/TICKET-6
-together (the backend they need to wire into now exists), with TICKET-7
-parallel to the rest.
+truth; don't duplicate it here. TICKET-9, TICKET-2, TICKET-3, TICKET-1,
+TICKET-4, TICKET-5, TICKET-6, and TICKET-11 (a formatting bug found after
+TICKET-5 shipped) are all done. What's left: TICKET-7 (system prompt
+iteration) and TICKET-8 (future tool backlog, tracking only).
 
 ## Key decisions worth knowing the "why" of
 

@@ -254,5 +254,94 @@ class ChatEndpointTest(unittest.TestCase):
         self.assertEqual(response.status_code, 422)
 
 
+class ToolInvocationEndpointTest(unittest.TestCase):
+    """POST /ai/tools/{tool_name} — direct tool dispatch for TICKET-6's
+
+    draft-approval flow, bypassing the LLM entirely. No OPENROUTER_API_KEY
+    is needed here since this endpoint never calls OpenRouter.
+    """
+
+    def setUp(self) -> None:
+        self.temporary_directory = tempfile.TemporaryDirectory()
+        database_path = Path(self.temporary_directory.name) / "test.sqlite3"
+        self._app = create_app(database_path)
+
+    def tearDown(self) -> None:
+        self.temporary_directory.cleanup()
+
+    def test_publishes_an_event_directly(self) -> None:
+        from fastapi.testclient import TestClient
+
+        with TestClient(self._app) as client:
+            response = client.post(
+                "/api/v1/ai/tools/publish_event",
+                json={
+                    "arguments": {
+                        "event_template_id": None,
+                        "name": "Confirmed Draft",
+                        "venue": "Hub",
+                        "event_date": "2099-01-01",
+                    }
+                },
+            )
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertTrue(body["success"])
+        self.assertEqual(body["result"]["name"], "Confirmed Draft")
+
+    def test_unknown_tool_name_is_a_structured_error_not_a_404(self) -> None:
+        from fastapi.testclient import TestClient
+
+        with TestClient(self._app) as client:
+            response = client.post(
+                "/api/v1/ai/tools/delete_event", json={"arguments": {"event_id": 1}}
+            )
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertFalse(body["success"])
+        self.assertIn("Unknown tool", body["reason"])
+
+    def test_missing_required_argument_is_a_structured_error(self) -> None:
+        from fastapi.testclient import TestClient
+
+        with TestClient(self._app) as client:
+            response = client.post(
+                "/api/v1/ai/tools/publish_event",
+                json={"arguments": {"event_template_id": None, "venue": "Hub", "event_date": "2099-01-01"}},
+            )
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertFalse(body["success"])
+        self.assertIn("name", body["reason"])
+
+    def test_dispatch_is_still_audited(self) -> None:
+        from fastapi.testclient import TestClient
+
+        with TestClient(self._app) as client:
+            client.post(
+                "/api/v1/ai/tools/publish_event",
+                json={
+                    "arguments": {
+                        "event_template_id": None,
+                        "name": "Audited Draft",
+                        "venue": "Hub",
+                        "event_date": "2099-01-01",
+                    }
+                },
+            )
+
+        from backend.database import connect
+
+        db = connect(self._app.state.database_path)
+        try:
+            row = db.execute(
+                "SELECT tool_name, success FROM ai_audit_log ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+        finally:
+            db.close()
+        self.assertEqual(row["tool_name"], "publish_event")
+        self.assertEqual(row["success"], 1)
+
+
 if __name__ == "__main__":
     unittest.main()

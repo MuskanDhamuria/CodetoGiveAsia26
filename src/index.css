@@ -2751,6 +2751,59 @@ button {
   width: fit-content;
 }
 
+.suggestion-card button:disabled {
+  opacity: 0.5;
+}
+
+.suggestion-card-eyebrow {
+  color: #7a7a7a;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.suggestion-card-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.suggestion-card button.suggestion-card-secondary {
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  color: var(--text);
+}
+
+.suggestion-card-form {
+  display: grid;
+  gap: 10px;
+}
+
+.suggestion-card-form label {
+  color: #4c4c4c;
+  display: grid;
+  font-size: 12px;
+  font-weight: 700;
+  gap: 4px;
+}
+
+.suggestion-card-form input,
+.suggestion-card-form textarea {
+  background: #f6f7f9;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 6px;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 10px;
+}
+
+.suggestion-card-form textarea {
+  min-height: 60px;
+  resize: vertical;
+}
+
 .copilot-composer {
   align-items: center;
   border-top: 1px solid rgba(0, 0, 0, 0.08);

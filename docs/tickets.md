@@ -415,7 +415,65 @@ rework first; this ticket's scope is what goes *inside* that shell.
 
 ---
 
-## TICKET-6: Frontend — draft preview + approval flow
+~~TICKET-6: Frontend — draft preview + approval flow~~
+— **Done.** New backend endpoint `POST /api/v1/ai/tools/{tool_name}`
+(`backend/api/routes/ai_assistant.py`, `ToolInvocationRequest` in
+`backend/schema/ai_assistant.py`) directly calls `dispatch_tool_call` —
+same schema/business/permission pipeline as an LLM-issued call, just
+bypassing the model entirely. This exists specifically so the frontend can
+fire `publish_event` itself on explicit confirmation, rather than sending
+another chat turn and hoping the model re-issues the same tool call with
+the same (possibly edited) fields. New `invokeTool(toolName, args)` in
+`src/ai-api.ts` calls it.
+
+`AiCopilot.tsx`: a successful `create_event_draft` `tool_result` now sets a
+`draftPreview` state (the draft's `EventCreate`-shaped fields) instead of
+rendering the generic "create_event_draft succeeded." activity line, shown
+as a `.suggestion-card` with Name/Venue/Date/Description and **Edit** /
+**Create Event** buttons. Edit toggles an inline form that patches
+`draftPreview` directly (client-side only, no round-trip to the AI) — the
+"resubmit to the AI" alternative the ticket floated wasn't needed since
+patching the already-validated draft object is simpler and doesn't risk
+the model changing unrelated fields. **Create Event** is disabled while
+editing (forces "Done editing" first) and calls `invokeTool("publish_event",
+draftPreview)` only on that explicit click; the outcome renders through
+the same tool-activity line as any other tool call ("publish_event
+succeeded."/"publish_event failed: `<reason>`") — on success the card is
+removed (no stale Edit/Create buttons left behind); on failure the card
+stays so the organizer can fix the draft and retry, since `dispatch_tool_call`
+already returns plain-language reasons (e.g. "Event 9999 was not found"),
+not raw JSON/stack traces, matching this ticket's error-message requirement.
+
+New tests: `backend/tests/test_ai_assistant.py`'s `ToolInvocationEndpointTest`
+(4 tests — publishes directly, unknown tool name is a structured 200
+response rather than a 404, missing required field, and the dispatch is
+still written to `ai_audit_log` per TICKET-4). New
+`src/AiCopilot.draft.test.tsx` (4 tests) covers the card rendering instead
+of the generic status line, editing without firing any request, confirming
+with the edited fields sent to `/ai/tools/publish_event` and the card
+disappearing on success, and the card staying open with a plain-language
+reason on failure. One pre-existing TICKET-5 test in
+`src/AiCopilot.chat.test.tsx` used `create_event_draft` to test the generic
+tool-activity line — switched to `list_events` since a successful draft no
+longer renders that line at all.
+
+Verified live end-to-end against the running backend and a real
+OpenRouter key: asked the panel to draft a beach cleanup event, the
+suggestion-card rendered separately from the model's own prose, edited the
+name inline, confirmed, and the event was created in the database with the
+edited name (`curl .../api/v1/events` showed it), then cleaned up via
+`DELETE`. `npx tsc --noEmit`, `npm test -- --run` (99 frontend tests), and
+the full backend suite (101 tests) all pass.
+
+**Found but not fixed here, flagging for TICKET-7:** the live model was
+initially unwilling to omit the optional `event_template_id` field even
+after being told there was no template, and only proceeded once given a
+real template id. That's a system-prompt/tool-schema framing issue for
+TICKET-7's prompt-iteration work, not a TICKET-6 defect — the draft/confirm
+UI behaved correctly once the model did call `create_event_draft`.
+
+<details>
+<summary>Original ticket text</summary>
 
 **Priority:** High
 **Area:** same panel component as TICKET-5/TICKET-10
@@ -436,6 +494,8 @@ rework first; this ticket's scope is what goes *inside* that shell.
   requirement — this translation happens in the LLM turn per the proposal,
   so confirm TICKET-1's system prompt handles it before assuming the
   frontend needs to do its own error-message mapping).
+
+</details>
 
 ---
 

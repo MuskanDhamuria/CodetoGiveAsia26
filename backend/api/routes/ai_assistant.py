@@ -20,7 +20,7 @@ from fastapi.responses import StreamingResponse
 
 from backend.ai_tools import TOOL_SPECS, dispatch_tool_call
 from backend.api.routes._common import Connection
-from backend.schema.ai_assistant import ChatRequest
+from backend.schema.ai_assistant import ChatRequest, ToolInvocationRequest
 
 router = APIRouter(prefix="/ai", tags=["ai-assistant"])
 
@@ -177,6 +177,21 @@ async def run_chat_turn(
             yield _sse("token", {"delta": delta["content"]})
 
     yield _sse("done", {})
+
+
+@router.post("/tools/{tool_name}")
+def invoke_tool(tool_name: str, payload: ToolInvocationRequest, db: Connection) -> dict[str, Any]:
+    """Directly dispatch one named tool call, bypassing the LLM (TICKET-6).
+
+    Lets the frontend execute `publish_event` itself once the organizer
+    explicitly confirms a `create_event_draft` preview, instead of routing
+    the confirmation back through another chat turn. Goes through the same
+    `dispatch_tool_call` schema/business/permission pipeline every LLM-issued
+    tool call does — nothing about validation is skipped just because a
+    human triggered it directly.
+    """
+
+    return dispatch_tool_call(db, tool_name, payload.arguments)
 
 
 @router.post("/chat")

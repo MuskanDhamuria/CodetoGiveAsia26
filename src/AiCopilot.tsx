@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import type { Page } from "./App";
-import { streamChat, type ChatMessage, type ToolResult } from "./ai-api";
+import { invokeTool, streamChat, type ChatMessage, type ToolResult } from "./ai-api";
 
 const pageContext: Record<Page, string> = {
   home: "Landing",
@@ -17,6 +17,19 @@ type ToolActivity = {
   result?: ToolResult;
 };
 
+// Mirrors backend/schema/events.py's EventCreate — the shape
+// create_event_draft returns and publish_event accepts unchanged.
+type EventDraftFields = {
+  event_template_id: number | null;
+  name: string;
+  venue: string;
+  event_date: string;
+  description: string | null;
+  start_time: string | null;
+  end_time: string | null;
+  beneficiary_id: number | null;
+};
+
 export default function AiCopilot({ activePage }: { activePage: Page }) {
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState("");
@@ -24,6 +37,9 @@ export default function AiCopilot({ activePage }: { activePage: Page }) {
   const [toolActivity, setToolActivity] = useState<ToolActivity[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [draftPreview, setDraftPreview] = useState<EventDraftFields | null>(null);
+  const [isEditingDraft, setIsEditingDraft] = useState(false);
+  const [isPublishing, setIsPublishing] = useState(false);
   const fabRef = useRef<HTMLButtonElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const wasOpenRef = useRef(false);
@@ -87,13 +103,26 @@ export default function AiCopilot({ activePage }: { activePage: Page }) {
         } else if (event.type === "tool_call") {
           setToolActivity((previous) => [...previous, { tool: event.tool, status: "running" }]);
         } else if (event.type === "tool_result") {
-          setToolActivity((previous) =>
-            previous.map((activity) =>
-              activity.tool === event.tool && activity.status === "running"
-                ? { ...activity, status: "done", result: event.result }
-                : activity,
-            ),
-          );
+          if (event.tool === "create_event_draft" && event.result.success) {
+            // Render this as the suggestion-card below instead of a plain
+            // "create_event_draft succeeded." status line.
+            const payload = event.result.result as { event: EventDraftFields };
+            setDraftPreview(payload.event);
+            setIsEditingDraft(false);
+            setToolActivity((previous) =>
+              previous.filter(
+                (activity) => !(activity.tool === event.tool && activity.status === "running"),
+              ),
+            );
+          } else {
+            setToolActivity((previous) =>
+              previous.map((activity) =>
+                activity.tool === event.tool && activity.status === "running"
+                  ? { ...activity, status: "done", result: event.result }
+                  : activity,
+              ),
+            );
+          }
         } else if (event.type === "error") {
           setErrorMessage(event.reason);
         }
@@ -102,6 +131,38 @@ export default function AiCopilot({ activePage }: { activePage: Page }) {
       setErrorMessage(error instanceof Error ? error.message : "Something went wrong.");
     } finally {
       setIsStreaming(false);
+    }
+  }
+
+  // TICKET-6: only fires on explicit organizer confirmation — calls
+  // publish_event directly rather than routing the confirmation back
+  // through another chat turn and hoping the model re-issues the call.
+  async function confirmDraft() {
+    if (!draftPreview || isPublishing) return;
+
+    setIsPublishing(true);
+    setToolActivity((previous) => [...previous, { tool: "publish_event", status: "running" }]);
+
+    let result: ToolResult;
+    try {
+      result = await invokeTool("publish_event", draftPreview);
+    } catch (error) {
+      result = {
+        success: false,
+        reason: error instanceof Error ? error.message : "Something went wrong.",
+      };
+    }
+
+    setToolActivity((previous) => {
+      const next = [...previous];
+      const lastIndex = next.length - 1;
+      next[lastIndex] = { ...next[lastIndex], status: "done", result };
+      return next;
+    });
+    setIsPublishing(false);
+    if (result.success) {
+      setDraftPreview(null);
+      setIsEditingDraft(false);
     }
   }
 
@@ -178,6 +239,77 @@ export default function AiCopilot({ activePage }: { activePage: Page }) {
               </p>
             </div>
           ))}
+
+          {draftPreview && (
+            <article className="suggestion-card">
+              <p className="suggestion-card-eyebrow">Draft event — review before creating</p>
+              {isEditingDraft ? (
+                <div className="suggestion-card-form">
+                  <label>
+                    Name
+                    <input
+                      value={draftPreview.name}
+                      onChange={(event) =>
+                        setDraftPreview({ ...draftPreview, name: event.target.value })
+                      }
+                    />
+                  </label>
+                  <label>
+                    Venue
+                    <input
+                      value={draftPreview.venue}
+                      onChange={(event) =>
+                        setDraftPreview({ ...draftPreview, venue: event.target.value })
+                      }
+                    />
+                  </label>
+                  <label>
+                    Date
+                    <input
+                      type="date"
+                      value={draftPreview.event_date}
+                      onChange={(event) =>
+                        setDraftPreview({ ...draftPreview, event_date: event.target.value })
+                      }
+                    />
+                  </label>
+                  <label>
+                    Description
+                    <textarea
+                      value={draftPreview.description ?? ""}
+                      onChange={(event) =>
+                        setDraftPreview({ ...draftPreview, description: event.target.value })
+                      }
+                    />
+                  </label>
+                </div>
+              ) : (
+                <>
+                  <p>{draftPreview.name}</p>
+                  <p>
+                    {draftPreview.venue} · {draftPreview.event_date}
+                  </p>
+                  {draftPreview.description && <p>{draftPreview.description}</p>}
+                </>
+              )}
+              <div className="suggestion-card-actions">
+                <button
+                  type="button"
+                  className="suggestion-card-secondary"
+                  onClick={() => setIsEditingDraft((previous) => !previous)}
+                >
+                  {isEditingDraft ? "Done editing" : "Edit"}
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmDraft}
+                  disabled={isEditingDraft || isPublishing}
+                >
+                  {isPublishing ? "Creating…" : "Create Event"}
+                </button>
+              </div>
+            </article>
+          )}
 
           {isWaitingForFirstToken && (
             <div className="copilot-message copilot-message-assistant">

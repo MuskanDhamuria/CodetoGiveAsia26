@@ -54,27 +54,31 @@ describe("AiCopilot chat (TICKET-5)", () => {
   })
 
   it("renders tool_call/tool_result activity inline in the chat", async () => {
+    // create_event_draft is exercised separately in AiCopilot.draft.test.tsx
+    // (TICKET-6) since a successful draft renders a suggestion-card instead
+    // of this generic status line — list_events keeps this test focused on
+    // the plain activity-line mechanism itself.
     vi.mocked(fetch).mockResolvedValue(
       sseResponse([
-        { event: "tool_call", data: { tool: "create_event_draft", arguments: {} } },
+        { event: "tool_call", data: { tool: "list_events", arguments: {} } },
         {
           event: "tool_result",
           data: {
-            tool: "create_event_draft",
-            result: { success: true, result: { status: "draft" } },
+            tool: "list_events",
+            result: { success: true, result: { items: [] } },
           },
         },
-        { event: "token", data: { delta: "Draft ready." } },
+        { event: "token", data: { delta: "No events found." } },
         { event: "done", data: {} },
       ]),
     )
 
     const user = await openPanel()
-    await user.type(screen.getByLabelText("Message Passion AI"), "Create an event")
+    await user.type(screen.getByLabelText("Message Passion AI"), "List events")
     await user.click(screen.getByRole("button", { name: "Send message" }))
 
-    await waitFor(() => expect(screen.getByText("create_event_draft succeeded.")).toBeTruthy())
-    expect(screen.getByText("Draft ready.")).toBeTruthy()
+    await waitFor(() => expect(screen.getByText("list_events succeeded.")).toBeTruthy())
+    expect(screen.getByText("No events found.")).toBeTruthy()
   })
 
   it("shows the backend's plain-language error when the stream reports one", async () => {

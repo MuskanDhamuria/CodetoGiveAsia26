@@ -79,3 +79,26 @@ export async function* streamChat(
     }
   }
 }
+
+// Directly dispatches one named tool call, bypassing the LLM (TICKET-6's
+// draft-approval flow) — used once the organizer explicitly confirms a
+// create_event_draft preview, so publish_event fires from that click
+// rather than a second chat turn.
+export async function invokeTool(
+  toolName: string,
+  args: Record<string, unknown>,
+): Promise<ToolResult> {
+  const baseUrl = import.meta.env.VITE_API_BASE_URL ?? "/api/v1"
+  const response = await fetch(`${baseUrl}/ai/tools/${toolName}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ arguments: args }),
+  })
+
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null)
+    throw new Error(payload?.detail ?? `Request failed with status ${response.status}`)
+  }
+
+  return response.json()
+}

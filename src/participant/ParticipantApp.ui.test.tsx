@@ -34,7 +34,7 @@ function mockFetch() {
       const url = typeof input === "string" ? input : input.toString()
       const method = init?.method ?? "GET"
 
-      if (url.startsWith("/api/v1/events?date_from=") && method === "GET") {
+      if (url === "/api/v1/events?order=asc&limit=100" && method === "GET") {
         return jsonResponse({ items: [OPEN_EVENT], total: 1, limit: 100, offset: 0 })
       }
       if (url === "/api/v1/events/1" && method === "GET") {

@@ -68,16 +68,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T;
 }
 
-function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
-export function getUpcomingEvents(): Promise<ListResponse<EventSummary>> {
-  return request(`/events?date_from=${todayIso()}&order=asc&limit=100`);
-}
-
-export function getPastEvents(): Promise<ListResponse<EventSummary>> {
-  return request(`/events?date_to=${todayIso()}&order=desc&limit=100`);
+// Unfiltered — the browse page buckets/groups upcoming vs. past client-side
+// (see EventBrowseList) so both List and Calendar views work off one fetch.
+export function getAllEvents(): Promise<ListResponse<EventSummary>> {
+  return request(`/events?order=asc&limit=100`);
 }
 
 export function getEvent(eventId: number): Promise<EventSummary> {

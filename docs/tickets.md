@@ -23,47 +23,23 @@ explicitly.
 
 ---
 
-## TICKET-2: Add a calendar view to the participant browse-events page
-
-**Priority:** Medium
-**Area:** Frontend (`src/participant/components/EventBrowseList.tsx`)
-
-### Problem
-
-`EventBrowseList` only renders a flat list with an Upcoming/Past tab toggle.
-Organizers already get a List/Calendar toggle on the events page.
-
-### Acceptance criteria
-
-- `EventBrowseList` gets a List/Calendar view toggle, mirroring the existing
-  Upcoming/Past tabs in placement and style.
-- Calendar view shows a month grid with events plotted on their date, month
-  navigation (prev/next), and clicking an event opens its detail page
-  (`/participant/events/:eventId`), same as the list view's links.
-
-### Reuse this — don't rebuild it
-
-`src/EventOperationsMvp.tsx` already has a complete, working month-calendar
-component for exactly this purpose:
-
-- `EventCalendar` (`src/EventOperationsMvp.tsx:185-226`) — self-contained
-  month grid: computes weekday offset and days-in-month from a `Date`,
-  renders a 7-column grid, plots events whose `date` matches each cell, and
-  takes `onChangeMonth` / `onOpen` callbacks. Takes `events: Event[]` with a
-  `date: string` (`YYYY-MM-DD`) field — same shape as this project's
-  `EventSummary.event_date`, so adapting it is a rename, not a rewrite.
-- `EventCollection` (`src/EventOperationsMvp.tsx:228-274`) shows the
-  List/Calendar `view` toggle pattern (`CollectionView = "list" | "calendar"`
-  state, toggle buttons with an `.active` class) to copy for
-  `EventBrowseList`.
-- CSS is already written: `.event-view-toggle`, `.event-collection-calendar`,
-  `.event-calendar-weekdays`, `.event-calendar-grid` in
-  `src/EventOperationsMvp.css`. Reuse the classes directly, or copy+rename
-  into `participant.css` if the two pages' calendars should be able to
-  diverge in styling later.
-- Ignore `src/EventCollectionPrototype.tsx`'s `PrototypeCalendar` — it's
-  explicitly marked `PROTOTYPE ONLY` and uses fixture data with a different
-  date shape; `EventOperationsMvp.tsx`'s version is the live, real one.
+~~TICKET-2: Add a calendar view to the participant browse-events page~~ —
+**Done.** `EventBrowseList` gets a second `.event-browse-tabs` row (List /
+Calendar) directly below the existing Upcoming/Past tabs, same classes so it
+mirrors their placement and style exactly. Calendar view is a new
+`EventCalendarView` component (`src/participant/components/`), adapted from
+`EventOperationsMvp.tsx`'s `EventCalendar` for this page's `EventSummary`
+shape — event cells are `<Link to="events/:id">`s straight to the detail
+page instead of an `onOpen` callback + modal, matching how the list view
+already links out. Month navigation (prev/next) wraps years correctly (via
+`Date.UTC`, same approach as the original). CSS copied+adapted into
+`participant.css` (`.event-collection-calendar`, `.event-calendar-weekdays`,
+`.event-calendar-grid`, `a` selector instead of `button`) rather than
+importing `EventOperationsMvp.css`, so the two pages' calendars can diverge
+in styling later without cross-page coupling. Defaults to the current
+month; navigating between tabs (Upcoming/Past) doesn't reset it. Tests in
+`EventBrowseList.test.tsx` use a dynamically-computed "today" fixture date
+rather than fake timers, so they don't need the system clock mocked.
 
 ---
 
@@ -252,10 +228,11 @@ that message silently breaks the fallback. A stable `code` like
 
 - Add a loading skeleton instead of plain "Loading events…" text on the
   browse/detail pages.
-- `EventBrowseList`'s "Past" tab includes today's date on both sides
-  (`date_from <= today` for upcoming, `date_to <= today` for past) — a
-  same-day event could show in both tabs. One-line fix: `date_to < today`
-  for past.
+- ~~`EventBrowseList`'s "Past" tab includes today's date on both sides~~ —
+  moot: the Upcoming/Past tabs were replaced by month-grouped list view +
+  calendar coloring (see `participant-portal.md`), which fetches all events
+  once and buckets client-side with a strict `event_date < today` for past,
+  so today's events land in exactly one place.
 - Consider caching `GET /events` client-side (e.g. a simple in-memory cache
   in `api/client.ts`) if the browse page ends up re-fetching on every nav.
 - `list_participants`'s `q` search (`backend/api/routes/participants.py`)

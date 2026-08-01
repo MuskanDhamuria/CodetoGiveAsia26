@@ -15,7 +15,13 @@ stale info behind. Open tasks and backlog items live in
 `react-router-dom`, additive alongside the existing query-param-routed
 dashboard/events/volunteers pages in `src/App.tsx` (untouched):
 
-- `/participant` — browse Upcoming/Past events
+- `/participant` — browse events, in List or Calendar view
+  (`EventBrowseList`/`EventCalendarView`). List view groups upcoming events
+  by month (sorted chronologically) with past events collapsed into a
+  `<details>` summary at the top ("Past events (N)"), most-recent-month
+  first when expanded. Calendar view has no Upcoming/Past toggle — every
+  event shows on its date, colored grey if it's in the past, pastel
+  green/red by open/closed status otherwise.
 - `/participant/events/:eventId` — event detail, description/instructions,
   sign-up or cancel
 - `/participant/my-events` — the signed-in participant's RSVP'd events
@@ -65,7 +71,7 @@ FastAPI + `sqlite3` structure:
 
 Tests: `python3 -m unittest discover -s backend/tests -v` (50 passing,
 `unittest.TestCase` style to match the rest of the backend — no `pytest`
-dependency needed) and `npx vitest run` (35 passing).
+dependency needed) and `npx vitest run` (45 passing).
 
 ## How to run it locally
 
@@ -92,8 +98,14 @@ there before starting new work on this slice.
   re-entering details every time because it's zero-friction for the migrant
   worker beneficiary audience and matches how the bot will identify people.
 - **`EVENT.Status` means registration open/closed, not "has this happened."**
-  Upcoming vs. past is computed from `event_date` separately, so a full/closed
-  event can still show as upcoming.
+  Upcoming vs. past is computed from `event_date` separately (`event_date <
+  today` = past), so a full/closed event can still show as upcoming — and in
+  Calendar view, a past event is always greyed out regardless of status,
+  while an upcoming one is colored by status (pastel green/red).
+- **`EventBrowseList` fetches all events once** (`getAllEvents`, no
+  `date_from`/`date_to`) rather than re-fetching per Upcoming/Past tab —
+  List and Calendar both bucket/group the same dataset client-side, so
+  there's one loading state and one source of truth for "is this past."
 - **Public RSVP is one combined endpoint**, not identify-then-signup as two
   calls — simpler for the frontend and matches `API_ENDPOINTS.md`'s own
   suggested shape for the public flow.

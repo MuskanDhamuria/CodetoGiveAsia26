@@ -1,20 +1,70 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { getPastEvents, getUpcomingEvents, type EventSummary } from "../api/client";
-import { formatEventDate } from "../dateFormat";
+import { getAllEvents, type EventSummary } from "../api/client";
+import { formatEventDate, formatMonthLabel, todayIso } from "../dateFormat";
+import EventCalendarView from "./EventCalendarView";
 
-type Tab = "upcoming" | "past";
+type View = "list" | "calendar";
+
+type MonthGroup = {
+  key: string;
+  label: string;
+  events: EventSummary[];
+};
+
+// Groups events by "YYYY-MM", preserving whatever order `events` is already
+// sorted in (both the group order and the events within each group).
+function groupByMonth(events: EventSummary[]): MonthGroup[] {
+  const groups = new Map<string, EventSummary[]>();
+  for (const event of events) {
+    const key = event.event_date.slice(0, 7);
+    const existing = groups.get(key);
+    if (existing) existing.push(event);
+    else groups.set(key, [event]);
+  }
+  return Array.from(groups.entries()).map(([key, groupEvents]) => ({
+    key,
+    label: formatMonthLabel(key),
+    events: groupEvents,
+  }));
+}
+
+function startOfCurrentMonth(): Date {
+  const now = new Date();
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+}
+
+function EventListItem({ event, showStatus }: { event: EventSummary; showStatus: boolean }) {
+  return (
+    <li>
+      <Link to={`events/${event.id}`} className="event-browse-card">
+        <div>
+          <h3>{event.name}</h3>
+          <p>{event.venue}</p>
+        </div>
+        <div className="event-browse-meta">
+          <span>{formatEventDate(event.event_date)}</span>
+          {showStatus && (
+            <span className={`event-status status-${event.status}`}>
+              {event.status === "open" ? "Registration open" : "Registration closed"}
+            </span>
+          )}
+        </div>
+      </Link>
+    </li>
+  );
+}
 
 export default function EventBrowseList() {
-  const [tab, setTab] = useState<Tab>("upcoming");
+  const [view, setView] = useState<View>("list");
+  const [month, setMonth] = useState<Date>(startOfCurrentMonth);
   const [events, setEvents] = useState<EventSummary[]>([]);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
 
   useEffect(() => {
     let cancelled = false;
     setStatus("loading");
-    const request = tab === "upcoming" ? getUpcomingEvents() : getPastEvents();
-    request
+    getAllEvents()
       .then((data) => {
         if (cancelled) return;
         setEvents(data.items);
@@ -26,57 +76,103 @@ export default function EventBrowseList() {
     return () => {
       cancelled = true;
     };
-  }, [tab]);
+  }, []);
+
+  const today = todayIso();
+
+  const upcomingGroups = useMemo(() => {
+    const upcoming = events
+      .filter((event) => event.event_date >= today)
+      .sort((a, b) => a.event_date.localeCompare(b.event_date));
+    return groupByMonth(upcoming);
+  }, [events, today]);
+
+  const pastGroups = useMemo(() => {
+    // Most-recent-month-first, most-recent-day-first within each month.
+    const past = events
+      .filter((event) => event.event_date < today)
+      .sort((a, b) => b.event_date.localeCompare(a.event_date));
+    return groupByMonth(past);
+  }, [events, today]);
+
+  const pastCount = useMemo(() => pastGroups.reduce((total, group) => total + group.events.length, 0), [pastGroups]);
+  const upcomingCount = events.length - pastCount;
 
   return (
     <section className="event-browse">
-      <div className="event-browse-tabs" role="tablist">
+      <div className="event-browse-tabs" role="tablist" aria-label="Collection view">
         <button
           type="button"
           role="tab"
-          aria-selected={tab === "upcoming"}
-          className={tab === "upcoming" ? "active" : ""}
-          onClick={() => setTab("upcoming")}
+          aria-selected={view === "list"}
+          className={view === "list" ? "active" : ""}
+          onClick={() => setView("list")}
         >
-          Upcoming
+          List
         </button>
         <button
           type="button"
           role="tab"
-          aria-selected={tab === "past"}
-          className={tab === "past" ? "active" : ""}
-          onClick={() => setTab("past")}
+          aria-selected={view === "calendar"}
+          className={view === "calendar" ? "active" : ""}
+          onClick={() => setView("calendar")}
         >
-          Past
+          Calendar
         </button>
       </div>
 
       {status === "loading" && <p className="event-browse-status">Loading events…</p>}
       {status === "error" && <p className="event-browse-status">Couldn't load events. Try again shortly.</p>}
-      {status === "ready" && events.length === 0 && (
-        <p className="event-browse-status">No {tab} events right now.</p>
+
+      {status === "ready" && view === "calendar" && (
+        <EventCalendarView
+          events={events}
+          month={month}
+          today={today}
+          onChangeMonth={(direction) =>
+            setMonth((current) => new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth() + direction, 1)))
+          }
+        />
       )}
 
-      <ul className="event-browse-list">
-        {events.map((event) => (
-          <li key={event.id}>
-            <Link to={`events/${event.id}`} className="event-browse-card">
-              <div>
-                <h2>{event.name}</h2>
-                <p>{event.venue}</p>
+      {status === "ready" && view === "list" && (
+        <>
+          {events.length === 0 && <p className="event-browse-status">No events right now.</p>}
+
+          {pastCount > 0 && (
+            <details className="event-browse-past">
+              <summary>Past events ({pastCount})</summary>
+              <div className="event-browse-past-content">
+                {pastGroups.map((group) => (
+                  <div key={group.key} className="event-browse-month-group">
+                    <h2 className="event-browse-month-heading">{group.label}</h2>
+                    <ul className="event-browse-list">
+                      {group.events.map((event) => (
+                        <EventListItem key={event.id} event={event} showStatus={false} />
+                      ))}
+                    </ul>
+                  </div>
+                ))}
               </div>
-              <div className="event-browse-meta">
-                <span>{formatEventDate(event.event_date)}</span>
-                {tab === "upcoming" && (
-                  <span className={`event-status status-${event.status}`}>
-                    {event.status === "open" ? "Registration open" : "Registration closed"}
-                  </span>
-                )}
-              </div>
-            </Link>
-          </li>
-        ))}
-      </ul>
+            </details>
+          )}
+
+          {upcomingCount === 0 && pastCount > 0 && (
+            <p className="event-browse-status">No upcoming events right now.</p>
+          )}
+
+          {upcomingGroups.map((group) => (
+            <div key={group.key} className="event-browse-month-group">
+              <h2 className="event-browse-month-heading">{group.label}</h2>
+              <ul className="event-browse-list">
+                {group.events.map((event) => (
+                  <EventListItem key={event.id} event={event} showStatus />
+                ))}
+              </ul>
+            </div>
+          ))}
+        </>
+      )}
     </section>
   );
 }

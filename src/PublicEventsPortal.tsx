@@ -125,7 +125,7 @@ export default function PublicEventsPortal({
   return (
     <div className="public-events-portal">
       <header className="public-events-header">
-        <a className="public-events-brand" href="?page=community" aria-label="Passion To Serve home">
+        <a className="public-events-brand" href="/community" aria-label="Passion To Serve home">
           <img src="/pts-logo.png" alt="" />
           <span>Passion To Serve</span>
         </a>

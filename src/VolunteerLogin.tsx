@@ -33,7 +33,7 @@ export default function VolunteerLogin({ onLoggedIn, onRegister }: { onLoggedIn:
           <p className="pts-account-eyebrow">Welcome back</p>
           <h2>Your next good thing starts here.</h2>
           <p>View your event requests and return to the public events page whenever you are ready to join another one.</p>
-          <a className="pts-change-event" href="?page=community">Browse events</a>
+          <a className="pts-change-event" href="/community">Browse events</a>
         </div>
         <form className="pts-account-card" onSubmit={handleSubmit}>
           <div className="pts-account-card-heading"><p className="pts-account-eyebrow">Volunteer account</p><h2>Sign in</h2></div>

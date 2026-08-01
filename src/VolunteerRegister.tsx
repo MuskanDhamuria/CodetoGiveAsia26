@@ -114,10 +114,10 @@ export default function VolunteerRegister({
 export function AccountHeader({ label, onLogin, onRegister, onSignOut }: { label: string; onLogin?: () => void; onRegister?: () => void; onSignOut?: () => void }) {
   return (
     <header className="pts-signup-topbar">
-      <a className="pts-signup-logo" href="?page=community"><img src="/pts-logo.png" alt="" />Passion To Serve</a>
+      <a className="pts-signup-logo" href="/community"><img src="/pts-logo.png" alt="" />Passion To Serve</a>
       <div className="pts-account-header-actions">
         <span className="pts-signup-tag">{label}</span>
-        <a href="?page=community">Events</a>
+        <a href="/community">Events</a>
         {onLogin && <button type="button" onClick={onLogin}>Sign in</button>}
         {onRegister && <button type="button" onClick={onRegister}>Create account</button>}
         {onSignOut && <button type="button" onClick={onSignOut}>Sign out</button>}

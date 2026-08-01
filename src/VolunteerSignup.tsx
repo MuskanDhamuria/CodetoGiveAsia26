@@ -129,12 +129,12 @@ export default function VolunteerSignup() {
   return (
     <div className="pts-signup">
       <header className="pts-signup-topbar">
-        <a className="pts-signup-logo" href="?page=community">
+        <a className="pts-signup-logo" href="/community">
           <img src="/pts-logo.png" alt="" />Passion To Serve
         </a>
         <nav className="pts-signup-nav">
-          <a href="?page=community">Events</a>
-          {getVolunteerToken() && <a href="?page=volunteer-dashboard">My dashboard</a>}
+          <a href="/community">Events</a>
+          {getVolunteerToken() && <a href="/volunteer-dashboard">My dashboard</a>}
           <span className="pts-signup-tag">Volunteer Sign-Up</span>
         </nav>
       </header>

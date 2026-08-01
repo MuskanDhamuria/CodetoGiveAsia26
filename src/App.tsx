@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import AiCopilot from "./AiCopilot";
 import EventCollectionPrototype from "./EventCollectionPrototype";
 import EventCreationPrototype from "./EventCreationPrototype";
@@ -34,7 +35,24 @@ const pageLabels: Record<Page, string> = {
   "volunteer-dashboard": "Volunteer Dashboard",
 };
 
-function readInitialPage(): Page {
+function readInitialPage(pathname = window.location.pathname): Page {
+  if (pathname === "/admin" || pathname === "/admin/") {
+    return "home";
+  }
+
+  if (pathname.startsWith("/admin/")) {
+    const adminPage = pathname.split("/")[2];
+    return adminPage === "dashboard" || adminPage === "events" || adminPage === "volunteers" || adminPage === "ai"
+      ? adminPage
+      : "home";
+  }
+
+  if (pathname === "/community") return "community";
+  if (pathname === "/signup") return "signup";
+  if (pathname === "/volunteer-register") return "volunteer-register";
+  if (pathname === "/volunteer-login") return "volunteer-login";
+  if (pathname === "/volunteer-dashboard") return "volunteer-dashboard";
+
   const page = new URLSearchParams(window.location.search).get("page");
   return page === "dashboard" || page === "events" || page === "volunteers" || page === "ai" || page === "signup" || page === "community" || page === "volunteer-register" || page === "volunteer-login" || page === "volunteer-dashboard"
     ? page
@@ -874,40 +892,57 @@ function PlaceholderPage({ title }: { title: string }) {
   );
 }
 
-export default function App() {
-  const [activePage, setActivePage] = useState<Page>(readInitialPage);
+function AdminPanel() {
+  const location = useLocation();
+  const routerNavigate = useNavigate();
+  const isAdminRoute = location.pathname === "/admin" || location.pathname.startsWith("/admin/");
+  const [activePage, setActivePage] = useState<Page>(() => readInitialPage(location.pathname));
   const [openEventIndex, setOpenEventIndex] = useState<number | null>(null);
   const [openVolunteerIndex, setOpenVolunteerIndex] = useState<number | null>(
     null,
   );
 
+  useEffect(() => {
+    setActivePage(readInitialPage(location.pathname));
+  }, [location.pathname]);
+
   function navigate(page: Page) {
+    if (isAdminRoute && (page === "home" || page === "dashboard" || page === "events" || page === "volunteers" || page === "ai")) {
+      routerNavigate(page === "home" ? "/admin" : `/admin/${page}`);
+      if (page !== "events") setOpenEventIndex(null);
+      if (page !== "volunteers") setOpenVolunteerIndex(null);
+      return;
+    }
+
+    const publicRoutes: Partial<Record<Page, string>> = {
+      home: "/admin",
+      community: "/community",
+      signup: "/signup",
+      "volunteer-register": "/volunteer-register",
+      "volunteer-login": "/volunteer-login",
+      "volunteer-dashboard": "/volunteer-dashboard",
+    };
+    const route = publicRoutes[page];
+    if (route) {
+      routerNavigate(route);
+      return;
+    }
+
     setActivePage(page);
-    const url = new URL(window.location.href);
-    if (page === "home") url.searchParams.delete("page");
-    else url.searchParams.set("page", page);
-    window.history.replaceState({}, "", url);
     if (page !== "events") setOpenEventIndex(null);
     if (page !== "volunteers") setOpenVolunteerIndex(null);
   }
 
   function navigateToSignup(eventId?: number) {
-    setActivePage("signup");
-    const url = new URL(window.location.href);
-    url.searchParams.set("page", "signup");
-    if (eventId === undefined) url.searchParams.delete("event");
-    else url.searchParams.set("event", String(eventId));
-    window.history.replaceState({}, "", url);
+    const search = new URLSearchParams();
+    if (eventId !== undefined) search.set("event", String(eventId));
+    routerNavigate(`/signup${search.toString() ? `?${search}` : ""}`);
   }
 
   function navigateToVolunteerDashboard(eventId?: number) {
-    setActivePage("volunteer-dashboard");
-    const url = new URL(window.location.href);
-    url.searchParams.set("page", "volunteer-dashboard");
-    url.searchParams.delete("event");
-    if (eventId === undefined) url.searchParams.delete("focusEvent");
-    else url.searchParams.set("focusEvent", String(eventId));
-    window.history.replaceState({}, "", url);
+    const search = new URLSearchParams();
+    if (eventId !== undefined) search.set("focusEvent", String(eventId));
+    routerNavigate(`/volunteer-dashboard${search.toString() ? `?${search}` : ""}`);
   }
 
   function handleQuickAction(action: FlowAction) {
@@ -985,4 +1020,41 @@ export default function App() {
       )}
     </main>
   );
+}
+
+export default function App() {
+  return (
+    <Routes>
+      <Route path="/" element={<LegacyRouteRedirect />} />
+      <Route path="/admin" element={<AdminPanel />} />
+      <Route path="/admin/*" element={<AdminPanel />} />
+      <Route path="/community" element={<AdminPanel />} />
+      <Route path="/signup" element={<AdminPanel />} />
+      <Route path="/volunteer-register" element={<AdminPanel />} />
+      <Route path="/volunteer-login" element={<AdminPanel />} />
+      <Route path="/volunteer-dashboard" element={<AdminPanel />} />
+      <Route path="*" element={<LegacyRouteRedirect />} />
+    </Routes>
+  );
+}
+
+function LegacyRouteRedirect() {
+  const location = useLocation();
+  const params = new URLSearchParams(location.search);
+  const page = params.get("page");
+  const routes: Record<string, string> = {
+    dashboard: "/admin/dashboard",
+    events: "/admin/events",
+    volunteers: "/admin/volunteers",
+    ai: "/admin/ai",
+    community: "/community",
+    signup: "/signup",
+    "volunteer-register": "/volunteer-register",
+    "volunteer-login": "/volunteer-login",
+    "volunteer-dashboard": "/volunteer-dashboard",
+  };
+  const target = routes[page ?? ""] ?? "/admin";
+  params.delete("page");
+  const search = params.toString();
+  return <Navigate to={`${target}${search ? `?${search}` : ""}`} replace />;
 }

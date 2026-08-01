@@ -44,6 +44,12 @@ Use `PASSION_DATABASE_PATH` to select another SQLite file and
 `PASSION_CORS_ORIGINS` for a comma-separated list of allowed frontend origins.
 The default CORS origins are the usual Vite development URLs on port 5173.
 
+The AI assistant endpoint (`POST /api/v1/ai/chat`) needs `OPENROUTER_API_KEY`
+set to a valid [OpenRouter](https://openrouter.ai) key — it returns a 500
+without one. `OPENROUTER_MODEL` optionally overrides the model slug (default:
+`anthropic/claude-3.5-sonnet`). The key is only ever read server-side; the
+frontend never sees it and never calls OpenRouter directly.
+
 ## Database
 
 Create a local database with:

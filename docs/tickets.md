@@ -338,7 +338,42 @@ Flagging for a decision, not assuming scope beyond what's asked.
 
 ---
 
-## TICKET-5: Frontend — AI side panel UI shell
+~~TICKET-5: Frontend — AI side panel UI shell~~
+— **Done.** New `src/ai-api.ts` exposes `streamChat(messages, signal?)`, an
+async generator that `POST`s to `/api/v1/ai/chat` (TICKET-1) and parses the
+`fetch` response body's SSE frames (`token`/`tool_call`/`tool_result`/
+`error`/`done`) into typed events — it holds no API key and never talks to
+OpenRouter, only this backend endpoint. `AiCopilot.tsx`'s hardcoded
+`recommendedActions`/"Broadcast draft" mock and the `goal`/`draft`
+local-state stand-in are gone, replaced with a real `conversation:
+ChatMessage[]` sent in full on every turn (the backend is stateless per
+TICKET-1) inside the `.copilot-chat`/`.copilot-composer` shell TICKET-10
+built. `token` events append to a streaming assistant bubble in place;
+`tool_call`/`tool_result` render as a lightweight inline status line
+(`"<tool> succeeded."` / `"<tool> failed: <reason>"`) rather than
+TICKET-6's dedicated `.suggestion-card` review UI, which is out of this
+ticket's scope; `error` events surface in a `.copilot-message-error`
+bubble instead of a raw exception. Found and fixed one CSS bug while
+verifying in-browser: `.copilot-chat`'s grid rows stretched to fill the
+panel's full height when there were only one or two messages (`align-content:
+normal` behaves as `stretch` for auto-sized grid tracks) — added
+`align-content: start` to keep bubbles anchored to the top instead of
+spread across empty space. New `src/AiCopilot.chat.test.tsx` (4 tests,
+`fetch` stubbed with a hand-built `ReadableStream` SSE response) covers:
+a plain streamed reply reaching the backend with the right request body,
+`tool_call`/`tool_result` rendering inline, an `error` event surfacing in
+plain language, and prior turns being resent as history on the next
+message. `src/AiCopilot.test.tsx` (TICKET-10's collapse/focus tests) needed
+one unrelated fix — `chatRef.current.scrollTo` isn't implemented in jsdom,
+switched to setting `scrollTop` directly. Verified live in-browser against
+a running backend with no `OPENROUTER_API_KEY` set: user message renders,
+request reaches `/api/v1/ai/chat`, and the 500's `detail` surfaces as a
+readable inline error rather than a blank panel or an unhandled rejection.
+`npx tsc --noEmit` and `npm test -- --run` (94 tests across 14 files) both
+pass.
+
+<details>
+<summary>Original ticket text</summary>
 
 **Priority:** High
 **Area:** `src/AiCopilot.tsx`, `src/App.tsx` (mounting site, no change needed)
@@ -375,6 +410,8 @@ rework first; this ticket's scope is what goes *inside* that shell.
   alongside the mock — a half-wired panel next to leftover fake
   "Recommended actions" buttons would make it unclear to anyone testing the
   app which parts are real.
+
+</details>
 
 ---
 

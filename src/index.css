@@ -2646,6 +2646,7 @@ button {
 }
 
 .copilot-chat {
+  align-content: start;
   display: grid;
   flex: 1;
   gap: 14px;
@@ -2668,6 +2669,35 @@ button {
   letter-spacing: -0.02em;
   line-height: 1.45;
   margin: 0;
+}
+
+.copilot-message-user {
+  background: var(--text);
+  border-color: transparent;
+  justify-self: end;
+  max-width: 85%;
+}
+
+.copilot-message-user p {
+  color: #ffffff;
+}
+
+.copilot-message-tool {
+  background: #f6f7f9;
+}
+
+.copilot-message-tool p {
+  color: #5c5c5c;
+  font-weight: 500;
+}
+
+.copilot-message-error {
+  background: #fdecec;
+  border-color: rgba(200, 30, 30, 0.15);
+}
+
+.copilot-message-error p {
+  color: #a11a1a;
 }
 
 .suggestion-card {

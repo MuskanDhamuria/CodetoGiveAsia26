@@ -167,11 +167,31 @@ audited even though it never writes an `events` row. Whether this log
 should later expand to cover human-driven admin mutations too is still an
 open question (see TICKET-4 in `tickets.md`), not resolved by this pass.
 
-**Not started:** TICKET-5 (wire real chat into the TICKET-10 shell — the
-backend it needs now exists), TICKET-6 (draft/approval cards), TICKET-7
-(system prompt — `ai_assistant.py` ships a first-pass `SYSTEM_PROMPT`, but
-TICKET-7's eval/adversarial-testing work is separate), TICKET-8 (future tool
-backlog, tracking only).
+**TICKET-5 (wire real chat into the panel) — done.** New `src/ai-api.ts`
+(`streamChat`) is the only thing in the frontend that talks to
+`/api/v1/ai/chat` — it holds no API key and never calls OpenRouter
+directly, per the proposal's constraint. `AiCopilot.tsx`'s old mock
+(`recommendedActions`, the hardcoded "Broadcast draft" card, the
+`goal`/`draft` local state) is gone, replaced by a real `conversation`
+array sent in full on every turn (the backend is stateless). `token`
+events stream into a live assistant bubble; `tool_call`/`tool_result`
+render as a lightweight inline status line (`"<tool> succeeded."` /
+`"<tool> failed: <reason>"`) — the full `.suggestion-card` draft-review UI
+is still TICKET-6's job, not built here. A CSS bug turned up during
+in-browser verification and got fixed in the same pass: `.copilot-chat`'s
+grid rows were stretching to fill the panel's height when there were only
+one or two messages (`align-content: normal` behaves like `stretch` for
+auto-sized grid tracks) — fixed with `align-content: start`. New
+`src/AiCopilot.chat.test.tsx` covers the request payload, streamed tokens,
+tool activity rendering, error surfacing, and multi-turn history; verified
+live against a running backend with no `OPENROUTER_API_KEY` set (the 500's
+`detail` renders as a readable inline error, not a blank panel).
+
+**Not started:** TICKET-6 (draft/approval cards — the natural next step now
+that TICKET-5's chat shell is real), TICKET-7 (system prompt —
+`ai_assistant.py` ships a first-pass `SYSTEM_PROMPT`, but TICKET-7's
+eval/adversarial-testing work is separate), TICKET-8 (future tool backlog,
+tracking only).
 
 ## How to run and see it
 

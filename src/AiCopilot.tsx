@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { Page } from "./App";
+import { streamChat, type ChatMessage, type ToolResult } from "./ai-api";
 
 const pageContext: Record<Page, string> = {
   home: "Landing",
@@ -9,27 +10,23 @@ const pageContext: Record<Page, string> = {
   ai: "AI Copilot",
 };
 
-const pageInsight: Record<Page, string> = {
-  home: "I can help you set up your first volunteer event.",
-  dashboard: "Five volunteers still need a reminder for Health Fair.",
-  events: "National Day is on track, but registration needs 8 more volunteers.",
-  volunteers: "Four high-match volunteers are available for your open roles.",
-  ai: "Tell me the outcome you want and I’ll build a reviewable plan.",
+type ToolActivity = {
+  tool: string;
+  status: "running" | "done";
+  result?: ToolResult;
 };
-
-const recommendedActions = [
-  { title: "Send 5 reminders", action: "Review recipients" },
-  { title: "Fill registration gaps", action: "View matches" },
-  { title: "Prepare weekly summary", action: "Generate draft" },
-];
 
 export default function AiCopilot({ activePage }: { activePage: Page }) {
   const [open, setOpen] = useState(false);
-  const [draft, setDraft] = useState("");
-  const [goal, setGoal] = useState("");
+  const [input, setInput] = useState("");
+  const [conversation, setConversation] = useState<ChatMessage[]>([]);
+  const [toolActivity, setToolActivity] = useState<ToolActivity[]>([]);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const fabRef = useRef<HTMLButtonElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const wasOpenRef = useRef(false);
+  const chatRef = useRef<HTMLDivElement>(null);
 
   // The FAB and the close button aren't mounted at the same time (each only
   // renders for its own `open` state), so focus has to move after the swap
@@ -55,20 +52,61 @@ export default function AiCopilot({ activePage }: { activePage: Page }) {
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [open]);
 
+  useEffect(() => {
+    const chat = chatRef.current;
+    if (chat) chat.scrollTop = chat.scrollHeight;
+  }, [conversation, toolActivity, errorMessage]);
+
   function close() {
     setOpen(false);
   }
 
-  function loadGoal(nextGoal: string) {
-    setGoal(nextGoal);
-    setDraft(nextGoal);
+  async function sendMessage() {
+    const trimmed = input.trim();
+    if (!trimmed || isStreaming) return;
+
+    const userMessage: ChatMessage = { role: "user", content: trimmed };
+    const historyForApi = [...conversation, userMessage];
+
+    setConversation([...historyForApi, { role: "assistant", content: "" }]);
+    setInput("");
+    setToolActivity([]);
+    setErrorMessage(null);
+    setIsStreaming(true);
+
+    try {
+      for await (const event of streamChat(historyForApi)) {
+        if (event.type === "token") {
+          setConversation((previous) => {
+            const next = [...previous];
+            const last = next[next.length - 1];
+            next[next.length - 1] = { ...last, content: last.content + event.delta };
+            return next;
+          });
+        } else if (event.type === "tool_call") {
+          setToolActivity((previous) => [...previous, { tool: event.tool, status: "running" }]);
+        } else if (event.type === "tool_result") {
+          setToolActivity((previous) =>
+            previous.map((activity) =>
+              activity.tool === event.tool && activity.status === "running"
+                ? { ...activity, status: "done", result: event.result }
+                : activity,
+            ),
+          );
+        } else if (event.type === "error") {
+          setErrorMessage(event.reason);
+        }
+      }
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Something went wrong.");
+    } finally {
+      setIsStreaming(false);
+    }
   }
 
-  function sendGoal() {
-    if (!draft.trim()) return;
-    setGoal(draft.trim());
-    setDraft("");
-  }
+  const lastMessage = conversation[conversation.length - 1];
+  const isWaitingForFirstToken =
+    isStreaming && lastMessage?.role === "assistant" && lastMessage.content === "";
 
   return (
     <>
@@ -106,31 +144,45 @@ export default function AiCopilot({ activePage }: { activePage: Page }) {
           </button>
         </header>
 
-        <div className="copilot-context">
-          <strong>Needs your attention</strong>
-          <p>{pageInsight[activePage]}</p>
-        </div>
+        <div className="copilot-chat" aria-live="polite" ref={chatRef}>
+          {conversation.length === 0 && !isStreaming && (
+            <div className="copilot-message copilot-message-assistant">
+              <p>Ask me to help manage an event — I'll show you a draft before creating anything.</p>
+            </div>
+          )}
 
-        <div className="copilot-chat">
-          {recommendedActions.map(({ title, action }) => (
-            <article key={title} className="suggestion-card">
-              <p>{title}</p>
-              <button type="button" onClick={() => loadGoal(title)}>
-                {action}
-              </button>
-            </article>
+          {conversation.map((message, index) =>
+            message.content ? (
+              <div
+                key={index}
+                className={`copilot-message copilot-message-${message.role}`}
+              >
+                <p>{message.content}</p>
+              </div>
+            ) : null,
+          )}
+
+          {toolActivity.map((activity, index) => (
+            <div key={`tool-${index}`} className="copilot-message copilot-message-tool">
+              <p>
+                {activity.status === "running"
+                  ? `Running ${activity.tool}…`
+                  : activity.result?.success
+                    ? `${activity.tool} succeeded.`
+                    : `${activity.tool} failed: ${activity.result?.reason}`}
+              </p>
+            </div>
           ))}
 
-          <article className="suggestion-card">
-            <p>Broadcast draft: Health Fair reminder</p>
-            <button type="button" onClick={() => loadGoal("Review Health Fair reminder broadcast")}>
-              Review
-            </button>
-          </article>
+          {isWaitingForFirstToken && (
+            <div className="copilot-message copilot-message-assistant">
+              <p>Thinking…</p>
+            </div>
+          )}
 
-          {goal && (
-            <div className="copilot-message">
-              <p>Preparing: {goal}</p>
+          {errorMessage && (
+            <div className="copilot-message copilot-message-error">
+              <p>{errorMessage}</p>
             </div>
           )}
         </div>
@@ -139,16 +191,17 @@ export default function AiCopilot({ activePage }: { activePage: Page }) {
           className="copilot-composer"
           onSubmit={(event) => {
             event.preventDefault();
-            sendGoal();
+            sendMessage();
           }}
         >
           <input
             aria-label="Message Passion AI"
             placeholder="Ask Passion AI…"
-            value={draft}
-            onChange={(event) => setDraft(event.target.value)}
+            value={input}
+            disabled={isStreaming}
+            onChange={(event) => setInput(event.target.value)}
           />
-          <button type="submit" aria-label="Send message">
+          <button type="submit" aria-label="Send message" disabled={isStreaming || !input.trim()}>
             ↑
           </button>
         </form>

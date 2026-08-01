@@ -31,7 +31,7 @@ function formatDate(value: string) {
   }).format(new Date(`${value}T00:00:00Z`))
 }
 
-export default function AdminEventsPage({ api = adminApi }: { api?: AdminApi }) {
+export default function AdminEventsPage({ api = adminApi, initialEventId = null }: { api?: AdminApi; initialEventId?: number | null }) {
   const [templates, setTemplates] = useState<EventTemplate[]>([])
   const [events, setEvents] = useState<EventDetail[]>([])
   const [loading, setLoading] = useState(true)
@@ -41,7 +41,7 @@ export default function AdminEventsPage({ api = adminApi }: { api?: AdminApi }) 
   const [creationStep, setCreationStep] = useState(1)
   const [draft, setDraft] = useState<Draft>(emptyDraft)
   const [creating, setCreating] = useState(false)
-  const [openEventId, setOpenEventId] = useState<number | null>(null)
+  const [openEventId, setOpenEventId] = useState<number | null>(initialEventId)
   const [draggedTaskId, setDraggedTaskId] = useState<number | null>(null)
   const [dragOverStatus, setDragOverStatus] = useState<string | null>(null)
 

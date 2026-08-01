@@ -2,11 +2,12 @@
 
 from fastapi import APIRouter
 
-from backend.api.routes import health
+from backend.api.routes import health, reports
 
 
 api_router = APIRouter(prefix="/api/v1")
 api_router.include_router(health.router)
+api_router.include_router(reports.router)
 
 # Add future feature routers here, for example:
 # from backend.api.routes import event_templates, events

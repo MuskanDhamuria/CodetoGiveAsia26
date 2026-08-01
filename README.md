@@ -24,7 +24,7 @@ defines the vocabulary the whole codebase uses.
 ```sh
 python3.12 -m venv .venv
 .venv/bin/pip install -r backend/requirements-dev.txt
-.venv/bin/python -m backend.seed_demo_data   # optional: adds demo events
+.venv/bin/python -m backend.seed             # optional: adds demo events
 .venv/bin/python -m uvicorn backend.main:app --reload
 ```
 

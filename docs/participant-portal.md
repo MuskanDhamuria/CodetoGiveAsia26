@@ -63,9 +63,9 @@ FastAPI + `sqlite3` structure:
   unaffected). `backend/database.py` now applies every unapplied migration
   in order, not just `001`, so this and future migrations are picked up
   automatically.
-- `backend/seed_demo_data.py` — inserts a placeholder event template plus a
-  handful of demo events, since organizer-side event/template creation isn't
-  built yet and `events.event_template_id` is `NOT NULL`.
+- `backend/seed.py` — inserts demo team members, volunteers, event templates,
+  events, and participants (idempotent: re-running only refreshes team
+  members once events already exist).
 - `backend/phone.py` — `normalize_phone_number`, built on the `phonenumbers`
   package. Every route that reads or writes `contact_number`
   (`create_participant` in `participants.py`, `public_rsvp` in `public.py`)
@@ -83,7 +83,7 @@ dependency needed) and `npx vitest run` (45 passing).
 
 ```sh
 python3 -m pip install -r backend/requirements-dev.txt
-python3 -m backend.seed_demo_data     # only needed once, or after deleting the db
+python3 -m backend.seed               # only needed once, or after deleting the db
 python3 -m uvicorn backend.main:app --reload
 ```
 

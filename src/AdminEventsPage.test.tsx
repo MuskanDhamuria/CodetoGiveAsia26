@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import AdminEventsPage from "./AdminEventsPage"
@@ -10,6 +10,158 @@ afterEach(cleanup)
 
 
 describe("API-backed organizer events", () => {
+  it("shows Event and Subtask completion in the workspace", async () => {
+    const event: EventDetail = {
+      id: 4, event_template_id: null, name: "Wellness session", venue: "Hall",
+      event_date: "2027-09-01", status: "open", created_at: "", updated_at: "",
+      tasks: [
+        { id: 20, team_member_id: null, template_task_id: null, name: "Prepare room", body: "", due_at: "2027-08-30", category: "planning", status: "ongoing", position: 0, subtasks: [
+          { id: 31, title: "Count chairs", position: 0, completed: true },
+          { id: 32, title: "Arrange tables", position: 1, completed: false },
+        ] },
+        { id: 21, team_member_id: null, template_task_id: null, name: "Confirm venue", body: "", due_at: "2027-08-28", category: "planning", status: "done", position: 1, subtasks: [] },
+      ],
+    }
+    const api = {
+      listEventTemplates: vi.fn().mockResolvedValue([]),
+      listEvents: vi.fn().mockResolvedValue([event]),
+      listTeamMembers: vi.fn().mockResolvedValue([]),
+    } as unknown as AdminApi
+    const user = userEvent.setup()
+
+    render(<AdminEventsPage api={api} />)
+    await user.click(await screen.findByRole("button", { name: "Open Wellness session" }))
+
+    expect(screen.getByText("1 of 2 Tasks complete")).toBeTruthy()
+    expect(screen.getByRole("progressbar", { name: "Event completion" }).getAttribute("aria-valuenow")).toBe("50")
+    expect(screen.getByText("1 of 2 Subtasks complete")).toBeTruthy()
+    expect(screen.getByRole("progressbar", { name: "Prepare room Subtask completion" }).getAttribute("aria-valuenow")).toBe("50")
+
+    await user.click(screen.getByRole("button", { name: "Edit Prepare room" }))
+    expect(screen.getByRole("heading", { name: "Edit Prepare room" })).toBeTruthy()
+    expect(screen.getByLabelText("Checklist item 31")).toBeTruthy()
+  })
+
+  it("edits Event details through the API", async () => {
+    const event: EventDetail = {
+      id: 4, event_template_id: null, name: "Wellness session", venue: "Old Hall",
+      event_date: "2027-09-01", status: "open", created_at: "", updated_at: "", tasks: [],
+    }
+    const updated = { ...event, name: "Community Wellness", venue: "Tampines Hub" }
+    const updateEvent = vi.fn().mockResolvedValue(updated)
+    const api = {
+      listEventTemplates: vi.fn().mockResolvedValue([]), listEvents: vi.fn().mockResolvedValue([event]),
+      listTeamMembers: vi.fn().mockResolvedValue([]), updateEvent,
+    } as unknown as AdminApi
+    const user = userEvent.setup()
+
+    render(<AdminEventsPage api={api} />)
+    await user.click(await screen.findByRole("button", { name: "Open Wellness session" }))
+    await user.click(screen.getByRole("button", { name: "Edit details" }))
+    const name = screen.getByLabelText("Event name")
+    await user.clear(name)
+    await user.type(name, "Community Wellness")
+    const venue = screen.getByLabelText("Venue")
+    await user.clear(venue)
+    await user.type(venue, "Tampines Hub")
+    await user.click(screen.getByRole("button", { name: "Save changes" }))
+
+    expect(updateEvent).toHaveBeenCalledWith(4, { name: "Community Wellness", venue: "Tampines Hub" })
+    expect(await screen.findByRole("heading", { name: "Community Wellness" })).toBeTruthy()
+  })
+
+  it("reschedules, closes, and reopens an Event", async () => {
+    const event: EventDetail = { id: 4, event_template_id: null, name: "Wellness session", venue: "Hall", event_date: "2027-09-01", status: "open", created_at: "", updated_at: "", tasks: [] }
+    const rescheduled = { ...event, event_date: "2027-09-08" }
+    const closed = { ...rescheduled, status: "closed" as const }
+    const reopened = { ...rescheduled, status: "open" as const }
+    const rescheduleEvent = vi.fn().mockResolvedValue(rescheduled)
+    const closeEvent = vi.fn().mockResolvedValue(closed)
+    const reopenEvent = vi.fn().mockResolvedValue(reopened)
+    const api = { listEventTemplates: vi.fn().mockResolvedValue([]), listEvents: vi.fn().mockResolvedValue([event]), listTeamMembers: vi.fn().mockResolvedValue([]), rescheduleEvent, closeEvent, reopenEvent } as unknown as AdminApi
+    const user = userEvent.setup()
+
+    render(<AdminEventsPage api={api} />)
+    await user.click(await screen.findByRole("button", { name: "Open Wellness session" }))
+    await user.click(screen.getByRole("button", { name: "Reschedule" }))
+    fireEvent.change(screen.getByLabelText("New Event date"), { target: { value: "2027-09-08" } })
+    expect((screen.getByLabelText(/shift task deadlines/i) as HTMLInputElement).checked).toBe(true)
+    await user.click(screen.getByRole("button", { name: "Reschedule Event" }))
+    expect(rescheduleEvent).toHaveBeenCalledWith(4, { event_date: "2027-09-08", shift_task_deadlines: true })
+
+    await user.click(screen.getByRole("button", { name: "Close Event" }))
+    await user.click(screen.getByRole("button", { name: "Confirm close" }))
+    expect(closeEvent).toHaveBeenCalledWith(4)
+    await user.click(await screen.findByRole("button", { name: "Reopen Event" }))
+    expect(reopenEvent).toHaveBeenCalledWith(4)
+    expect(await screen.findByRole("button", { name: "Add Task" })).toBeTruthy()
+  })
+
+  it("requires the exact Event name before permanent deletion", async () => {
+    const event: EventDetail = { id: 4, event_template_id: null, name: "Wellness session", venue: "Hall", event_date: "2027-09-01", status: "open", created_at: "", updated_at: "", tasks: [] }
+    const deleteEvent = vi.fn().mockResolvedValue(undefined)
+    const api = { listEventTemplates: vi.fn().mockResolvedValue([]), listEvents: vi.fn().mockResolvedValue([event]), listTeamMembers: vi.fn().mockResolvedValue([]), deleteEvent } as unknown as AdminApi
+    const user = userEvent.setup()
+
+    render(<AdminEventsPage api={api} />)
+    await user.click(await screen.findByRole("button", { name: "Open Wellness session" }))
+    await user.click(screen.getByRole("button", { name: "Delete Event" }))
+    const confirm = screen.getByRole("button", { name: "Delete permanently" }) as HTMLButtonElement
+    expect(confirm.disabled).toBe(true)
+    await user.type(screen.getByLabelText("Confirm Event name"), "Wellness session")
+    await user.click(confirm)
+    expect(deleteEvent).toHaveBeenCalledWith(4)
+    expect(await screen.findByText(/deleted wellness session/i)).toBeTruthy()
+  })
+
+  it("creates, assigns, edits, checks, and deletes a Task", async () => {
+    const event: EventDetail = { id: 4, event_template_id: null, name: "Wellness session", venue: "Hall", event_date: "2027-09-01", status: "open", created_at: "", updated_at: "", tasks: [] }
+    const createdTask: EventDetail["tasks"][number] = { id: 20, team_member_id: 3, template_task_id: null, name: "Prepare room", body: "Set out chairs", due_at: "2027-08-30", category: "planning", status: "incomplete", position: 0, subtasks: [] }
+    const checklist = { id: 31, title: "Count chairs", position: 0, completed: false }
+    const createEventTask = vi.fn().mockResolvedValue(createdTask)
+    const updateEventTask = vi.fn().mockImplementation((_eventId, _taskId, changes) => Promise.resolve({ ...createdTask, ...changes }))
+    const createEventSubtask = vi.fn().mockResolvedValue(checklist)
+    const updateEventSubtask = vi.fn().mockImplementation((_eventId, _taskId, _subtaskId, changes) => Promise.resolve({ ...checklist, ...changes }))
+    const deleteEventSubtask = vi.fn().mockResolvedValue(undefined)
+    const deleteEventTask = vi.fn().mockResolvedValue(undefined)
+    const api = {
+      listEventTemplates: vi.fn().mockResolvedValue([]), listEvents: vi.fn().mockResolvedValue([event]),
+      listTeamMembers: vi.fn().mockResolvedValue([{ id: 3, name: "Aisha", email: "a@x.test", is_active: true, created_at: "", updated_at: "" }]),
+      createEventTask, updateEventTask, createEventSubtask, updateEventSubtask, deleteEventSubtask, deleteEventTask,
+    } as unknown as AdminApi
+    const user = userEvent.setup()
+
+    render(<AdminEventsPage api={api} />)
+    await user.click(await screen.findByRole("button", { name: "Open Wellness session" }))
+    await user.click(screen.getByRole("button", { name: "Add Task" }))
+    await user.type(screen.getByLabelText("Task name"), "Prepare room")
+    await user.type(screen.getByLabelText("Description"), "Set out chairs")
+    fireEvent.change(screen.getByLabelText("Due date"), { target: { value: "2027-08-30" } })
+    await user.selectOptions(screen.getByLabelText("Assignee"), "3")
+    await user.click(screen.getByRole("button", { name: "Create Task" }))
+    expect(createEventTask).toHaveBeenCalledWith(4, { name: "Prepare room", body: "Set out chairs", due_at: "2027-08-30", category: "planning", team_member_id: 3 })
+
+    await user.type(await screen.findByLabelText("New checklist item"), "Count chairs")
+    await user.click(screen.getByRole("button", { name: "Add item" }))
+    expect(createEventSubtask).toHaveBeenCalledWith(4, 20, { title: "Count chairs" })
+    await user.click(await screen.findByLabelText("Complete Count chairs"))
+    expect(updateEventSubtask).toHaveBeenCalledWith(4, 20, 31, { completed: true })
+    const item = screen.getByLabelText("Checklist item 31")
+    await user.clear(item)
+    await user.type(item, "Count tables")
+    const itemRow = item.closest("div")!
+    await user.click(within(itemRow).getByRole("button", { name: "Save" }))
+    expect(updateEventSubtask).toHaveBeenCalledWith(4, 20, 31, { title: "Count tables" })
+    await user.click(within(itemRow).getByRole("button", { name: "Delete" }))
+    await user.click(within(itemRow).getByRole("button", { name: "Confirm delete" }))
+    expect(deleteEventSubtask).toHaveBeenCalledWith(4, 20, 31)
+
+    await user.click(screen.getByRole("button", { name: "Delete Task" }))
+    await user.click(screen.getByRole("button", { name: "Confirm delete Task" }))
+    expect(deleteEventTask).toHaveBeenCalledWith(4, 20)
+    expect((await screen.findAllByText(/task deleted/i)).length).toBeGreaterThan(0)
+  })
+
   it("creates an event from scratch without a template", async () => {
     const created: EventDetail = {
       id: 9,

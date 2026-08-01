@@ -5,7 +5,7 @@ import EventCreationPrototype from "./EventCreationPrototype";
 import EventTaskHierarchyPrototype from "./EventTaskHierarchyPrototype";
 import EventOperationsMvp from "./EventOperationsMvp";
 import AdminEventsPage from "./AdminEventsPage";
-import { adminApi, type EventDetail } from "./admin-api";
+import { adminApi, type AdminApi, type DashboardSummary, type EventDetail, type UpcomingDeadline } from "./admin-api";
 import VolunteerDirectory from "./VolunteerDirectory";
 
 export type Page = "home" | "dashboard" | "events" | "volunteers" | "ai";
@@ -33,20 +33,6 @@ function readInitialPage(): Page {
 
 const heroImage =
   "https://images.higgs.ai/?default=1&output=webp&url=https%3A%2F%2Fd8j0ntlcm91z4.cloudfront.net%2Fuser_38xzZboKViGWJOttwIXH07lWA1P%2Fhf_20260626_041422_4a459e05-abce-4150-9fb7-4ededc423cd1.png&w=1280&q=85";
-
-const kpis = [
-  { label: "Active Events", value: "6", helper: "Running this month" },
-  { label: "Upcoming Events", value: "14", helper: "Next 30 days" },
-  { label: "Total Volunteers", value: "312", helper: "Across all events" },
-  { label: "Pending Volunteer Confirmations", value: "27", helper: "Awaiting replies" },
-];
-
-const deadlines = [
-  { label: "Health Fair volunteer slots close", date: "Jul 3" },
-  { label: "Beach Cleanup briefing pack due", date: "Jul 5" },
-  { label: "Food Drive venue confirmation", date: "Jul 10" },
-  { label: "Workshop registration closes", date: "Jul 13" },
-];
 
 const activities = [
   "John Tan accepted invitation",
@@ -497,29 +483,61 @@ export function EventCalendar({
   );
 }
 
-function DashboardPage({
+export function DashboardPage({
   onQuickAction,
   onOpenEvent,
+  api = adminApi,
 }: {
   onQuickAction: (action: FlowAction) => void;
   onOpenEvent: (eventId: number) => void;
+  api?: AdminApi;
 }) {
   const [dashboardEvents, setDashboardEvents] = useState<EventDetail[]>([]);
   const [calendarError, setCalendarError] = useState("");
+  const [summary, setSummary] = useState<DashboardSummary | null>(null);
+  const [summaryError, setSummaryError] = useState("");
+  const [dashboardDeadlines, setDashboardDeadlines] = useState<UpcomingDeadline[]>([]);
+  const [deadlinesLoading, setDeadlinesLoading] = useState(true);
+  const [deadlinesError, setDeadlinesError] = useState("");
 
   useEffect(() => {
     let active = true;
-    adminApi.listEvents()
+    api.listEvents()
       .then((events) => {
         if (active) setDashboardEvents(events);
       })
       .catch(() => {
         if (active) setCalendarError("Unable to load Events.");
       });
+    api.getDashboardSummary()
+      .then((data) => {
+        if (active) setSummary(data);
+      })
+      .catch(() => {
+        if (active) setSummaryError("Unable to load dashboard summary.");
+      });
+    api.listUpcomingDeadlines()
+      .then((items) => {
+        if (active) setDashboardDeadlines(items);
+      })
+      .catch(() => {
+        if (active) setDeadlinesError("Unable to load upcoming deadlines.");
+      })
+      .finally(() => {
+        if (active) setDeadlinesLoading(false);
+      });
     return () => {
       active = false;
     };
-  }, []);
+  }, [api]);
+
+  const dashboardKpis = summary ? [
+    { label: "Upcoming Events", value: String(summary.upcoming_events), helper: "Scheduled from today" },
+    { label: "Total Volunteers", value: String(summary.total_volunteers), helper: "Across all Events" },
+    { label: "Pending Confirmations", value: String(summary.pending_volunteer_confirmations), helper: "Awaiting review" },
+    { label: "Overdue Tasks", value: String(summary.overdue_tasks), helper: "Needs attention" },
+    { label: "Tasks Due Soon", value: String(summary.tasks_due_soon), helper: "Within 14 days" },
+  ] : [];
 
   return (
     <section className="dashboard-page">
@@ -530,11 +548,13 @@ function DashboardPage({
           <span>Here's what's happening across your events today.</span>
         </header>
 
-        <div className="kpi-grid">
-          {kpis.map((kpi) => (
+        <div aria-label="Dashboard summary" className="kpi-grid dashboard-kpi-strip">
+          {dashboardKpis.map((kpi) => (
             <KpiCard key={kpi.label} {...kpi} />
           ))}
+          {!summary && !summaryError && Array.from({ length: 5 }, (_, index) => <article aria-label="Loading metric" className="kpi-card dashboard-kpi-loading" key={index}><span>Loading…</span></article>)}
         </div>
+        {summaryError && <p className="dashboard-data-error" role="alert">{summaryError}</p>}
 
         <div className="dashboard-main-grid">
           <div className="dashboard-card calendar-card">
@@ -545,12 +565,15 @@ function DashboardPage({
             <div className="dashboard-card">
               <h2>Upcoming Deadlines</h2>
               <div className="deadline-list">
-                {deadlines.map((deadline) => (
-                  <div className="deadline-item" key={deadline.label}>
-                    <span>{deadline.label}</span>
-                    <strong>{deadline.date}</strong>
-                  </div>
+                {dashboardDeadlines.map((deadline) => (
+                  <button aria-label={`${deadline.name} for ${deadline.event_name}`} className="deadline-item deadline-button" key={deadline.id} type="button" onClick={() => onOpenEvent(deadline.event_id)}>
+                    <span><strong>{deadline.name}</strong><small>{deadline.event_name}</small></span>
+                    <time dateTime={deadline.due_at}>{new Intl.DateTimeFormat("en-SG", { day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(`${deadline.due_at.slice(0, 10)}T00:00:00Z`))}</time>
+                  </button>
                 ))}
+                {deadlinesLoading && <p role="status">Loading deadlines…</p>}
+                {!deadlinesLoading && !deadlinesError && !dashboardDeadlines.length && <p>No Tasks due in the next 14 days.</p>}
+                {deadlinesError && <p className="dashboard-data-error" role="alert">{deadlinesError}</p>}
               </div>
             </div>
             <div className="dashboard-card">

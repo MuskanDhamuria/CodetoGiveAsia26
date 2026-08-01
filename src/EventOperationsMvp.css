@@ -123,3 +123,54 @@
 .event-operations-confirmation { background: #fff8ef; border: 1px solid #e7c995; border-radius: 10px; display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; padding: 16px; }.event-operations-confirmation strong { flex-basis: 100%; }.event-operations-confirmation p { color: #5e6961; flex-basis: 100%; margin: 0; }.event-operations-confirmation button { background: #edf2ed; border: 0; border-radius: 7px; cursor: pointer; font-weight: 700; padding: 9px 12px; }.event-operations-confirmation button:last-child { background: #8f2d24; color: #fff; }
 .event-creation-dialog > footer, .event-creation-confirm { border-top: 1px solid #e4e8e4; display: flex; gap: 10px; justify-content: flex-end; padding: 18px 32px; }.event-creation-dialog > footer button, .event-creation-confirm button { background: #edf2ed; border: 0; border-radius: 7px; cursor: pointer; font-weight: 700; padding: 10px 14px; }.event-creation-dialog > footer button:last-child, .event-creation-confirm button:last-child { background: #246b45; color: #fff; }.event-creation-dialog > footer button:disabled { cursor: not-allowed; opacity: .45; }.event-creation-confirm { align-items: center; flex-wrap: wrap; justify-content: flex-start; }.event-creation-confirm strong { flex-basis: 100%; }.event-creation-confirm p { color: #5e6961; flex: 1; margin: 0; }
 @media (max-width: 640px) { .event-creation-overlay { padding: 0; }.product-app .event-creation-overlay { right: 0; }.event-creation-dialog { border-radius: 0; min-height: 100vh; }.event-creation-steps { gap: 10px; padding-inline: 18px; }.event-creation-steps span { display: none; }.event-creation-body { padding-inline: 18px; }.event-creation-task { grid-template-columns: 1fr; }.event-creation-dialog > header, .event-creation-dialog > footer, .event-creation-confirm { padding-inline: 18px; } }
+.event-operations-page.workspace-open > .event-creation-overlay { display: grid; }
+.api-event-header-actions { align-items: center; display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+.api-event-header-actions button, .api-task-workspace-heading button { background: #edf4ee; border: 1px solid #c9d8cb; border-radius: 7px; color: #215d3a; cursor: pointer; font-weight: 700; padding: 8px 10px; }
+.api-event-header-actions .api-danger-button, .api-danger-button, .api-task-delete-button { background: #fff3f1; border: 1px solid #efd0cc; border-radius: 7px; color: #8a322b; cursor: pointer; font-weight: 700; padding: 8px 10px; }
+.api-task-workspace-heading { align-items: center; display: flex; gap: 16px; justify-content: space-between; }
+.api-task-workspace-heading h3 { margin: 8px 0 -4px; }
+.api-task-assignee { color: #68746b; font-size: .7rem; font-weight: 700; }
+.api-event-workspace-body { align-items: start; display: grid; gap: 18px; grid-template-columns: minmax(0, 1fr) 220px; }
+.api-event-workspace-main { display: grid; gap: 18px; min-width: 0; }
+.api-event-progress-panel { background: #f7f9f7; border: 1px solid #dfe7e0; border-radius: 10px; display: grid; gap: 10px; padding: 18px; position: sticky; top: 18px; }
+.api-event-progress-panel > p:first-child { color: #55705e; font-size: .68rem; font-weight: 800; letter-spacing: .07em; margin: 0; text-transform: uppercase; }
+.api-event-progress-panel > strong { color: #244d34; font-size: 2rem; font-variant-numeric: tabular-nums; line-height: 1; }
+.api-event-progress-panel > span { color: #637068; font-size: .76rem; }
+.api-event-progress-panel > i { background: #dfe8e1; border-radius: 999px; height: 7px; overflow: hidden; }
+.api-event-progress-panel > i > b { background: #35724c; display: block; height: 100%; transition: width .2s ease; }
+.api-event-progress-panel dl { border-top: 1px solid #e0e6e1; display: grid; gap: 8px; margin: 4px 0 0; padding-top: 12px; }
+.api-event-progress-panel dl > div { align-items: baseline; display: flex; justify-content: space-between; }
+.api-event-progress-panel dt { color: #68746b; font-size: .72rem; }
+.api-event-progress-panel dd { color: #293b30; font-size: .82rem; font-variant-numeric: tabular-nums; font-weight: 800; margin: 0; }
+.api-event-progress-help { border-top: 1px solid #e0e6e1; color: #68746b; font-size: .7rem; line-height: 1.45; margin: 2px 0 0; padding-top: 12px; }
+.api-subtask-progress { margin-top: 2px; }
+.api-subtask-progress > span { color: #637068; }
+.api-subtask-progress > i { background: #dfe8e1; }
+.api-subtask-progress > i > b { background: #4d805e; }
+.api-workspace-feedback { background: #eef6ef; border-left: 3px solid #4f7f5c; color: #31533b !important; margin: -6px 0 0 !important; padding: 9px 11px; }
+.api-workspace-feedback.error { background: #fff3f1; border-left-color: #a23b33; color: #7c302a !important; }
+.api-action-dialog { max-width: 620px; }
+.api-task-dialog { max-width: 780px; }
+.api-action-body { min-height: 150px; }
+.api-checkbox-field { align-items: center; display: flex !important; grid-template-columns: auto 1fr; }
+.api-checkbox-field input { accent-color: #246b45; width: auto; }
+.api-danger-notice { background: #fff3f1; border-left: 3px solid #9d352d; color: #77312b !important; padding: 11px 13px; }
+.event-creation-dialog > footer .api-delete-confirm { background: #8f2d24; color: #fff; }
+.api-task-editor-body { gap: 24px; }
+.api-task-fields { display: grid; gap: 14px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.api-task-fields label { color: #405146; display: grid; font-size: .78rem; font-weight: 700; gap: 5px; }
+.api-task-fields input, .api-task-fields select, .api-task-fields textarea, .api-subtask-row input, .api-add-subtask input { background: #fff; border: 1px solid #cdd8cf; border-radius: 7px; color: #26362b; font: inherit; padding: 9px; }
+.api-task-body-field { grid-column: 1 / -1; }
+.api-task-body-field textarea { resize: vertical; }
+.api-task-checklist { border-top: 1px solid #e4e8e4; display: grid; gap: 10px; padding-top: 18px; }
+.api-task-checklist h3 { margin: 0 0 4px; }
+.api-subtask-row { align-items: center; display: grid; gap: 7px; grid-template-columns: auto minmax(0, 1fr) auto auto auto; }
+.api-subtask-row > input[type="checkbox"] { accent-color: #246b45; height: 18px; width: 18px; }
+.api-subtask-row button, .api-add-subtask button, .api-delete-task-confirm button { background: #edf4ee; border: 1px solid #c9d8cb; border-radius: 7px; color: #215d3a; cursor: pointer; font-size: .76rem; font-weight: 700; padding: 8px 9px; }
+.api-add-subtask { display: grid; gap: 8px; grid-template-columns: 1fr auto; }
+.api-editor-note { background: #f3f7f3; border-left: 3px solid #7b9d84; color: #506158 !important; padding: 10px 12px; }
+.api-task-delete-button { justify-self: start; }
+.api-delete-task-confirm { align-items: center; background: #fff7f5; border: 1px solid #efd0cc; border-radius: 8px; display: flex; flex-wrap: wrap; gap: 8px; padding: 10px; }
+.api-delete-task-confirm span { flex: 1; font-size: .82rem; font-weight: 700; min-width: 190px; }
+@media (max-width: 1100px) { .api-event-workspace-body { grid-template-columns: 1fr; }.api-event-progress-panel { position: static; }.api-event-progress-panel dl { grid-template-columns: repeat(3, minmax(0, 1fr)); }.api-event-progress-panel dl > div { background: #fff; border-radius: 7px; padding: 8px; } }
+@media (max-width: 760px) { .api-event-header-actions { justify-content: flex-start; }.api-task-fields { grid-template-columns: 1fr; }.api-task-body-field { grid-column: auto; }.api-subtask-row { grid-template-columns: auto minmax(0, 1fr); }.api-subtask-row button { grid-column: 2; }.api-add-subtask { grid-template-columns: 1fr; } }

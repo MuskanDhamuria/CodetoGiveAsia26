@@ -1,5 +1,6 @@
 """Tests for the AI tool dispatch/validation pipeline (TICKET-2/TICKET-3)."""
 
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -192,6 +193,68 @@ class AiToolsTest(unittest.TestCase):
         # dispatch_tool_call must reject it by name before any lookup.
         result = dispatch_tool_call(self.db, "execute_sql", {"query": "DROP TABLE events"})
         self.assertFalse(result["success"])
+
+    # -- audit log (TICKET-4) ----------------------------------------------
+
+    def audit_rows(self) -> list[dict]:
+        rows = self.db.execute(
+            "SELECT tool_name, arguments, success, entity_id, reason "
+            "FROM ai_audit_log ORDER BY id"
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def test_successful_dispatch_writes_an_audit_row_with_the_entity_id(self) -> None:
+        template_id = self.create_template()
+        dispatch_tool_call(
+            self.db,
+            "publish_event",
+            {
+                "event_template_id": template_id,
+                "name": "August Wellness Session",
+                "venue": "Tampines Hub",
+                "event_date": "2099-01-01",
+            },
+        )
+        rows = self.audit_rows()
+        self.assertEqual(len(rows), 1)
+        row = rows[0]
+        self.assertEqual(row["tool_name"], "publish_event")
+        self.assertEqual(row["success"], 1)
+        self.assertIsNotNone(row["entity_id"])
+        self.assertIsNone(row["reason"])
+        self.assertEqual(json.loads(row["arguments"])["name"], "August Wellness Session")
+
+    def test_business_validation_failure_writes_an_audit_row_with_the_reason(self) -> None:
+        dispatch_tool_call(
+            self.db,
+            "create_event_draft",
+            {"event_template_id": 999, "name": "Test", "venue": "Hub", "event_date": "2099-01-01"},
+        )
+        rows = self.audit_rows()
+        self.assertEqual(len(rows), 1)
+        row = rows[0]
+        self.assertEqual(row["tool_name"], "create_event_draft")
+        self.assertEqual(row["success"], 0)
+        self.assertIsNone(row["entity_id"])
+        self.assertIn("not found", row["reason"])
+
+    def test_unknown_tool_name_still_writes_an_audit_row(self) -> None:
+        dispatch_tool_call(self.db, "delete_event", {"event_id": 1})
+        rows = self.audit_rows()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["tool_name"], "delete_event")
+        self.assertEqual(rows[0]["success"], 0)
+
+    def test_draft_dispatch_is_still_audited_even_though_no_event_is_written(self) -> None:
+        dispatch_tool_call(
+            self.db,
+            "create_event_draft",
+            {"event_template_id": None, "name": "Test", "venue": "Hub", "event_date": "2099-01-01"},
+        )
+        rows = self.audit_rows()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["tool_name"], "create_event_draft")
+        self.assertEqual(rows[0]["success"], 1)
 
 
 if __name__ == "__main__":

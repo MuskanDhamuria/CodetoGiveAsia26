@@ -156,11 +156,22 @@ breakdown (22 new backend tests across `test_ai_tools.py` and
 `test_ai_assistant.py`, none of which need a real OpenRouter key —
 `httpx.MockTransport` fakes the streaming response).
 
-**Not started:** TICKET-4 (audit log), TICKET-5 (wire real chat into the
-TICKET-10 shell — the backend it needs now exists), TICKET-6 (draft/approval
-cards), TICKET-7 (system prompt — `ai_assistant.py` ships a first-pass
-`SYSTEM_PROMPT`, but TICKET-7's eval/adversarial-testing work is separate),
-TICKET-8 (future tool backlog, tracking only).
+**TICKET-4 (audit logging) — done.** New additive migration
+`009_ai_audit_log.sql` adds an `ai_audit_log` table (timestamp, tool name,
+arguments as JSON, success flag, resulting entity id, failure reason — no
+acting-user column, per TICKET-0's decision). `dispatch_tool_call`
+(`backend/ai_tools/dispatch.py`) now logs a row on every dispatch path —
+unknown tool name, schema-validation rejection, business-validation/
+execution failure, and success — including `create_event_draft`, which is
+audited even though it never writes an `events` row. Whether this log
+should later expand to cover human-driven admin mutations too is still an
+open question (see TICKET-4 in `tickets.md`), not resolved by this pass.
+
+**Not started:** TICKET-5 (wire real chat into the TICKET-10 shell — the
+backend it needs now exists), TICKET-6 (draft/approval cards), TICKET-7
+(system prompt — `ai_assistant.py` ships a first-pass `SYSTEM_PROMPT`, but
+TICKET-7's eval/adversarial-testing work is separate), TICKET-8 (future tool
+backlog, tracking only).
 
 ## How to run and see it
 
@@ -199,9 +210,9 @@ individual files by hand or via your editor's formatter instead.
 
 All backlog items — remaining tickets, their scope, dependencies, and open
 questions — live in [`tickets.md`](tickets.md). That's the single source of
-truth; don't duplicate it here. TICKET-9, TICKET-2, TICKET-3, and TICKET-1
-are all done, so the recommended order now is: TICKET-5/TICKET-6 together
-(the backend they need to wire into now exists), with TICKET-4/TICKET-7
+truth; don't duplicate it here. TICKET-9, TICKET-2, TICKET-3, TICKET-1, and
+TICKET-4 are all done, so the recommended order now is: TICKET-5/TICKET-6
+together (the backend they need to wire into now exists), with TICKET-7
 parallel to the rest.
 
 ## Key decisions worth knowing the "why" of

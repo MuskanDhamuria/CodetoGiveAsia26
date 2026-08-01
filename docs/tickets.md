@@ -280,7 +280,34 @@ and the tools it wraps were built and tested together.
 
 ---
 
-## TICKET-4: Audit logging for AI-generated mutations
+~~TICKET-4: Audit logging for AI-generated mutations~~
+— **Done.** New additive migration `009_ai_audit_log.sql` adds an
+`ai_audit_log` table (`id`, `created_at`, `tool_name`, `arguments` as a JSON
+string, `success`, `entity_id`, `reason`) — no acting-user column, per
+TICKET-0's decision that the admin side has no auth/user concept yet.
+`backend/ai_tools/dispatch.py`'s `dispatch_tool_call` now routes every
+return path (unknown tool name, schema-validation rejection, business
+validation/execution failure, success) through a single `_finish` helper
+that calls `_record_audit_log` before returning, so every dispatch is
+logged regardless of which stage produced the result — including
+`create_event_draft`, which never writes an `events` row itself but is
+still audited. `entity_id` is derived from the tool result's `id` field
+when present (e.g. `publish_event`/`update_event`/`cancel_event`) and left
+`NULL` otherwise (e.g. `list_events`, or any failure). Covered by four new
+tests in `backend/tests/test_ai_tools.py`: a successful dispatch records
+`tool_name`/`arguments`/`entity_id` with `reason` left `NULL`, a business
+validation failure records `success=0` with the reason populated and no
+entity id, an unknown tool name is still audited, and a `create_event_draft`
+call is audited even though it performs no database write. Full backend
+suite (97 tests) still passes.
+
+**Open question carried over, not resolved by this pass:** should this log
+stay AI-only, or become the start of a general mutation audit log covering
+human-driven admin actions too? Not decided — out of this ticket's scope,
+which only covers what the proposal asked for (AI-originated mutations).
+
+<details>
+<summary>Original ticket text</summary>
 
 **Priority:** Medium
 **Area:** `backend/migrations/` (new additive migration), all AI tool
@@ -306,6 +333,8 @@ general mutation audit log covering human-driven admin actions too? The
 proposal only asks for the former, but a log that only covers AI actions
 will look inconsistent next to human-driven changes with no trail at all.
 Flagging for a decision, not assuming scope beyond what's asked.
+
+</details>
 
 ---
 

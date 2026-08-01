@@ -21,10 +21,16 @@ the database:
 Any failure at any stage becomes a structured
 ``{"success": False, "reason": "..."}`` result instead of a raw exception,
 per the proposal's error-handling contract.
+
+Every dispatch — success or failure, including an unknown tool name or a
+schema-validation rejection — writes one row to ``ai_audit_log``
+(TICKET-4), so AI-generated mutations stay auditable independent of what
+stage rejected the call.
 """
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from typing import Any
 
@@ -53,17 +59,46 @@ def _format_validation_error(error: ValidationError) -> str:
     return "; ".join(problems)
 
 
+def _record_audit_log(
+    db: sqlite3.Connection,
+    tool_name: str,
+    arguments: dict[str, Any],
+    result: dict[str, Any],
+) -> None:
+    entity_id = None
+    if result["success"] and isinstance(result.get("result"), dict):
+        entity_id = result["result"].get("id")
+    db.execute(
+        """
+        INSERT INTO ai_audit_log (tool_name, arguments, success, entity_id, reason)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (
+            tool_name,
+            json.dumps(arguments),
+            1 if result["success"] else 0,
+            entity_id,
+            None if result["success"] else result.get("reason"),
+        ),
+    )
+    db.commit()
+
+
 def dispatch_tool_call(
     db: sqlite3.Connection, tool_name: str, arguments: dict[str, Any]
 ) -> dict[str, Any]:
+    def _finish(result: dict[str, Any]) -> dict[str, Any]:
+        _record_audit_log(db, tool_name, arguments, result)
+        return result
+
     if tool_name not in TOOL_EXECUTORS:
-        return {"success": False, "reason": f"Unknown tool '{tool_name}'"}
+        return _finish({"success": False, "reason": f"Unknown tool '{tool_name}'"})
 
     # Stage 1: schema validation.
     try:
         parsed_args = TOOL_ARG_MODELS[tool_name](**arguments)
     except ValidationError as error:
-        return {"success": False, "reason": _format_validation_error(error)}
+        return _finish({"success": False, "reason": _format_validation_error(error)})
 
     # Stage 3: permission validation (stage 2, business validation, is
     # reused from events.py inside the executor itself — see docstring).
@@ -73,8 +108,8 @@ def dispatch_tool_call(
     try:
         result = TOOL_EXECUTORS[tool_name](db, parsed_args)
     except ToolValidationError as error:
-        return {"success": False, "reason": error.reason}
+        return _finish({"success": False, "reason": error.reason})
     except HTTPException as error:
-        return {"success": False, "reason": str(error.detail)}
+        return _finish({"success": False, "reason": str(error.detail)})
 
-    return {"success": True, "result": result}
+    return _finish({"success": True, "result": result})

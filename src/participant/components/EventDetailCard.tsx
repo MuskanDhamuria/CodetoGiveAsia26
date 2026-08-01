@@ -27,6 +27,12 @@ export default function EventDetailCard() {
   const [event, setEvent] = useState<EventSummary | null>(null);
   const [isSignedUp, setIsSignedUp] = useState(false);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+  // Tracks the separate "is this participant already signed up" check below,
+  // distinct from `status` (which tracks loading the event itself) — see
+  // TICKET-11.
+  const [signupCheckStatus, setSignupCheckStatus] = useState<"idle" | "checking" | "ready" | "error">(
+    "idle",
+  );
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionPending, setActionPending] = useState(false);
 
@@ -50,19 +56,30 @@ export default function EventDetailCard() {
   useEffect(() => {
     if (!participant) {
       setIsSignedUp(false);
+      setSignupCheckStatus("idle");
       return;
     }
     let cancelled = false;
+    setSignupCheckStatus("checking");
     getMyEvents(participant.participantId)
       .then((response) => {
-        if (!cancelled) setIsSignedUp(response.items.some((item) => item.id === numericEventId));
+        if (cancelled) return;
+        setIsSignedUp(response.items.some((item) => item.id === numericEventId));
+        setSignupCheckStatus("ready");
       })
       .catch((error) => {
         if (cancelled) return;
+        setIsSignedUp(false);
         if (isStaleIdentityError(error)) {
           onIdentityInvalid();
+          setSignupCheckStatus("idle");
+          return;
         }
-        setIsSignedUp(false);
+        // A transient failure here (dropped network, backend blip) must not
+        // look identical to "you're genuinely not signed up" — that would
+        // let an already-registered participant see the "Sign up" button
+        // again with no indication anything went wrong. See TICKET-11.
+        setSignupCheckStatus("error");
       });
     return () => {
       cancelled = true;
@@ -95,7 +112,21 @@ export default function EventDetailCard() {
       await cancelRegistration(numericEventId, participant.participantId);
       setIsSignedUp(false);
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : "Couldn't cancel signup.");
+      if (error instanceof ApiError && error.status === 404) {
+        // The registration is already gone one way or another — either it
+        // was cancelled elsewhere, or the participant record itself was
+        // deleted (participations cascade-delete with it, so this 404s as
+        // "Registration not found" rather than "Participant not found" and
+        // isStaleIdentityError doesn't catch it). Either way there's
+        // nothing left to cancel, so drop back to "not signed up" instead
+        // of leaving a stale "Cancel my signup" button next to a raw
+        // "Registration not found" error. Distinguishing the two causes to
+        // also clear the saved identity in the participant-deleted case is
+        // still open — see docs/tickets.md TICKET-10/TICKET-7.
+        setIsSignedUp(false);
+      } else {
+        setActionError(error instanceof Error ? error.message : "Couldn't cancel signup.");
+      }
     } finally {
       setActionPending(false);
     }
@@ -125,7 +156,11 @@ export default function EventDetailCard() {
       {event.description && <p className="event-detail-description">{event.description}</p>}
 
       <div className="event-detail-action">
-        {isSignedUp ? (
+        {signupCheckStatus === "error" ? (
+          <p className="event-detail-error">
+            Couldn't check your registration status. Refresh the page to try again.
+          </p>
+        ) : isSignedUp ? (
           <>
             <p className="event-detail-confirmed">You're signed up for this event.</p>
             <button type="button" onClick={handleCancel} disabled={actionPending}>

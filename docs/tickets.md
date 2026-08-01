@@ -247,80 +247,32 @@ that message silently breaks the fallback. A stable `code` like
 
 ---
 
-## TICKET-10: Cancel-signup doesn't recover from a concurrently-invalidated identity
+~~TICKET-10: Cancel-signup doesn't recover from a concurrently-invalidated identity~~
+— **Partially done.** `handleCancel` (`EventDetailCard.tsx`) now catches a
+404 from `cancelRegistration` and resets to the not-signed-up state
+(`setIsSignedUp(false)`) instead of leaving a stale "Cancel my signup"
+button next to a raw "Registration not found" error — covers both "already
+cancelled elsewhere" and "participant record deleted" causes for the
+*visible UI state*.
 
-**Priority:** Low
-**Area:** Frontend (`src/participant/components/EventDetailCard.tsx`)
-
-### Problem
-
-`c30feaf` added stale-identity recovery (`isStaleIdentityError` → `onIdentityInvalid()`)
-to the `getMyEvents` status check and to `handleSignup`, but not to
-`handleCancel` (`EventDetailCard.tsx`'s `handleCancel`, around line 90) — it
-just does a generic `setActionError(error.message)`.
-
-This is reachable if a participant is deleted from the DB *after* the detail
-page has already loaded and shown "Cancel my signup" (identity was valid at
-mount, invalidated mid-session). `PATCH /events/{id}/participants/{id}`
-(`backend/api/routes/events.py`, `update_participation`) never checks that
-the participant still exists — it only looks up the `participations` row,
-and that row cascade-deletes with the participant
-(`participations.participant_id ... ON DELETE CASCADE` in
-`001_initial_schema.sql`). So the request 404s with "Registration not
-found," not "Participant not found," and the existing string-matched
-`isStaleIdentityError` wouldn't catch it even if it were checked here.
-
-### Acceptance criteria
-
-- `handleCancel`'s catch treats a 404 on this endpoint as "the registration
-  is already gone" — reset to the not-signed-up state (`setIsSignedUp(false)`,
-  and if the underlying cause is the participant no longer existing, also
-  `onIdentityInvalid()`) instead of leaving the UI showing a stale "Cancel"
-  button next to a confusing raw error string.
-- Decide whether `update_participation` should itself distinguish
-  "participant gone" vs. "registration gone" (see TICKET-7 re: a `code`
-  field) rather than collapsing both into one 404 message.
+Still open (per the ticket's own second acceptance-criteria bullet, which
+was a "decide" item, not yet decided): `update_participation`
+(`backend/api/routes/events.py`) still doesn't distinguish "participant
+gone" from "registration gone" in its 404, so `handleCancel` can't safely
+call `onIdentityInvalid()` only in the participant-gone case — doing so
+unconditionally would incorrectly log out a participant who simply
+cancelled from another device/tab. That still needs the TICKET-7 `code`
+field (or an equivalent signal) before it can be implemented correctly.
 
 ---
 
-## TICKET-11: Non-404 errors in the event-detail signup check are silently treated as "not signed up"
-
-**Priority:** Medium
-**Area:** Frontend (`src/participant/components/EventDetailCard.tsx`)
-
-### Problem
-
-In `EventDetailCard`, the effect that checks whether the current participant
-is already signed up for this event does:
-
-```ts
-getMyEvents(participant.participantId)
-  .then(...)
-  .catch((error) => {
-    if (isStaleIdentityError(error)) onIdentityInvalid();
-    setIsSignedUp(false);   // runs on every error, not just the stale-identity 404
-  });
-```
-
-A transient 500 or a dropped network request produces the exact same UI as
-"you're genuinely not registered" — an already-signed-up participant sees
-the "Sign up" button again, with no error banner and no retry. Contrast with
-`MyEventsList.tsx`, which correctly separates the stale-identity 404
-(`onIdentityInvalid()`) from a generic failure (`setStatus("error")`) —
-`EventDetailCard` only has the happy-path/stale-identity branches, not a
-generic-failure one, even though this same file does distinguish them
-correctly inside `handleSignup`.
-
-Worst case is low-severity (re-submitting sign-up on a backend blip is a
-harmless upsert), but the missing error state means a real backend problem
-is invisible to the user and indistinguishable from "you're not signed up."
-
-### Acceptance criteria
-
-- Give this effect the same three-way outcome `MyEventsList` already has:
-  success, stale-identity (reset to signed-out), and generic error (surface
-  something to the user — even reusing the existing `event-detail-status`
-  treatment — rather than silently coercing to "not signed up").
+~~TICKET-11: Non-404 errors in the event-detail signup check are silently treated as "not signed up"~~
+— **Done.** The `getMyEvents` signup-check effect in `EventDetailCard.tsx`
+now has the same three-way outcome `MyEventsList` already had: success,
+stale-identity (`onIdentityInvalid()`, no error shown), and a distinct
+generic-error state (new `signupCheckStatus` state) that renders "Couldn't
+check your registration status. Refresh the page to try again." in the
+action area instead of silently coercing to "Sign up" with no explanation.
 
 ---
 

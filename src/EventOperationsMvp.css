@@ -111,9 +111,13 @@
 .api-event-metadata dd { color: #25332a; font-size: .9rem; font-weight: 700; margin: 5px 0 0; }
 .api-event-workspace .event-operations-closed-notice { margin: -4px 0 0; }
 .api-event-workspace .event-operations-kanban > section { align-content: start; grid-auto-rows: max-content; min-height: 260px; }
+.api-event-workspace .event-operations-kanban > section.drag-over { background: #eaf3ec; border-color: #7aa087; box-shadow: inset 0 0 0 1px #7aa087; }
 .api-event-workspace .event-operations-kanban > section > h4::after { content: none; }
 .api-kanban-count { background: #e4e5e6; border-radius: 999px; color: #696969; font-size: .63rem; padding: 4px 7px; }
 .api-kanban-empty { align-self: start; color: #7c847e; font-size: .76rem; margin: 10px 2px; text-align: center; }
+.api-event-workspace .event-operations-task-card.draggable { cursor: grab; }
+.api-event-workspace .event-operations-task-card.draggable:active { cursor: grabbing; }
+.api-event-workspace .event-operations-task-card.dragging { opacity: .5; }
 .api-event-workspace .event-operations-task-actions { border-top: 1px solid #edf0ed; padding-top: 10px; }
 @media (max-width: 760px) { .api-event-metadata { grid-template-columns: 1fr; }.api-event-workspace-header { align-items: flex-start; flex-direction: column; }.api-event-workspace .event-operations-kanban > section { min-height: 220px; } }
 .event-operations-confirmation { background: #fff8ef; border: 1px solid #e7c995; border-radius: 10px; display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; padding: 16px; }.event-operations-confirmation strong { flex-basis: 100%; }.event-operations-confirmation p { color: #5e6961; flex-basis: 100%; margin: 0; }.event-operations-confirmation button { background: #edf2ed; border: 0; border-radius: 7px; cursor: pointer; font-weight: 700; padding: 9px 12px; }.event-operations-confirmation button:last-child { background: #8f2d24; color: #fff; }

@@ -42,6 +42,8 @@ export default function AdminEventsPage({ api = adminApi }: { api?: AdminApi }) 
   const [draft, setDraft] = useState<Draft>(emptyDraft)
   const [creating, setCreating] = useState(false)
   const [openEventId, setOpenEventId] = useState<number | null>(null)
+  const [draggedTaskId, setDraggedTaskId] = useState<number | null>(null)
+  const [dragOverStatus, setDragOverStatus] = useState<string | null>(null)
 
   useEffect(() => {
     let active = true
@@ -114,14 +116,9 @@ export default function AdminEventsPage({ api = adminApi }: { api?: AdminApi }) 
     }
   }
 
-  async function changeTaskStatus(event: EventDetail, taskId: number) {
+  async function updateTaskStatus(event: EventDetail, taskId: number, status: "incomplete" | "ongoing" | "done") {
     const task = event.tasks.find((item) => item.id === taskId)
-    if (!task) return
-    const status = task.status === "incomplete"
-      ? "ongoing"
-      : task.status === "ongoing"
-        ? "done"
-        : "incomplete"
+    if (!task || task.status === status) return
     try {
       const updated = await api.updateEventTask(event.id, task.id, { status })
       setEvents((current) => current.map((item) => item.id === event.id
@@ -131,6 +128,17 @@ export default function AdminEventsPage({ api = adminApi }: { api?: AdminApi }) 
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Unable to update Task.")
     }
+  }
+
+  function changeTaskStatus(event: EventDetail, taskId: number) {
+    const task = event.tasks.find((item) => item.id === taskId)
+    if (!task) return
+    const status = task.status === "incomplete"
+      ? "ongoing"
+      : task.status === "ongoing"
+        ? "done"
+        : "incomplete"
+    void updateTaskStatus(event, taskId, status)
   }
 
   if (loading) return <p role="status">Loading organizer events…</p>
@@ -168,11 +176,48 @@ export default function AdminEventsPage({ api = adminApi }: { api?: AdminApi }) 
                 const tasks = openEvent.tasks.filter((task) => task.status === status)
                 const label = status === "incomplete" ? "To do" : status === "ongoing" ? "In progress" : "Done"
                 return (
-                  <section className="event-operations-kanban-column" key={status}>
+                  <section
+                    aria-label={`${label} Tasks`}
+                    className={`event-operations-kanban-column${dragOverStatus === status ? " drag-over" : ""}`}
+                    key={status}
+                    onDragOver={(dragEvent) => {
+                      if (openEvent.status !== "open") return
+                      dragEvent.preventDefault()
+                      if (dragEvent.dataTransfer) dragEvent.dataTransfer.dropEffect = "move"
+                      setDragOverStatus(status)
+                    }}
+                    onDragLeave={() => setDragOverStatus((current) => current === status ? null : current)}
+                    onDrop={(dropEvent) => {
+                      if (openEvent.status !== "open") return
+                      dropEvent.preventDefault()
+                      const transferredId = Number(dropEvent.dataTransfer?.getData("text/plain"))
+                      const taskId = transferredId || draggedTaskId
+                      setDraggedTaskId(null)
+                      setDragOverStatus(null)
+                      if (taskId !== null) void updateTaskStatus(openEvent, taskId, status)
+                    }}
+                  >
                     <h4><span>{label}</span><span className="api-kanban-count">{tasks.length}</span></h4>
                     {!tasks.length && <p className="api-kanban-empty">No Tasks</p>}
                     {tasks.map((task) => (
-                      <article className="event-operations-task-card" key={task.id}>
+                      <article
+                        className={`event-operations-task-card${openEvent.status === "open" ? " draggable" : ""}${draggedTaskId === task.id ? " dragging" : ""}`}
+                        draggable={openEvent.status === "open"}
+                        key={task.id}
+                        onDragEnd={() => {
+                          setDraggedTaskId(null)
+                          setDragOverStatus(null)
+                        }}
+                        onDragStart={(dragEvent) => {
+                          if (openEvent.status !== "open") return
+                          setDraggedTaskId(task.id)
+                          if (dragEvent.dataTransfer) {
+                            dragEvent.dataTransfer.effectAllowed = "move"
+                            dragEvent.dataTransfer.setData("text/plain", String(task.id))
+                          }
+                        }}
+                        title={openEvent.status === "open" ? "Drag this Task to another status" : undefined}
+                      >
                         <div className="event-operations-card-heading">
                           <span className={`event-operations-phase event-operations-phase-${task.category.replace("_", "-")}`}>{task.category.replace("_", " ")}</span>
                           <span className="event-operations-task-date">{formatDate(task.due_at.slice(0, 10))}</span>

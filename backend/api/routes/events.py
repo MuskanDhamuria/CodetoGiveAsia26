@@ -85,6 +85,7 @@ def event_detail(db, event_id: int) -> EventDetail:
         description=event["description"],
         start_time=event["start_time"],
         end_time=event["end_time"],
+        event_time=event["start_time"],
         status=event["status"],
         beneficiary_id=event["beneficiary_id"],
         created_at=event["created_at"],
@@ -230,7 +231,7 @@ def list_events(
         """,
         [*params, pagination.limit, pagination.offset],
     ).fetchall()
-    items = [EventSummary(**dict(row)) for row in rows]
+    items = [EventSummary(**dict(row), event_time=row["start_time"]) for row in rows]
     return list_envelope(items, total, pagination)
 
 

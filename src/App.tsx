@@ -5,6 +5,7 @@ import EventCollectionPrototype from "./EventCollectionPrototype";
 import EventCreationPrototype from "./EventCreationPrototype";
 import EventTaskHierarchyPrototype from "./EventTaskHierarchyPrototype";
 import EventOperationsMvp from "./EventOperationsMvp";
+import ParticipantApp from "./participant/ParticipantApp";
 import AdminEventsPage from "./AdminEventsPage";
 import { adminApi, type AdminApi, type DashboardSummary, type EventDetail, type UpcomingDeadline } from "./admin-api";
 import VolunteerDirectory from "./VolunteerDirectory";
@@ -1025,6 +1026,7 @@ function AdminPanel() {
 export default function App() {
   return (
     <Routes>
+      <Route path="/participant/*" element={<ParticipantApp />} />
       <Route path="/" element={<LegacyRouteRedirect />} />
       <Route path="/admin" element={<AdminPanel />} />
       <Route path="/admin/*" element={<AdminPanel />} />

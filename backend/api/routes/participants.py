@@ -13,6 +13,7 @@ from backend.api.routes._common import (
     as_bool,
     list_envelope,
 )
+from backend.phone import InvalidPhoneNumberError, normalize_phone_number
 from backend.schema.participants import (
     ParticipantCreate,
     ParticipantOut,
@@ -60,6 +61,15 @@ def participation_model(db: sqlite3.Connection, event_id: int, participant_id: i
     )
 
 
+def _normalize_contact_number(contact_number: str | None) -> str | None:
+    if not contact_number:
+        return None
+    try:
+        return normalize_phone_number(contact_number)
+    except InvalidPhoneNumberError as error:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(error)) from error
+
+
 @router.get("/participants")
 def list_participants(
     db: Connection,
@@ -89,18 +99,42 @@ def list_participants(
     "/participants", response_model=ParticipantOut, status_code=status.HTTP_201_CREATED
 )
 def create_participant(payload: ParticipantCreate, db: Connection) -> ParticipantOut:
+    contact_number = _normalize_contact_number(payload.contact_number)
     try:
         row = db.execute(
             """
             INSERT INTO participants (name, contact_number, email)
             VALUES (?, ?, ?) RETURNING *
             """,
-            (payload.name, payload.contact_number, payload.email),
+            (payload.name, contact_number, payload.email),
         ).fetchone()
         db.commit()
     except sqlite3.IntegrityError as error:
         db.rollback()
         raise HTTPException(409, "Participant contact number or email already exists") from error
+    return participant_model(row)
+
+
+@router.get("/participants/lookup", response_model=ParticipantOut)
+def lookup_participant(
+    db: Connection,
+    contact_number: Annotated[str, Query(min_length=1)],
+) -> ParticipantOut:
+    """Exact, side-effect-free lookup by phone number.
+
+    Registered ahead of `/participants/{participant_id}` — "lookup" would
+    otherwise match that route's path pattern first and fail int validation
+    with a 422 instead of running this handler. Used to restore a
+    participant's local identity ("sign in") on a new device/browser without
+    registering them for an event as a side effect.
+    """
+
+    normalized = _normalize_contact_number(contact_number)
+    row = db.execute(
+        "SELECT * FROM participants WHERE contact_number = ?", (normalized,)
+    ).fetchone()
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Participant not found")
     return participant_model(row)
 
 
@@ -115,6 +149,8 @@ def update_participant(
 ) -> ParticipantOut:
     current = require_participant(db, participant_id)
     values = payload.model_dump(exclude_unset=True)
+    if "contact_number" in values:
+        values["contact_number"] = _normalize_contact_number(values["contact_number"])
     if not values:
         return participant_model(current)
     assignments = ", ".join(f"{field} = ?" for field in values)
@@ -157,7 +193,8 @@ def list_participant_events(
     ).fetchone()[0]
     rows = db.execute(
         f"""
-        SELECT e.id AS event_id, e.name, e.venue, e.event_date, e.status,
+        SELECT e.id, e.name, e.venue, e.description, e.event_date,
+               e.start_time, e.end_time, e.status,
                pt.rsvp_status, pt.attendance
         FROM participations pt JOIN events e ON e.id = pt.event_id
         WHERE {clause} ORDER BY e.event_date DESC LIMIT ? OFFSET ?
@@ -167,6 +204,7 @@ def list_participant_events(
     items = [
         {
             **dict(row),
+            "event_time": row["start_time"],
             "rsvp_status": bool(row["rsvp_status"]),
             "attendance": as_bool(row["attendance"]),
         }
@@ -183,10 +221,26 @@ def list_participant_events(
 def register_participant(
     event_id: int, payload: ParticipationCreate, db: Connection
 ) -> ParticipationOut:
-    if db.execute("SELECT 1 FROM events WHERE id = ?", (event_id,)).fetchone() is None:
+    event = db.execute("SELECT status FROM events WHERE id = ?", (event_id,)).fetchone()
+    if event is None:
         raise HTTPException(404, f"Event {event_id} was not found")
+    if event["status"] == "closed" and payload.rsvp_status:
+        raise HTTPException(409, "Registration is closed for this event")
     require_participant(db, payload.participant_id)
-    try:
+
+    # Upsert: re-registering after a cancelled RSVP (rsvp_status set to
+    # false via PATCH) must revive the same row rather than conflict with
+    # the (event_id, participant_id) unique constraint.
+    existing = db.execute(
+        "SELECT id FROM participations WHERE event_id = ? AND participant_id = ?",
+        (event_id, payload.participant_id),
+    ).fetchone()
+    if existing:
+        db.execute(
+            "UPDATE participations SET rsvp_status = ? WHERE id = ?",
+            (int(payload.rsvp_status), existing["id"]),
+        )
+    else:
         db.execute(
             """
             INSERT INTO participations (event_id, participant_id, rsvp_status)
@@ -194,10 +248,7 @@ def register_participant(
             """,
             (event_id, payload.participant_id, int(payload.rsvp_status)),
         )
-        db.commit()
-    except sqlite3.IntegrityError as error:
-        db.rollback()
-        raise HTTPException(409, "Participant is already registered for this event") from error
+    db.commit()
     return participation_model(db, event_id, payload.participant_id)
 
 

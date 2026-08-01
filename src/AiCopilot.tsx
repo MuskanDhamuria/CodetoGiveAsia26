@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
 import type { Page } from "./App";
 import { streamChat, type ChatMessage, type ToolResult } from "./ai-api";
 
@@ -157,7 +158,11 @@ export default function AiCopilot({ activePage }: { activePage: Page }) {
                 key={index}
                 className={`copilot-message copilot-message-${message.role}`}
               >
-                <p>{message.content}</p>
+                {message.role === "assistant" ? (
+                  <ReactMarkdown>{message.content}</ReactMarkdown>
+                ) : (
+                  <p>{message.content}</p>
+                )}
               </div>
             ) : null,
           )}

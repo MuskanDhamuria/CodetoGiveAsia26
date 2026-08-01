@@ -92,6 +92,33 @@ describe("AiCopilot chat (TICKET-5)", () => {
     await waitFor(() => expect(screen.getByText("OpenRouter request failed")).toBeTruthy())
   })
 
+  it("renders a markdown numbered list and bold text properly (TICKET-11)", async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      sseResponse([
+        {
+          event: "token",
+          data: {
+            delta:
+              "Here are the upcoming events:\n\n1. **Yoga at Tampines Hub** - open\n2. **Zumba at Boon Lay** - closed",
+          },
+        },
+        { event: "done", data: {} },
+      ]),
+    )
+
+    const user = await openPanel()
+    await user.type(screen.getByLabelText("Message Passion AI"), "List events")
+    await user.click(screen.getByRole("button", { name: "Send message" }))
+
+    await waitFor(() => expect(screen.getAllByRole("listitem")).toHaveLength(2))
+    const items = screen.getAllByRole("listitem")
+    expect(items[0].textContent).toBe("Yoga at Tampines Hub - open")
+    expect(items[1].textContent).toBe("Zumba at Boon Lay - closed")
+    // Bold renders as a real <strong>, not literal "**" markers.
+    expect(screen.getByText("Yoga at Tampines Hub").tagName).toBe("STRONG")
+    expect(screen.queryByText(/\*\*/)).toBeNull()
+  })
+
   it("sends prior turns as history alongside the next message", async () => {
     vi.mocked(fetch)
       .mockResolvedValueOnce(

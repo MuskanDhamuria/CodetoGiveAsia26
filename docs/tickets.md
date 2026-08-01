@@ -739,3 +739,51 @@ draft-approval cards should target `.suggestion-card` from this design
 rather than inventing new markup.
 
 </details>
+
+---
+
+~~TICKET-11: Render assistant chat replies as markdown~~
+— **Done.** Added `react-markdown` (new dependency — parses to React
+elements directly, never `dangerouslySetInnerHTML`, so a prompt-injected
+reply can't get raw HTML/script markup executed) and used it for assistant
+message content only in `AiCopilot.tsx`; user messages stay a plain `<p>`
+since there's no need to parse the organizer's own typed input as markdown.
+Added list/paragraph/bold styling under `.copilot-message` in `index.css`
+(`ul`/`ol`/`li` spacing — `react-markdown` had nothing to render into
+before). New test in `src/AiCopilot.chat.test.tsx` streams a numbered list
+with bold text and asserts real `<li>`/`<strong>` elements exist and no
+literal `**` markers survive. Verified live against the running backend
+with a real OpenRouter key: "List the upcoming events" now renders bolded
+event names and a real nested list instead of one run-on paragraph with
+visible asterisks. `npx tsc --noEmit` and `npm test -- --run` (95 tests)
+both pass.
+
+<details>
+<summary>Original ticket text</summary>
+
+**Priority:** Medium — visible formatting bug in the shipped TICKET-5 chat
+**Area:** `src/AiCopilot.tsx`
+
+### Problem
+
+The model (per TICKET-7's system prompt guidance to "keep responses
+concise") replies with markdown — numbered lists, `**bold**` — but
+`AiCopilot.tsx` renders assistant message content as raw text inside a
+single `<p>`. HTML collapses the model's newlines, so a numbered list
+comes out as one run-on paragraph with literal `**asterisks**` visible
+instead of bold text or list markup.
+
+### Scope
+
+- Render assistant message content through a markdown-to-React renderer
+  instead of a raw `<p>{content}</p>`. User messages stay plain text (no
+  need to parse the organizer's own input as markdown).
+- Must not use `dangerouslySetInnerHTML` — the content originates from an
+  LLM, and a prompt-injected reply that emitted raw `<script>`/`<img
+  onerror>` markup must not execute. Whatever renderer is chosen must parse
+  to React elements directly rather than an HTML string, so no HTML
+  passthrough is possible without a plugin deliberately opting into one.
+- Verify list/bold formatting renders correctly for a real streamed
+  response, not just a canned test string.
+
+</details>

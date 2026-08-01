@@ -2662,13 +2662,32 @@ button {
   padding: 16px;
 }
 
-.copilot-message p {
+.copilot-message p,
+.copilot-message ul,
+.copilot-message ol {
   color: #2b2b2b;
   font-size: 14px;
   font-weight: 600;
   letter-spacing: -0.02em;
   line-height: 1.45;
   margin: 0;
+}
+
+.copilot-message p + p,
+.copilot-message ul + p,
+.copilot-message ol + p,
+.copilot-message p + ul,
+.copilot-message p + ol {
+  margin-top: 10px;
+}
+
+.copilot-message ul,
+.copilot-message ol {
+  padding-left: 20px;
+}
+
+.copilot-message li + li {
+  margin-top: 4px;
 }
 
 .copilot-message-user {

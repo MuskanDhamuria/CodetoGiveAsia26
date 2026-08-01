@@ -43,6 +43,7 @@ class EventForParticipant(BaseModel):
     venue: str
     description: str | None
     event_date: str
+    event_time: str
     status: Literal["open", "closed"]
     rsvp_status: bool
     attendance: bool | None
@@ -222,6 +223,7 @@ def list_participant_events(
                 venue=row["venue"],
                 description=row["description"],
                 event_date=row["event_date"],
+                event_time=row["event_time"],
                 status=row["status"],
                 rsvp_status=bool(row["p_rsvp_status"]),
                 attendance=None if row["p_attendance"] is None else bool(row["p_attendance"]),

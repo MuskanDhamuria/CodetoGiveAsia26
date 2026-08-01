@@ -52,11 +52,14 @@ FastAPI + `sqlite3` structure:
 - `backend/api/routes/public.py` — `POST /public/events/{id}/rsvp`, the
   find-or-create-and-register endpoint the signup form and (eventually) the
   WhatsApp bot both use
-- `backend/migrations/002_add_event_description.sql` — additive, nullable
-  `events.description` column (the original schema had nowhere to put
-  "bring a water bottle"-style instructions). `backend/database.py` now
-  applies every unapplied migration in order, not just `001`, so this and
-  future migrations are picked up automatically.
+- `backend/migrations/002_add_event_description.sql` — adds `events.
+  description` (nullable — the original schema had nowhere to put "bring a
+  water bottle"-style instructions) and `events.event_time` (required,
+  "HH:MM"/"HH:MM:SS", `CHECK (time(event_time) IS NOT NULL)`, kept separate
+  from `event_date` so date-only filtering/sorting/calendar-matching is
+  unaffected). `backend/database.py` now applies every unapplied migration
+  in order, not just `001`, so this and future migrations are picked up
+  automatically.
 - `backend/seed_demo_data.py` — inserts a placeholder event template plus a
   handful of demo events, since organizer-side event/template creation isn't
   built yet and `events.event_template_id` is `NOT NULL`.
@@ -69,7 +72,7 @@ FastAPI + `sqlite3` structure:
   number is parsed using its own country code. An unparseable number 400s
   instead of being stored as-is.
 
-Tests: `python3 -m unittest discover -s backend/tests -v` (50 passing,
+Tests: `python3 -m unittest discover -s backend/tests -v` (55 passing,
 `unittest.TestCase` style to match the rest of the backend — no `pytest`
 dependency needed) and `npx vitest run` (45 passing).
 

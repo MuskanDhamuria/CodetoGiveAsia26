@@ -17,6 +17,15 @@ export function formatEventDateLong(dateStr: string): string {
   }).format(new Date(`${dateStr}T00:00:00Z`));
 }
 
+// "HH:MM" or "HH:MM:SS" -> "9:00 AM"
+export function formatEventTime(timeStr: string): string {
+  return new Intl.DateTimeFormat("en-SG", {
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: "UTC",
+  }).format(new Date(`2000-01-01T${timeStr}Z`));
+}
+
 // "YYYY-MM" -> "August 2026"
 export function formatMonthLabel(monthKey: string): string {
   return new Intl.DateTimeFormat("en-SG", {

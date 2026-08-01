@@ -21,6 +21,7 @@ DEMO_EVENTS = [
         "Tampines Hub",
         "Bring a water bottle and wear comfortable clothing.",
         "2026-08-15",
+        "09:00",
         "open",
     ),
     (
@@ -28,6 +29,7 @@ DEMO_EVENTS = [
         "Jurong Community Hall",
         "Bring your own phone if you have one; laptops will be provided.",
         "2026-08-22",
+        "14:00",
         "open",
     ),
     (
@@ -35,6 +37,7 @@ DEMO_EVENTS = [
         "Central Warehouse",
         "Please arrive 15 minutes early to queue.",
         "2026-08-29",
+        "10:30",
         "closed",
     ),
     (
@@ -42,6 +45,7 @@ DEMO_EVENTS = [
         "Marina Bay Community Plaza",
         "Free food and performances for all attendees.",
         "2026-07-09",
+        "18:00",
         "closed",
     ),
 ]
@@ -64,8 +68,8 @@ def seed(database_path: str | Path = DEFAULT_DATABASE_PATH) -> None:
             connection.executemany(
                 """
                 INSERT INTO events
-                    (event_template_id, name, venue, description, event_date, status)
-                VALUES (?, ?, ?, ?, ?, ?)
+                    (event_template_id, name, venue, description, event_date, event_time, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                 [(template_id, *event) for event in DEMO_EVENTS],
             )

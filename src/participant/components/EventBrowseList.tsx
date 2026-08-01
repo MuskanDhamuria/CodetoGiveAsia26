@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { getAllEvents, type EventSummary } from "../api/client";
-import { formatEventDate, formatMonthLabel, todayIso } from "../dateFormat";
+import { formatEventDate, formatEventTime, formatMonthLabel, todayIso } from "../dateFormat";
 import EventCalendarView from "./EventCalendarView";
 
 type View = "list" | "calendar";
@@ -43,7 +43,9 @@ function EventListItem({ event, showStatus }: { event: EventSummary; showStatus:
           <p>{event.venue}</p>
         </div>
         <div className="event-browse-meta">
-          <span>{formatEventDate(event.event_date)}</span>
+          <span>
+            {formatEventDate(event.event_date)} · {formatEventTime(event.event_time)}
+          </span>
           {showStatus && (
             <span className={`event-status status-${event.status}`}>
               {event.status === "open" ? "Registration open" : "Registration closed"}

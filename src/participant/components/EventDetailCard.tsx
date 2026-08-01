@@ -8,7 +8,7 @@ import {
   registerForEvent,
   type EventSummary,
 } from "../api/client";
-import { formatEventDateLong } from "../dateFormat";
+import { formatEventDateLong, formatEventTime } from "../dateFormat";
 import type { ParticipantOutletContext } from "../ParticipantApp";
 import SignupForm from "./SignupForm";
 
@@ -113,7 +113,9 @@ export default function EventDetailCard() {
       <dl className="event-detail-meta">
         <div>
           <dt>Date</dt>
-          <dd>{formatEventDateLong(event.event_date)}</dd>
+          <dd>
+            {formatEventDateLong(event.event_date)} at {formatEventTime(event.event_time)}
+          </dd>
         </div>
         <div>
           <dt>Venue</dt>

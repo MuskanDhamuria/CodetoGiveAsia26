@@ -184,9 +184,14 @@ Create event body:
   "event_template_id": 1,
   "name": "August Wellness Session",
   "venue": "Tampines Hub",
-  "event_date": "2026-08-09"
+  "event_date": "2026-08-09",
+  "event_time": "09:00"
 }
 ```
+
+`event_time` ("HH:MM", 24-hour) is required — kept as a separate column from
+`event_date` rather than merged into a datetime, so date-only filtering/
+sorting/calendar-matching is unaffected.
 
 Creating an event should copy the selected template's tasks and subtasks into
 `event_tasks` and `event_subtasks`. It should calculate every `due_at` from the

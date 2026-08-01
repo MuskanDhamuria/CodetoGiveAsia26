@@ -9,6 +9,7 @@ export type EventSummary = {
   venue: string;
   description: string | null;
   event_date: string;
+  event_time: string;
   status: EventStatus;
 };
 

@@ -29,6 +29,7 @@ const TODAY_EVENT = {
   venue: "Tampines Hub",
   description: "Bring a water bottle.",
   event_date: TODAY_ISO,
+  event_time: "09:00",
   status: "open",
 }
 
@@ -40,6 +41,7 @@ const NEXT_MONTH_EVENT = {
   venue: "Jurong Community Hall",
   description: "Bring your own phone.",
   event_date: isoDaysFromNow(40),
+  event_time: "14:00",
   status: "closed",
 }
 
@@ -49,6 +51,7 @@ const PAST_EVENT = {
   venue: "City Hall",
   description: "Thanks for coming.",
   event_date: isoDaysFromNow(-40),
+  event_time: "18:00",
   status: "closed",
 }
 

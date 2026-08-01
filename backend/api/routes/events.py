@@ -25,6 +25,7 @@ class EventOut(BaseModel):
     venue: str
     description: str | None
     event_date: str
+    event_time: str
     status: Literal["open", "closed"]
 
 
@@ -63,6 +64,7 @@ def _row_to_event(row: sqlite3.Row) -> EventOut:
         venue=row["venue"],
         description=row["description"],
         event_date=row["event_date"],
+        event_time=row["event_time"],
         status=row["status"],
     )
 

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useOutletContext } from "react-router-dom";
 import { ApiError, getMyEvents, type EventForParticipant } from "../api/client";
-import { formatEventDate } from "../dateFormat";
+import { formatEventDate, formatEventTime } from "../dateFormat";
 import type { ParticipantOutletContext } from "../ParticipantApp";
 
 function isStaleIdentityError(error: unknown): boolean {
@@ -69,7 +69,9 @@ export default function MyEventsList() {
                 <p>{event.venue}</p>
               </div>
               <div className="event-browse-meta">
-                <span>{formatEventDate(event.event_date)}</span>
+                <span>
+                  {formatEventDate(event.event_date)} · {formatEventTime(event.event_time)}
+                </span>
               </div>
             </Link>
           </li>

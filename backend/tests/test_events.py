@@ -1,3 +1,4 @@
+import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
@@ -32,13 +33,14 @@ class EventsEndpointTest(unittest.TestCase):
                 "name": "Wellness Morning",
                 "venue": "Tampines Hub",
                 "event_date": "2099-01-01",
+                "event_time": "09:00",
                 "status": "open",
             }
             fields.update(event_overrides)
             event_id = connection.execute(
                 """
-                INSERT INTO events (event_template_id, name, venue, event_date, status)
-                VALUES (:event_template_id, :name, :venue, :event_date, :status)
+                INSERT INTO events (event_template_id, name, venue, event_date, event_time, status)
+                VALUES (:event_template_id, :name, :venue, :event_date, :event_time, :status)
                 RETURNING id
                 """,
                 fields,
@@ -97,6 +99,30 @@ class EventsEndpointTest(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["description"], "Bring a water bottle.")
+
+    def test_get_event_includes_time_when_set(self) -> None:
+        event_id = self.insert_template_and_event(event_time="09:00")
+
+        response = self.client.get(f"/api/v1/events/{event_id}")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["event_time"], "09:00")
+
+    def test_event_time_is_required_at_the_db_level(self) -> None:
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.insert_template_and_event(event_time=None)
+
+    def test_event_time_must_be_a_valid_time_at_the_db_level(self) -> None:
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.insert_template_and_event(event_time="not a time")
+
+    def test_list_events_includes_time(self) -> None:
+        self.insert_template_and_event(name="Timed Event", event_time="14:30")
+
+        response = self.client.get("/api/v1/events")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["items"][0]["event_time"], "14:30")
 
     def test_register_participant_for_open_event(self) -> None:
         event_id = self.insert_template_and_event(status="open")

@@ -17,6 +17,7 @@ const OPEN_EVENT = {
   venue: "Tampines Hub",
   description: "Bring a water bottle.",
   event_date: "2099-01-01",
+  event_time: "09:00",
   status: "open",
 }
 

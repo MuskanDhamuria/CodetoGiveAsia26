@@ -1,8 +1,21 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { todayIso } from "./dateFormat";
+import { formatEventTime, todayIso } from "./dateFormat";
 
 afterEach(() => {
   vi.useRealTimers();
+});
+
+describe("formatEventTime", () => {
+  it("formats an HH:MM time", () => {
+    expect(formatEventTime("09:00")).toBe("9:00 am");
+  });
+
+  it("returns null instead of formatting garbage when the event has no start_time", () => {
+    // events.start_time is a nullable column — organizer-created events can
+    // omit a time entirely. Passing null straight to Intl.DateTimeFormat
+    // used to build an Invalid Date and throw, crashing the whole list.
+    expect(formatEventTime(null)).toBeNull();
+  });
 });
 
 describe("todayIso", () => {

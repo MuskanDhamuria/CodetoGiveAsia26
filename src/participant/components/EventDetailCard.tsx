@@ -177,7 +177,8 @@ export default function EventDetailCard() {
         <div>
           <dt>Date</dt>
           <dd>
-            {formatEventDateLong(event.event_date)} at {formatEventTime(event.event_time)}
+            {formatEventDateLong(event.event_date)}
+            {formatEventTime(event.event_time) && <> at {formatEventTime(event.event_time)}</>}
           </dd>
         </div>
         <div>

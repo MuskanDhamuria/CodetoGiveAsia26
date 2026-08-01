@@ -17,8 +17,11 @@ export function formatEventDateLong(dateStr: string): string {
   }).format(new Date(`${dateStr}T00:00:00Z`));
 }
 
-// "HH:MM" or "HH:MM:SS" -> "9:00 AM"
-export function formatEventTime(timeStr: string): string {
+// "HH:MM" or "HH:MM:SS" -> "9:00 AM"; events without a set time have no
+// start_time in the database, so this returns null rather than formatting
+// garbage.
+export function formatEventTime(timeStr: string | null): string | null {
+  if (!timeStr) return null;
   return new Intl.DateTimeFormat("en-SG", {
     hour: "numeric",
     minute: "2-digit",

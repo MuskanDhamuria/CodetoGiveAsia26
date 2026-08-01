@@ -63,21 +63,25 @@ export default function MyEventsList() {
         <p className="event-browse-status">You haven't signed up for any events yet.</p>
       )}
       <ul className="event-browse-list">
-        {events.map((event) => (
-          <li key={event.id}>
-            <Link to={`/participant/events/${event.id}`} className="event-browse-card">
-              <div>
-                <h2>{event.name}</h2>
-                <p>{event.venue}</p>
-              </div>
-              <div className="event-browse-meta">
-                <span>
-                  {formatEventDate(event.event_date)} · {formatEventTime(event.event_time)}
-                </span>
-              </div>
-            </Link>
-          </li>
-        ))}
+        {events.map((event) => {
+          const time = formatEventTime(event.event_time);
+          return (
+            <li key={event.id}>
+              <Link to={`/participant/events/${event.id}`} className="event-browse-card">
+                <div>
+                  <h2>{event.name}</h2>
+                  <p>{event.venue}</p>
+                </div>
+                <div className="event-browse-meta">
+                  <span>
+                    {formatEventDate(event.event_date)}
+                    {time && <> · {time}</>}
+                  </span>
+                </div>
+              </Link>
+            </li>
+          );
+        })}
       </ul>
     </section>
   );

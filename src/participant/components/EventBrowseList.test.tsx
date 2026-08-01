@@ -102,6 +102,22 @@ async function clickUntilLinkVisible(user: ReturnType<typeof userEvent.setup>, b
   }
 }
 
+describe("Events without a start_time (organizer-created, nullable column)", () => {
+  it("renders an event with a null event_time instead of crashing", async () => {
+    // Regression test: events.start_time/end_time are nullable, and
+    // organizer-created events routinely leave them unset. formatEventTime
+    // used to build an Invalid Date from null and throw, which crashed
+    // <EventListItem> and blanked the whole participant portal.
+    const NO_TIME_EVENT = { ...TODAY_EVENT, event_time: null }
+    mockFetch([NO_TIME_EVENT])
+    renderBrowse()
+
+    expect(await screen.findByText("Wellness Morning")).toBeTruthy()
+    // No time to show, and no dangling " · " separator either.
+    expect(screen.queryByText(/·/)).toBeNull()
+  })
+})
+
 describe("List view", () => {
   it("has no Upcoming/Past toggle — only List/Calendar", async () => {
     mockFetch([TODAY_EVENT])

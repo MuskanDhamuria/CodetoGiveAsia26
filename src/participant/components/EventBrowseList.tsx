@@ -35,6 +35,7 @@ function startOfCurrentMonth(): Date {
 }
 
 function EventListItem({ event, showStatus }: { event: EventSummary; showStatus: boolean }) {
+  const time = formatEventTime(event.event_time);
   return (
     <li>
       <Link to={`events/${event.id}`} className="event-browse-card">
@@ -44,7 +45,8 @@ function EventListItem({ event, showStatus }: { event: EventSummary; showStatus:
         </div>
         <div className="event-browse-meta">
           <span>
-            {formatEventDate(event.event_date)} · {formatEventTime(event.event_time)}
+            {formatEventDate(event.event_date)}
+            {time && <> · {time}</>}
           </span>
           {showStatus && (
             <span className={`event-status status-${event.status}`}>

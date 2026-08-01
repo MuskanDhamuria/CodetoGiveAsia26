@@ -265,3 +265,36 @@ describe("Sign in", () => {
     expect(screen.queryByRole("link", { name: "Sign in" })).toBeNull()
   })
 })
+
+describe("Sign out", () => {
+  it("clears the stored identity and shows the Sign in link again", async () => {
+    // Regression test: restarting the backend with a fresh db while the
+    // browser still has an old participant in localStorage left no way to
+    // clear it short of clearing site data by hand.
+    localStorage.setItem(
+      "p2s.participant",
+      JSON.stringify({
+        participantId: 42,
+        name: "Returning Alice",
+        contactNumber: "+6591234567",
+        email: null,
+      }),
+    )
+
+    const user = userEvent.setup()
+    render(
+      <MemoryRouter initialEntries={["/participant"]}>
+        <Routes>
+          <Route path="/participant/*" element={<ParticipantApp />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    await user.click(await screen.findByRole("button", { name: /Signed in as Returning Alice/ }))
+    await user.click(screen.getByRole("menuitem", { name: "Sign out" }))
+
+    expect(screen.queryByText(/Signed in as/)).toBeNull()
+    expect(await screen.findByRole("link", { name: "Sign in" })).toBeTruthy()
+    expect(localStorage.getItem("p2s.participant")).toBeNull()
+  })
+})

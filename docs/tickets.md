@@ -347,3 +347,15 @@ TICKET-12 (see above). `SignupForm.tsx` now stores
 raw `contactNumber.trim()` form value, so a participant's
 `StoredParticipant.contactNumber` is normalized the same way whether they
 most recently signed up or signed in via `SignInForm`.
+
+---
+
+~~TICKET-16: No test coverage for cancel-signup, repeat-signup, or the closed-event render branch~~
+— **Done.** New `EventDetailCard.test.tsx` covers: a successful cancel
+returning to the "Sign up" state; cancel recovering cleanly from a 404
+("registration already gone," TICKET-10) instead of leaving a stale Cancel
+button; a known, already-signed-in participant registering for a *second*
+event directly (no `SignupForm`); the closed-event message rendering with
+no signup affordance for a visitor with no existing RSVP; and the
+generic-error state on the signup check (TICKET-11) rendering instead of
+silently showing "Sign up".

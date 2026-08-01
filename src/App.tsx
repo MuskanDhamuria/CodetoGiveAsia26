@@ -1,9 +1,11 @@
 import { useState } from "react";
+import { Routes, Route } from "react-router-dom";
 import AiCopilot from "./AiCopilot";
 import EventCollectionPrototype from "./EventCollectionPrototype";
 import EventCreationPrototype from "./EventCreationPrototype";
 import EventTaskHierarchyPrototype from "./EventTaskHierarchyPrototype";
 import EventOperationsMvp from "./EventOperationsMvp";
+import ParticipantApp from "./participant/ParticipantApp";
 
 export type Page = "home" | "dashboard" | "events" | "volunteers" | "ai";
 
@@ -974,6 +976,15 @@ function PlaceholderPage({ title }: { title: string }) {
 }
 
 export default function App() {
+  return (
+    <Routes>
+      <Route path="/participant/*" element={<ParticipantApp />} />
+      <Route path="*" element={<LegacyApp />} />
+    </Routes>
+  );
+}
+
+function LegacyApp() {
   const [activePage, setActivePage] = useState<Page>(readInitialPage);
   const [openEventIndex, setOpenEventIndex] = useState<number | null>(null);
   const [openVolunteerIndex, setOpenVolunteerIndex] = useState<number | null>(

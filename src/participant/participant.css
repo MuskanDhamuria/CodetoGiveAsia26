@@ -1,0 +1,55 @@
+.participant-shell { background: #f6f7f5; color: #172018; min-height: 100vh; }
+.participant-header { align-items: center; background: #fff; border-bottom: 1px solid #e4e8e4; display: flex; flex-wrap: wrap; gap: 16px; justify-content: space-between; padding: 20px clamp(20px, 5vw, 64px); }
+.participant-header p { color: #44765b; font-size: .78rem; font-weight: 800; letter-spacing: .08em; margin: 0; text-transform: uppercase; }
+.participant-header h1 { margin: 4px 0 0; }
+.participant-nav { display: flex; gap: 6px; }
+.participant-nav a { border-radius: 8px; color: #405146; font-weight: 700; padding: 8px 12px; text-decoration: none; }
+.participant-nav a.active { background: #edf5ee; color: #246b45; }
+.participant-badge { background: #edf5ee; border-radius: 999px; color: #246b45; font-size: .8rem; font-weight: 700; padding: 8px 14px; }
+.participant-main { margin: 0 auto; max-width: 900px; padding: 32px clamp(20px, 5vw, 64px) 80px; }
+
+.event-browse-tabs { display: flex; gap: 4px; margin-bottom: 20px; }
+.event-browse-tabs button { background: #edf2ed; border: 0; border-radius: 8px; color: #466052; cursor: pointer; font-weight: 700; padding: 9px 16px; }
+.event-browse-tabs button.active { background: #246b45; color: #fff; }
+.event-browse-status { color: #5e6961; padding: 24px 0; }
+
+.event-browse-list { display: grid; gap: 12px; list-style: none; margin: 0; padding: 0; }
+.event-browse-card { background: #fff; border: 1px solid #e4e8e4; border-radius: 12px; box-shadow: 0 6px 18px rgba(24, 57, 38, .05); display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; padding: 18px 20px; text-decoration: none; }
+.event-browse-card:hover { border-color: #b9c9bd; }
+.event-browse-card h2 { color: #172018; font-size: 1.05rem; margin: 0; }
+.event-browse-card p { color: #5e6961; margin: 4px 0 0; }
+.event-browse-meta { align-items: flex-end; display: flex; flex-direction: column; gap: 8px; }
+.event-browse-meta > span:first-child { color: #405146; font-weight: 700; }
+.event-status { border-radius: 999px; font-size: .72rem; font-weight: 800; padding: 5px 10px; text-transform: uppercase; }
+.event-status.status-open { background: #e8f2e9; color: #246b45; }
+.event-status.status-closed { background: #f1f1f1; color: #666; }
+
+.event-detail { background: #fff; border: 1px solid #e4e8e4; border-radius: 16px; box-shadow: 0 10px 24px rgba(24, 57, 38, .06); max-width: 620px; padding: 28px; }
+.event-detail header p { color: #44765b; font-size: .78rem; font-weight: 800; letter-spacing: .08em; margin: 0; text-transform: uppercase; }
+.event-detail h1 { margin: 6px 0 20px; }
+.event-detail-meta { display: grid; gap: 12px; margin: 0 0 20px; }
+.event-detail-meta div { border-bottom: 1px solid #e4e8e4; display: flex; justify-content: space-between; padding-bottom: 10px; }
+.event-detail-meta dt { color: #68746b; }
+.event-detail-meta dd { font-weight: 700; margin: 0; }
+.event-detail-description { color: #405146; line-height: 1.5; }
+.event-detail-action { border-top: 1px solid #e4e8e4; margin-top: 20px; padding-top: 20px; }
+.event-detail-action > button { background: #246b45; border: 0; border-radius: 8px; color: #fff; cursor: pointer; font-weight: 700; padding: 11px 18px; }
+.event-detail-action > button:disabled { opacity: .55; }
+.event-detail-confirmed { color: #246b45; font-weight: 700; margin: 0 0 12px; }
+.event-detail-closed { color: #8a322b; font-weight: 700; }
+.event-detail-error { color: #b3261e; font-weight: 700; margin-top: 10px; }
+.event-detail-status { color: #5e6961; padding: 40px 0; text-align: center; }
+
+.signup-form { display: grid; gap: 12px; max-width: 360px; }
+.signup-form > p { color: #5e6961; margin: 0 0 4px; }
+.signup-form label { color: #28362d; display: grid; font-weight: 700; gap: 6px; }
+.signup-form input { border: 1px solid #b9c9bd; border-radius: 8px; font: inherit; padding: 10px; }
+.signup-form button { background: #246b45; border: 0; border-radius: 8px; color: #fff; cursor: pointer; font-weight: 700; margin-top: 4px; padding: 11px 18px; }
+.signup-form button:disabled { opacity: .55; }
+.signup-form-error { color: #b3261e; font-weight: 700; margin: 0; }
+
+@media (max-width: 640px) {
+  .participant-header { align-items: flex-start; flex-direction: column; }
+  .event-browse-card { flex-direction: column; }
+  .event-browse-meta { align-items: flex-start; }
+}

@@ -34,10 +34,18 @@ export default defineConfig(({ mode }) => {
       port: parseInt(process.env.PORT || '8443'),
       strictPort: true,
       watch: { ignored: ['**/.figma/**'] },
+      proxy: {
+        '/api': 'http://localhost:8000',
+      },
     },
     preview: {
       host: '0.0.0.0',
       port: parseInt(process.env.PORT || '8443'),
+    },
+    test: {
+      // jsdom needs a non-opaque origin for window.localStorage to be defined.
+      environmentOptions: { jsdom: { url: 'http://localhost:8443' } },
+      setupFiles: ['./src/test/setup-jsdom-storage.ts'],
     },
   }
 })

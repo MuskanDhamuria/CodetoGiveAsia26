@@ -11,7 +11,8 @@ import sqlite3
 from pathlib import Path
 
 
-SCHEMA_PATH = Path(__file__).with_name("migrations") / "001_initial_schema.sql"
+MIGRATIONS_DIR = Path(__file__).with_name("migrations")
+SCHEMA_PATH = MIGRATIONS_DIR / "001_initial_schema.sql"
 DEFAULT_DATABASE_PATH = Path(__file__).with_name("data") / "passion_to_serve.sqlite3"
 
 
@@ -24,14 +25,37 @@ def connect(database_path: str | Path) -> sqlite3.Connection:
     return connection
 
 
+def _migration_version(migration_path: Path) -> int:
+    return int(migration_path.name.split("_", 1)[0])
+
+
 def initialize_database(database_path: str | Path = DEFAULT_DATABASE_PATH) -> Path:
-    """Create the database and apply the initial schema idempotently."""
+    """Create the database and apply every migration that hasn't run yet.
+
+    Each migration file inserts its own row into `schema_migrations`, so this
+    just needs to skip files whose version is already recorded there.
+    """
 
     path = Path(database_path)
     path.parent.mkdir(parents=True, exist_ok=True)
 
     with connect(path) as connection:
-        connection.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS schema_migrations (
+                version INTEGER PRIMARY KEY,
+                name TEXT NOT NULL,
+                applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        applied_versions = {
+            row[0] for row in connection.execute("SELECT version FROM schema_migrations")
+        }
+        for migration_path in sorted(MIGRATIONS_DIR.glob("*.sql")):
+            if _migration_version(migration_path) in applied_versions:
+                continue
+            connection.executescript(migration_path.read_text(encoding="utf-8"))
 
     return path
 

@@ -1,0 +1,84 @@
+// @vitest-environment jsdom
+import { cleanup, render, screen } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
+import { MemoryRouter, Route, Routes } from "react-router-dom"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import ParticipantApp from "./ParticipantApp"
+
+afterEach(() => {
+  cleanup()
+  localStorage.clear()
+  vi.unstubAllGlobals()
+})
+
+const OPEN_EVENT = {
+  id: 1,
+  name: "Wellness Morning",
+  venue: "Tampines Hub",
+  description: "Bring a water bottle.",
+  event_date: "2099-01-01",
+  status: "open",
+}
+
+function jsonResponse(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  })
+}
+
+function mockFetch() {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.toString()
+      const method = init?.method ?? "GET"
+
+      if (url.startsWith("/api/v1/events?date_from=") && method === "GET") {
+        return jsonResponse({ items: [OPEN_EVENT], total: 1, limit: 100, offset: 0 })
+      }
+      if (url === "/api/v1/events/1" && method === "GET") {
+        return jsonResponse(OPEN_EVENT)
+      }
+      if (url === "/api/v1/public/events/1/rsvp" && method === "POST") {
+        return jsonResponse({ participant_id: 42, event_id: 1, rsvp_status: true }, 201)
+      }
+      if (url === "/api/v1/participants/42/events?limit=100" && method === "GET") {
+        return jsonResponse({
+          items: [{ ...OPEN_EVENT, rsvp_status: true, attendance: null }],
+          total: 1,
+          limit: 100,
+          offset: 0,
+        })
+      }
+      throw new Error(`Unhandled request in test: ${method} ${url}`)
+    }),
+  )
+}
+
+beforeEach(() => {
+  mockFetch()
+})
+
+describe("Participant signup journey", () => {
+  it("browses to an event and signs up as a first-time participant", async () => {
+    const user = userEvent.setup()
+    render(
+      <MemoryRouter initialEntries={["/participant"]}>
+        <Routes>
+          <Route path="/participant/*" element={<ParticipantApp />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByText("Wellness Morning")).toBeTruthy()
+    await user.click(screen.getByRole("link", { name: /Wellness Morning/ }))
+
+    expect(await screen.findByText("Bring a water bottle.")).toBeTruthy()
+    await user.type(screen.getByLabelText("Name"), "Alice")
+    await user.type(screen.getByLabelText("Phone number"), "+6591234567")
+    await user.click(screen.getByRole("button", { name: "Sign up" }))
+
+    expect(await screen.findByText("You're signed up for this event.")).toBeTruthy()
+  })
+})

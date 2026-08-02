@@ -53,6 +53,32 @@ describe("AiCopilot chat (TICKET-5)", () => {
     })
   })
 
+  it("clears the conversation via the Clear chat button (TICKET-36)", async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      sseResponse([
+        { event: "token", data: { delta: "Hello there" } },
+        { event: "done", data: {} },
+      ]),
+    )
+
+    const user = await openPanel()
+    expect(screen.queryByRole("button", { name: "Clear chat" })).toBeNull()
+
+    await user.type(screen.getByLabelText("Message Passion AI"), "Hi")
+    await user.click(screen.getByRole("button", { name: "Send message" }))
+    await waitFor(() => expect(screen.getByText("Hello there")).toBeTruthy())
+
+    await user.click(screen.getByRole("button", { name: "Clear chat" }))
+
+    expect(screen.queryByText("Hello there")).toBeNull()
+    expect(screen.queryByText("Hi")).toBeNull()
+    expect(screen.queryByRole("button", { name: "Clear chat" })).toBeNull()
+    // Back to the empty-conversation starter-prompt state.
+    expect(
+      screen.getByText("Ask me to help manage an event — I'll show you a draft before creating anything."),
+    ).toBeTruthy()
+  })
+
   it("suppresses the generic status line once the model's own text narrates the result", async () => {
     // create_event_draft is exercised separately in AiCopilot.draft.test.tsx
     // (TICKET-6) since a successful draft renders a suggestion-card instead

@@ -2608,6 +2608,12 @@ button {
   margin: 0;
 }
 
+.copilot-header-actions {
+  align-items: flex-start;
+  display: flex;
+  gap: 8px;
+}
+
 .copilot-header button {
   background: #f1f2f4;
   border-radius: 9999px;

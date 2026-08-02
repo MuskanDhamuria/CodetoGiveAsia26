@@ -2177,3 +2177,70 @@ that ticket's list of which tools count as "mutating" is the same list
 this one should trigger a refresh from.
 
 </details>
+
+---
+
+~~TICKET-36: Frontend — button to clear the AI chat history~~
+— **Done.** A "Clear chat" button in `.copilot-header-actions` (new wrapper
+div alongside the existing close button, `src/AiCopilot.tsx`) renders only
+when `conversation.length > 0`. `clearConversation()` resets `conversation`,
+`toolActivity`, `errorMessage`, and any open `draftPreview`/`isEditingDraft`
+back to the panel's fresh-mount state. `sendMessage` now creates an
+`AbortController` per turn (`streamAbortRef`), passed as `streamChat`'s
+existing (previously unused) `signal` parameter — `clearConversation` calls
+`streamAbortRef.current?.abort()` first so an in-flight stream can't keep
+writing tokens into state after the clear; the resulting `AbortError` is
+caught and swallowed rather than surfaced as `errorMessage`. New CSS
+`.copilot-header-actions` (`src/index.css`) groups the two header buttons
+with `display: flex; gap: 8px`, since `.copilot-header`'s existing
+`justify-content: space-between` only accounted for one button on the
+right before. New test in `src/AiCopilot.chat.test.tsx` sends a message,
+waits for the streamed reply, clicks Clear chat, and asserts the
+conversation and button both disappear and the panel returns to the
+empty-conversation starter-prompt state. Verified live in-browser: sending
+a message shows the Clear chat button, clicking it returns the panel to
+the starter-prompt/suggestion-chips view with the button gone again.
+`npx tsc --noEmit` (no new errors — the pre-existing `src/imports/pasted_text/`
+errors are unrelated) and `npm test -- --run` (112 tests across 14 files)
+both pass.
+
+<details>
+<summary>Original ticket text</summary>
+
+## TICKET-36: Frontend — button to clear the AI chat history
+
+**Priority:** Low
+**Area:** `src/AiCopilot.tsx`
+
+### Problem
+
+`AiCopilot.tsx`'s `conversation`/`toolActivity` state is in-memory only for
+the lifetime of the mounted panel (TICKET-10's deliberate choice, no
+`localStorage`) — but there is currently no way for the organizer to reset
+it short of a full page reload, which per TICKET-35 also blows away
+whatever page state a mutation just refreshed. A long conversation with
+several draft/cancel/lookup turns has no way to be cleared and restarted
+cleanly.
+
+### Scope
+
+- A "Clear chat" control in `.copilot-header` (alongside the existing close
+  button), visible only when there's something to clear (non-empty
+  `conversation`).
+- Clicking it resets `conversation`, `toolActivity`, and any open
+  `draftPreview` suggestion card back to the panel's initial empty state —
+  same shape as a freshly mounted panel, not a page reload.
+- Any in-flight stream (`isStreaming`) should be aborted (existing
+  `AbortController`/`signal` plumbing in `sendMessage`, if present) rather
+  than left to write into state after the clear.
+- No confirmation dialog needed — clearing chat history isn't a destructive
+  action against any persisted data (nothing here is written to the
+  database or `localStorage`).
+
+### Out of scope
+
+Any backend change — `ai_audit_log` (TICKET-4) is unaffected; this only
+clears the frontend's transient conversation view, not the audit trail of
+tool calls already made.
+
+</details>

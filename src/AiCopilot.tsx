@@ -89,6 +89,7 @@ export default function AiCopilot({
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const wasOpenRef = useRef(false);
   const chatRef = useRef<HTMLDivElement>(null);
+  const streamAbortRef = useRef<AbortController | null>(null);
 
   // The FAB and the close button aren't mounted at the same time (each only
   // renders for its own `open` state), so focus has to move after the swap
@@ -145,8 +146,11 @@ export default function AiCopilot({
     setErrorMessage(null);
     setIsStreaming(true);
 
+    const abortController = new AbortController();
+    streamAbortRef.current = abortController;
+
     try {
-      for await (const event of streamChat(historyForApi)) {
+      for await (const event of streamChat(historyForApi, abortController.signal)) {
         if (event.type === "token") {
           setConversation((previous) => {
             const next = [...previous];
@@ -188,10 +192,22 @@ export default function AiCopilot({
         }
       }
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Something went wrong.");
+      if (!(error instanceof DOMException && error.name === "AbortError")) {
+        setErrorMessage(error instanceof Error ? error.message : "Something went wrong.");
+      }
     } finally {
       setIsStreaming(false);
+      streamAbortRef.current = null;
     }
+  }
+
+  function clearConversation() {
+    streamAbortRef.current?.abort();
+    setConversation([]);
+    setToolActivity([]);
+    setErrorMessage(null);
+    setDraftPreview(null);
+    setIsEditingDraft(false);
   }
 
   // TICKET-6: only fires on explicit organizer confirmation — calls
@@ -267,9 +283,16 @@ export default function AiCopilot({
             <p>{pageContext[activePage]}</p>
             <h2>AI Copilot</h2>
           </div>
-          <button ref={closeButtonRef} type="button" onClick={close} aria-label="Close AI Copilot">
-            Close
-          </button>
+          <div className="copilot-header-actions">
+            {conversation.length > 0 && (
+              <button type="button" onClick={clearConversation}>
+                Clear chat
+              </button>
+            )}
+            <button ref={closeButtonRef} type="button" onClick={close} aria-label="Close AI Copilot">
+              Close
+            </button>
+          </div>
         </header>
 
         <div className="copilot-chat" aria-live="polite" ref={chatRef}>

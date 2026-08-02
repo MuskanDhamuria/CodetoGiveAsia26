@@ -307,6 +307,18 @@ export function listEventParticipants(
   return getJson(`/events/${eventId}/participants`)
 }
 
+export function updateParticipation(
+  eventId: number,
+  participantId: number,
+  body: { rsvp_status?: boolean; attendance?: boolean | null },
+): Promise<Participation> {
+  return fetch(`${API_BASE}/events/${eventId}/participants/${participantId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  }).then((response) => handle<Participation>(response))
+}
+
 export function listEventRoles(eventId: number): Promise<Role[]> {
   return getJson(`/events/${eventId}/roles`)
 }

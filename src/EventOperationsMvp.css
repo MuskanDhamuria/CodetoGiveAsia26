@@ -313,6 +313,28 @@
 .event-volunteer-toolbar label { width: min(290px, 100%); }
 .event-volunteer-toolbar input { background: #fff; border: 1px solid #cdd8cf; border-radius: 7px; color: #26362b; font: inherit; font-size: .8rem; padding: 9px 10px; width: 100%; }
 
+.event-attendance-workspace { display: grid; gap: 18px; }
+.event-attendance-readonly-notice { background: #fef4e6; border: 1px solid #f0d9ab; border-radius: 8px; color: #8a5a10; font-size: .78rem; margin: 0; padding: 10px 14px; }
+.event-attendance-section { border: 1px solid #e1e7e2; border-radius: 10px; overflow: hidden; }
+.event-attendance-section > header { align-items: center; background: #f8faf8; border-bottom: 1px solid #e4e9e5; display: flex; gap: 18px; justify-content: space-between; padding: 13px 16px; }
+.event-attendance-section > header h3, .event-attendance-section > header p { margin: 0; }
+.event-attendance-section > header h3 { font-size: .92rem; }
+.event-attendance-section > header p { color: #68746b; font-size: .72rem; margin-top: 3px; }
+.event-attendance-empty { color: #68746b; font-size: .78rem; margin: 0; padding: 14px 16px; }
+.event-attendance-list { display: grid; }
+.event-attendance-row { align-items: center; border-top: 1px solid #edf0ed; display: grid; gap: 16px; grid-template-columns: minmax(180px, 1.3fr) minmax(120px, .6fr) auto; padding: 14px 16px; }
+.event-attendance-row:first-child { border-top: 0; }
+.event-attendance-who { display: grid; gap: 4px; min-width: 0; }
+.event-attendance-who > strong { color: #26342b; font-size: .86rem; }
+.event-attendance-who > span { color: #68746b; font-size: .7rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.event-attendance-actions { align-items: center; display: flex; gap: 7px; }
+.event-attendance-actions button { border-radius: 7px; cursor: pointer; font: inherit; font-size: .72rem; font-weight: 800; padding: 8px 10px; }
+.event-attendance-actions button:disabled { cursor: not-allowed; opacity: .5; }
+.event-attendance-present { background: #e7f4ea; border: 1px solid #b9dcc0; color: #1f6b3a; }
+.event-attendance-absent { background: #fdecec; border: 1px solid #f0bdbd; color: #a3372f; }
+.event-attendance-clear { background: #f3f4f2; border: 1px solid #d8ddd9; color: #55625a; }
+@media (max-width: 760px) { .event-attendance-row { align-items: start; grid-template-columns: 1fr; } .event-attendance-actions { flex-wrap: wrap; } }
+
 .event-volunteer-requests, .event-volunteer-allocation { border: 1px solid #e1e7e2; border-radius: 10px; overflow: hidden; }
 .event-volunteer-requests > header, .event-volunteer-allocation > header { align-items: center; background: #f8faf8; border-bottom: 1px solid #e4e9e5; display: flex; gap: 18px; justify-content: space-between; padding: 13px 16px; }
 .event-volunteer-requests > header h3, .event-volunteer-requests > header p, .event-volunteer-allocation > header h3, .event-volunteer-allocation > header p { margin: 0; }

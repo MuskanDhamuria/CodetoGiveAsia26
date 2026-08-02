@@ -90,6 +90,7 @@ export type Signup = {
   status: "requested" | "approved" | "rejected"
   assigned_role_id: number | null
   assigned_role_name: string | null
+  preferred_role_names: string[]
   is_leader: boolean
   attendance: boolean | null
 }
@@ -108,6 +109,26 @@ export type Role = {
   name: string
   category: string
   is_required: boolean
+}
+
+export type EventPersonOption = {
+  person_type: "team_member" | "volunteer"
+  person_id: number
+  name: string
+  email: string | null
+}
+
+export type EventOrganizer = EventPersonOption & {
+  id: number
+  event_id: number
+  team_member_id: number | null
+  volunteer_id: number | null
+  identity_label: "PTS staff" | "Volunteer organiser"
+}
+
+export type OrganizerCandidates = {
+  pts_staff: EventPersonOption[]
+  volunteers: EventPersonOption[]
 }
 
 export type VolunteerAccount = {
@@ -266,6 +287,25 @@ export function addEventRole(eventId: number, name: string): Promise<Role> {
 
 export function deleteEventRole(eventId: number, roleId: number): Promise<void> {
   return deleteRequest(`/events/${eventId}/roles/${roleId}`)
+}
+
+export function listEventOrganizers(eventId: number): Promise<EventOrganizer[]> {
+  return getJson(`/events/${eventId}/organizers`)
+}
+
+export function listOrganizerCandidates(eventId: number): Promise<OrganizerCandidates> {
+  return getJson(`/events/${eventId}/organizer-candidates`)
+}
+
+export function addEventOrganizer(
+  eventId: number,
+  person: Pick<EventPersonOption, "person_type" | "person_id">,
+): Promise<EventOrganizer> {
+  return postJson(`/events/${eventId}/organizers`, person)
+}
+
+export function deleteEventOrganizer(eventId: number, organizerId: number): Promise<void> {
+  return deleteRequest(`/events/${eventId}/organizers/${organizerId}`)
 }
 
 export function approveSignup(

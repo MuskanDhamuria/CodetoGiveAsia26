@@ -291,6 +291,19 @@ def get_volunteer_events(
             status=row["status"],
             assigned_role_id=row["assigned_role_id"],
             assigned_role_name=row["assigned_role_name"],
+            preferred_role_names=[
+                preference["name"]
+                for preference in db.execute(
+                    """
+                    SELECT roles.name
+                    FROM volunteer_signup_role_preferences AS preferences
+                    JOIN roles ON roles.id = preferences.role_id
+                    WHERE preferences.signup_id = ?
+                    ORDER BY COALESCE(preferences.priority, 2147483647), roles.name
+                    """,
+                    (row["signup_id"],),
+                ).fetchall()
+            ],
             is_leader=bool(row["is_leader"]),
             attendance=as_bool(row["attendance"]),
         )

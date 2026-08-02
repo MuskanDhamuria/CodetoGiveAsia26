@@ -6,6 +6,7 @@ from backend.api.routes import (
     ai_assistant,
     beneficiaries,
     event_templates,
+    event_organizers,
     events,
     dashboard,
     health,
@@ -28,6 +29,7 @@ api_router.include_router(health.router)
 api_router.include_router(beneficiaries.router)
 api_router.include_router(event_templates.router)
 api_router.include_router(events.router)
+api_router.include_router(event_organizers.router)
 api_router.include_router(inventory.router)
 api_router.include_router(logistics.router)
 api_router.include_router(organizations.router)

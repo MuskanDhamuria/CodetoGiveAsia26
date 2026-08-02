@@ -3531,6 +3531,79 @@ button {
   font-size: 12px;
 }
 
+.volunteer-history-list article.requested {
+  background: #f8fbf8;
+  border-left: 3px solid #2d744c;
+  padding-left: 12px;
+}
+
+.volunteer-history-preferences {
+  align-items: center;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.volunteer-history-preferences small {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.volunteer-history-preferences span {
+  background: #eaf3ec;
+  border-radius: 999px;
+  color: #2d6845 !important;
+  font-weight: 700;
+  padding: 4px 7px;
+}
+
+.volunteer-history-approval {
+  align-items: flex-end;
+  display: flex;
+  gap: 7px;
+}
+
+.volunteer-history-approval label {
+  align-items: flex-start;
+  display: grid;
+  gap: 3px;
+}
+
+.volunteer-history-approval select {
+  background: #fff;
+  border: 1px solid var(--border-soft);
+  border-radius: 7px;
+  font: inherit;
+  padding: 7px;
+}
+
+.volunteer-history-approval button {
+  background: #245f3e;
+  border: 0;
+  border-radius: 7px;
+  color: #fff;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 8px 11px;
+}
+
+.volunteer-history-approval > small {
+  color: #8a5e2f;
+  max-width: 280px;
+}
+
+.volunteer-approval-notice {
+  background: #edf7ef;
+  border-left: 3px solid #2d744c;
+  color: #245f3e;
+  font-size: 12px;
+  padding: 9px 11px;
+}
+
 .volunteer-profile-footer {
   border-top: 1px solid var(--border-soft);
   display: flex;

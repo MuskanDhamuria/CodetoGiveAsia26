@@ -148,8 +148,10 @@ def upcoming_deadlines(
     where = ["t.status != 'done'", "date(t.due_at) BETWEEN date('now') AND ?"]
     params: list[object] = [end]
     if team_member_id is not None:
-        where.append("t.team_member_id = ?")
-        params.append(team_member_id)
+        # Keep legacy task rows visible while databases transition to the
+        # many-to-many assignee table.
+        where.append("(t.team_member_id = ? OR EXISTS (SELECT 1 FROM event_task_assignees eta WHERE eta.event_task_id = t.id AND eta.team_member_id = ?))")
+        params.extend([team_member_id, team_member_id])
     rows = db.execute(
         f"""
         SELECT t.id, t.event_id, e.name AS event_name, t.name, t.due_at,

@@ -60,6 +60,7 @@ class VolunteerEventHistory(BaseModel):
     status: str
     assigned_role_id: int | None
     assigned_role_name: str | None
+    preferred_role_names: list[str] = Field(default_factory=list)
     is_leader: bool
     attendance: bool | None
 

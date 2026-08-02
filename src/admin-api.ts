@@ -41,11 +41,27 @@ export type EventSubtask = {
   title: string
   position: number
   completed: boolean
+  scheduled_start: string | null
+  scheduled_end: string | null
+  estimated_minutes: number | null
+  assignees: EventTaskAssignee[]
+  time_logs: EventSubtaskTimeLog[]
+}
+
+export type EventSubtaskTimeLog = {
+  id: number
+  person_type: "team_member" | "volunteer"
+  person_id: number
+  name: string
+  minutes_spent: number
+  notes: string
+  logged_at: string
 }
 
 export type EventTask = {
   id: number
   team_member_id: number | null
+  volunteer_id: number | null
   template_task_id: number | null
   name: string
   body: string
@@ -53,7 +69,20 @@ export type EventTask = {
   category: TaskCategory
   status: TaskStatus
   position: number
+  assignees?: EventTaskAssignee[]
   subtasks: EventSubtask[]
+}
+
+export type EventTaskAssignee = {
+  person_type: "team_member" | "volunteer"
+  person_id: number
+  name: string
+  email: string | null
+  is_lead: boolean
+}
+
+export type EventTaskAssigneeInput = Pick<EventTaskAssignee, "person_type" | "person_id"> & {
+  is_lead?: boolean
 }
 
 export type EventDetail = {
@@ -62,6 +91,10 @@ export type EventDetail = {
   name: string
   venue: string
   event_date: string
+  description: string
+  start_time: string | null
+  end_time: string | null
+  beneficiary_id?: number | null
   status: EventStatus
   expected_attendance?: number | null
   is_cancelled: boolean
@@ -72,7 +105,7 @@ export type EventDetail = {
 
 export type CreateEventInput = Pick<
   EventDetail,
-  "event_template_id" | "name" | "venue" | "event_date" | "expected_attendance"
+  "event_template_id" | "name" | "venue" | "event_date" | "description" | "start_time" | "end_time" | "expected_attendance"
 >
 export type CreateTemplateInput = Pick<EventTemplate, "name" | "description"> & {
   beneficiary_id?: number | null
@@ -81,7 +114,7 @@ export type CreateTemplateTaskInput = Pick<TemplateTask, "name" | "body" | "rela
   position?: number
 }
 
-export type UpdateEventInput = Partial<Pick<EventDetail, "name" | "venue">>
+export type UpdateEventInput = Partial<Pick<EventDetail, "name" | "venue" | "description" | "start_time" | "end_time">>
 export type RescheduleEventInput = {
   event_date: string
   shift_task_deadlines: boolean
@@ -89,11 +122,31 @@ export type RescheduleEventInput = {
 export type CreateEventTaskInput = Pick<EventTask, "name" | "body" | "due_at" | "category"> & {
   status?: TaskStatus
   team_member_id?: number | null
+  volunteer_id?: number | null
+  assignees?: EventTaskAssigneeInput[]
   position?: number
 }
 export type UpdateEventTaskInput = Partial<
-  Pick<EventTask, "name" | "body" | "due_at" | "category" | "status" | "team_member_id" | "position">
->
+  Pick<EventTask, "name" | "body" | "due_at" | "category" | "status" | "team_member_id" | "volunteer_id" | "position">
+> & { assignees?: EventTaskAssigneeInput[] }
+export type CreateEventSubtaskInput = {
+  title: string
+  position?: number
+  scheduled_start?: string | null
+  scheduled_end?: string | null
+  estimated_minutes?: number | null
+  assignees?: EventTaskAssigneeInput[]
+}
+export type UpdateEventSubtaskInput = Partial<Pick<
+  EventSubtask,
+  "title" | "completed" | "position" | "scheduled_start" | "scheduled_end" | "estimated_minutes"
+>> & { assignees?: EventTaskAssigneeInput[] }
+export type CreateEventSubtaskTimeLogInput = {
+  person_type: "team_member" | "volunteer"
+  person_id: number
+  minutes_spent: number
+  notes?: string
+}
 export type TeamMember = {
   id: number
   name: string
@@ -101,6 +154,18 @@ export type TeamMember = {
   is_active: boolean
   created_at: string
   updated_at: string
+}
+export type EventPersonOption = {
+  person_type: "team_member" | "volunteer"
+  person_id: number
+  name: string
+  email: string | null
+  contact_number?: string | null
+  preferences?: string[]
+}
+export type TaskAssigneeGroups = {
+  organizers: EventPersonOption[]
+  volunteers: EventPersonOption[]
 }
 export type DashboardSummary = {
   upcoming_events: number
@@ -188,10 +253,12 @@ export interface AdminApi {
   createEventTask(eventId: number, input: CreateEventTaskInput): Promise<EventTask>
   updateEventTask(eventId: number, taskId: number, changes: UpdateEventTaskInput): Promise<EventTask>
   deleteEventTask(eventId: number, taskId: number): Promise<void>
-  createEventSubtask(eventId: number, taskId: number, input: { title: string }): Promise<EventSubtask>
-  updateEventSubtask(eventId: number, taskId: number, subtaskId: number, changes: Partial<Pick<EventSubtask, "title" | "completed" | "position">>): Promise<EventSubtask>
+  createEventSubtask(eventId: number, taskId: number, input: CreateEventSubtaskInput): Promise<EventSubtask>
+  updateEventSubtask(eventId: number, taskId: number, subtaskId: number, changes: UpdateEventSubtaskInput): Promise<EventSubtask>
   deleteEventSubtask(eventId: number, taskId: number, subtaskId: number): Promise<void>
+  createEventSubtaskTimeLog(eventId: number, taskId: number, subtaskId: number, input: CreateEventSubtaskTimeLogInput): Promise<EventSubtaskTimeLog>
   listTeamMembers(): Promise<TeamMember[]>
+  listEventTaskAssignees(eventId: number): Promise<TaskAssigneeGroups>
   getDashboardSummary(): Promise<DashboardSummary>
   listUpcomingDeadlines(): Promise<UpcomingDeadline[]>
   listAnnouncements(eventId: number): Promise<Announcement[]>
@@ -314,9 +381,17 @@ export const adminApi: AdminApi = {
     return request<void>(`/events/${eventId}/tasks/${taskId}/subtasks/${subtaskId}`, { method: "DELETE" })
   },
 
+  createEventSubtaskTimeLog(eventId, taskId, subtaskId, input) {
+    return request<EventSubtaskTimeLog>(`/events/${eventId}/tasks/${taskId}/subtasks/${subtaskId}/time-logs`, { method: "POST", body: JSON.stringify(input) })
+  },
+
   async listTeamMembers() {
     const result = await request<ListResponse<TeamMember>>("/team-members?limit=100")
     return result.items
+  },
+
+  listEventTaskAssignees(eventId) {
+    return request<TaskAssigneeGroups>(`/events/${eventId}/task-assignees`)
   },
 
   getDashboardSummary() {

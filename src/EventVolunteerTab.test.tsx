@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, within } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import EventVolunteerTab, { type EventVolunteerApi } from "./EventVolunteerTab"
+import type { EventDetail, TaskAssigneeGroups } from "./admin-api"
 import type { Signup, VolunteerDetail } from "./volunteer-api"
 
 afterEach(cleanup)
@@ -102,10 +103,10 @@ describe("event volunteer workspace", () => {
     await user.click(screen.getByRole("button", { name: "Approve" }))
 
     expect(api.approveSignup).toHaveBeenCalledWith(4, 10, { assigned_role_id: 2 })
-    expect(await screen.findByText("Farah Hassan was approved and added to the role board.")).toBeTruthy()
+    expect(await screen.findByText("Farah Hassan was approved and added to the event team.")).toBeTruthy()
   })
 
-  it("keeps leads first and can move a lead back to Unassigned without a schema change", async () => {
+  it("removes the old role board while preserving preference management", async () => {
     const secondApproved: Signup = {
       ...approved,
       id: 12,
@@ -113,16 +114,11 @@ describe("event volunteer workspace", () => {
       volunteer_name: "Ben Ong",
       is_leader: false,
     }
-    const { api, updateSignup } = buildApi([secondApproved, approved])
-    const user = userEvent.setup()
+    const { api } = buildApi([secondApproved, approved])
     render(<EventVolunteerTab eventId={4} readOnly={false} api={api} />)
 
-    const registrationColumn = await screen.findByRole("region", { name: "Registration volunteers" })
-    const cards = within(registrationColumn).getAllByRole("article")
-    expect(within(cards[0]).getByText("Aisha Rahman")).toBeTruthy()
-
-    await user.selectOptions(screen.getByRole("combobox", { name: "Role for Aisha Rahman" }), "")
-    expect(updateSignup).toHaveBeenCalledWith(4, 11, { assigned_role_id: null, is_leader: false })
+    expect(await screen.findByRole("button", { name: "Manage preference options" })).toBeTruthy()
+    expect(screen.queryByText("Role allocation")).toBeNull()
   })
 
   it("manages roles for the selected event and protects roles with assignments", async () => {
@@ -130,19 +126,68 @@ describe("event volunteer workspace", () => {
     const user = userEvent.setup()
     render(<EventVolunteerTab eventId={4} readOnly={false} api={api} />)
 
-    await user.click(await screen.findByRole("button", { name: "Manage roles" }))
-    const dialog = screen.getByRole("dialog", { name: "Manage roles" })
+    await user.click(await screen.findByRole("button", { name: "Manage preference options" }))
+    const dialog = screen.getByRole("dialog", { name: "Manage preference options" })
     expect(within(dialog).getByText(/Changes apply only to this event/)).toBeTruthy()
 
     const registrationRow = within(dialog).getByText("Registration").closest("article")!
     expect((within(registrationRow).getByRole("button", { name: "Reassign first" }) as HTMLButtonElement).disabled).toBe(true)
 
     await user.type(within(dialog).getByPlaceholderText("e.g. Translation support"), "Translation support")
-    await user.click(within(dialog).getByRole("button", { name: "Add role" }))
+    await user.click(within(dialog).getByRole("button", { name: "Add preference" }))
     expect(api.addEventRole).toHaveBeenCalledWith(4, "Translation support")
 
     const translationRow = (await within(dialog).findByText("Translation support")).closest("article")!
     await user.click(within(translationRow).getByRole("button", { name: "Remove" }))
     expect(api.deleteEventRole).toHaveBeenCalledWith(4, 3)
+  })
+
+  it("shows preference details and makes an assignee the task lead", async () => {
+    const preferredVolunteer = { ...approved, preferred_role_names: ["Registration Desk"], is_leader: false }
+    const { api } = buildApi([preferredVolunteer])
+    const event: EventDetail = {
+      id: 4, event_template_id: null, name: "Wellness session", venue: "Hall",
+      event_date: "2027-09-01", status: "open", is_cancelled: false,
+      created_at: "", updated_at: "", tasks: [{
+        id: 20, team_member_id: null, volunteer_id: 101, template_task_id: null,
+        name: "Run registration", body: "", due_at: "2027-09-01",
+        category: "planning", status: "incomplete", position: 0, subtasks: [],
+        assignees: [{ person_type: "volunteer", person_id: 101, name: "Aisha Rahman", email: "aisha@example.com", is_lead: false }],
+      }],
+    }
+    const taskPeople: TaskAssigneeGroups = {
+      organizers: [],
+      volunteers: [
+        { person_type: "volunteer", person_id: 101, name: "Aisha Rahman", email: "aisha@example.com" },
+        { person_type: "volunteer", person_id: 102, name: "John Tan", email: "john@example.com" },
+      ],
+    }
+    const onUpdateTaskAssignees = vi.fn().mockResolvedValue(undefined)
+    const user = userEvent.setup()
+
+    render(<EventVolunteerTab eventId={4} event={event} taskPeople={taskPeople} readOnly={false} api={api} onUpdateTaskAssignees={onUpdateTaskAssignees} onOpenTask={vi.fn()} />)
+
+    expect(await screen.findByText("Registration Desk")).toBeTruthy()
+    await user.click(screen.getByRole("button", { name: "Make Aisha Rahman a task lead" }))
+    expect(onUpdateTaskAssignees).toHaveBeenCalledWith(event.tasks[0], [
+      { person_type: "volunteer", person_id: 101, is_lead: true },
+    ])
+
+    onUpdateTaskAssignees.mockClear()
+    const taskCard = screen.getByText("Run registration").closest("article")!
+    fireEvent.drop(taskCard, { dataTransfer: { getData: () => "volunteer:102" } })
+    expect(onUpdateTaskAssignees).toHaveBeenCalledWith(event.tasks[0], [
+      { person_type: "volunteer", person_id: 101, is_lead: false },
+      { person_type: "volunteer", person_id: 102, is_lead: false },
+    ])
+
+    onUpdateTaskAssignees.mockClear()
+    const assignedAisha = screen.getByRole("button", { name: "Make Aisha Rahman a task lead" }).closest(".task-allocation-task-person")!
+    const peopleTray = screen.getByLabelText("People available for task assignment")
+    const dataTransfer = { dropEffect: "", effectAllowed: "", getData: vi.fn(), setData: vi.fn() }
+    fireEvent.dragStart(assignedAisha, { dataTransfer })
+    fireEvent.dragOver(peopleTray, { dataTransfer })
+    fireEvent.drop(peopleTray, { dataTransfer })
+    expect(onUpdateTaskAssignees).toHaveBeenCalledWith(event.tasks[0], [])
   })
 })

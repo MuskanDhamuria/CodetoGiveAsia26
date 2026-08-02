@@ -1,13 +1,21 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react"
+import type { EventDetail, EventPersonOption, EventSubtask, EventTask, EventTaskAssigneeInput, TaskAssigneeGroups } from "./admin-api"
+import TaskAllocationView from "./TaskAllocationView"
 import {
+  addEventOrganizer,
   addEventRole,
   approveSignup,
+  deleteEventOrganizer,
   deleteEventRole,
   getVolunteer,
+  listEventOrganizers,
   listEventRoles,
   listEventSignups,
+  listOrganizerCandidates,
   rejectSignup,
   updateSignup,
+  type EventOrganizer,
+  type OrganizerCandidates,
   type Role,
   type Signup,
   type VolunteerDetail,
@@ -22,6 +30,10 @@ export type EventVolunteerApi = {
   rejectSignup: typeof rejectSignup
   updateSignup: typeof updateSignup
   deleteEventRole: typeof deleteEventRole
+  listEventOrganizers?: typeof listEventOrganizers
+  listOrganizerCandidates?: typeof listOrganizerCandidates
+  addEventOrganizer?: typeof addEventOrganizer
+  deleteEventOrganizer?: typeof deleteEventOrganizer
 }
 
 const defaultApi: EventVolunteerApi = {
@@ -33,25 +45,32 @@ const defaultApi: EventVolunteerApi = {
   rejectSignup,
   updateSignup,
   deleteEventRole,
+  listEventOrganizers,
+  listOrganizerCandidates,
+  addEventOrganizer,
+  deleteEventOrganizer,
 }
 
 type Props = {
   eventId: number
+  event?: EventDetail
+  taskPeople?: TaskAssigneeGroups
   readOnly: boolean
   api?: EventVolunteerApi
+  onPeopleChanged?: () => void
+  onUpdateTaskAssignees?: (task: EventTask, people: EventTaskAssigneeInput[]) => Promise<void>
+  onUpdateSubtaskAssignees?: (task: EventTask, subtask: EventSubtask, people: EventTaskAssigneeInput[]) => Promise<void>
+  onOpenTask?: (task: EventTask) => void
 }
+
+const emptyOrganizerCandidates: OrganizerCandidates = { pts_staff: [], volunteers: [] }
 
 function contactFor(profile: VolunteerDetail | undefined) {
   if (!profile) return "Volunteer profile"
   return [profile.contact_number, profile.email].filter(Boolean).join(" · ") || "No contact details"
 }
 
-function attendanceValue(attendance: boolean | null) {
-  if (attendance === null) return ""
-  return attendance ? "attended" : "absent"
-}
-
-export default function EventVolunteerTab({ eventId, readOnly, api = defaultApi }: Props) {
+export default function EventVolunteerTab({ eventId, event, taskPeople, readOnly, api = defaultApi, onPeopleChanged, onUpdateTaskAssignees, onUpdateSubtaskAssignees, onOpenTask }: Props) {
   const [roles, setRoles] = useState<Role[]>([])
   const [signups, setSignups] = useState<Signup[]>([])
   const [profiles, setProfiles] = useState<Record<number, VolunteerDetail>>({})
@@ -62,23 +81,31 @@ export default function EventVolunteerTab({ eventId, readOnly, api = defaultApi 
   const [error, setError] = useState("")
   const [notice, setNotice] = useState("")
   const [busySignupId, setBusySignupId] = useState<number | null>(null)
-  const [draggedSignupId, setDraggedSignupId] = useState<number | null>(null)
-  const [dragOverRole, setDragOverRole] = useState<string | null>(null)
   const [showRoleManager, setShowRoleManager] = useState(false)
   const [newRoleName, setNewRoleName] = useState("")
   const [savingRole, setSavingRole] = useState(false)
   const [busyRoleId, setBusyRoleId] = useState<number | null>(null)
+  const [organizers, setOrganizers] = useState<EventOrganizer[]>([])
+  const [organizerCandidates, setOrganizerCandidates] = useState<OrganizerCandidates>(emptyOrganizerCandidates)
+  const [showOrganizerManager, setShowOrganizerManager] = useState(false)
+  const [organizerChoice, setOrganizerChoice] = useState("")
+  const [savingOrganizer, setSavingOrganizer] = useState(false)
+  const [busyOrganizerId, setBusyOrganizerId] = useState<number | null>(null)
 
   useEffect(() => {
     let active = true
     setLoading(true)
     setError("")
     setNotice("")
-    Promise.all([api.listEventRoles(eventId), api.listEventSignups(eventId)])
-      .then(async ([loadedRoles, loadedSignups]) => {
+    const organizersRequest = api.listEventOrganizers?.(eventId) ?? Promise.resolve([])
+    const candidatesRequest = api.listOrganizerCandidates?.(eventId) ?? Promise.resolve(emptyOrganizerCandidates)
+    Promise.all([api.listEventRoles(eventId), api.listEventSignups(eventId), organizersRequest, candidatesRequest])
+      .then(async ([loadedRoles, loadedSignups, loadedOrganizers, loadedCandidates]) => {
         if (!active) return
         setRoles(loadedRoles)
         setSignups(loadedSignups.items)
+        setOrganizers(loadedOrganizers)
+        setOrganizerCandidates(loadedCandidates)
         const volunteerIds = [...new Set(loadedSignups.items.map((signup) => signup.volunteer_id))]
         const loadedProfiles = await Promise.allSettled(
           volunteerIds.map((volunteerId) => api.getVolunteer(volunteerId)),
@@ -101,6 +128,16 @@ export default function EventVolunteerTab({ eventId, readOnly, api = defaultApi 
     }
   }, [api, eventId])
 
+  async function refreshOrganizerData() {
+    if (!api.listEventOrganizers || !api.listOrganizerCandidates) return
+    const [loadedOrganizers, loadedCandidates] = await Promise.all([
+      api.listEventOrganizers(eventId),
+      api.listOrganizerCandidates(eventId),
+    ])
+    setOrganizers(loadedOrganizers)
+    setOrganizerCandidates(loadedCandidates)
+  }
+
   const normalizedSearch = search.trim().toLocaleLowerCase()
   const matchesSearch = (signup: Signup) => {
     if (!normalizedSearch) return true
@@ -116,7 +153,6 @@ export default function EventVolunteerTab({ eventId, readOnly, api = defaultApi 
   }
 
   const pending = signups.filter((signup) => signup.status === "requested" && matchesSearch(signup))
-  const approved = signups.filter((signup) => signup.status === "approved" && matchesSearch(signup))
   const rejected = signups.filter((signup) => signup.status === "rejected" && matchesSearch(signup))
   const totals = useMemo(() => ({
     requests: signups.length,
@@ -126,6 +162,25 @@ export default function EventVolunteerTab({ eventId, readOnly, api = defaultApi 
       (signup) => signup.status === "approved" && signup.attendance !== null,
     ).length,
   }), [signups])
+
+  const enrichedTaskPeople = useMemo<TaskAssigneeGroups | undefined>(() => {
+    if (!taskPeople) return undefined
+    const enrich = (person: EventPersonOption): EventPersonOption => {
+      const organizer = organizers.find((candidate) => candidate.person_type === person.person_type && candidate.person_id === person.person_id)
+      const volunteerId = person.person_type === "volunteer" ? person.person_id : organizer?.volunteer_id
+      const signup = signups.find((candidate) => candidate.volunteer_id === volunteerId)
+      const profile = volunteerId ? profiles[volunteerId] : undefined
+      return {
+        ...person,
+        contact_number: profile?.contact_number ?? null,
+        preferences: signup?.preferred_role_names ?? [],
+      }
+    }
+    return {
+      organizers: taskPeople.organizers.map(enrich),
+      volunteers: taskPeople.volunteers.map(enrich),
+    }
+  }, [organizers, profiles, signups, taskPeople])
 
   function replaceSignup(updated: Signup) {
     setSignups((current) => current.map((signup) => signup.id === updated.id ? updated : signup))
@@ -147,7 +202,9 @@ export default function EventVolunteerTab({ eventId, readOnly, api = defaultApi 
     try {
       const updated = await api.approveSignup(eventId, signup.id, { assigned_role_id: roleId })
       replaceSignup(updated)
-      setNotice(`${signup.volunteer_name} was approved and added to the role board.`)
+      setNotice(`${signup.volunteer_name} was approved and added to the event team.`)
+      await refreshOrganizerData()
+      onPeopleChanged?.()
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Unable to approve this volunteer.")
     } finally {
@@ -163,43 +220,13 @@ export default function EventVolunteerTab({ eventId, readOnly, api = defaultApi 
       const updated = await api.rejectSignup(eventId, signup.id)
       replaceSignup(updated)
       setNotice(`${signup.volunteer_name}'s request was rejected.`)
+      await refreshOrganizerData()
+      onPeopleChanged?.()
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Unable to reject this request.")
     } finally {
       setBusySignupId(null)
     }
-  }
-
-  async function updateVolunteer(signup: Signup, changes: Parameters<EventVolunteerApi["updateSignup"]>[2], success: string) {
-    setBusySignupId(signup.id)
-    setError("")
-    setNotice("")
-    try {
-      const updated = await api.updateSignup(eventId, signup.id, changes)
-      replaceSignup(updated)
-      setNotice(success)
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Unable to update this volunteer.")
-    } finally {
-      setBusySignupId(null)
-    }
-  }
-
-  function moveVolunteer(signup: Signup, roleId: number | null) {
-    if (readOnly || signup.assigned_role_id === roleId) return
-    const roleName = roles.find((role) => role.id === roleId)?.name ?? "Unassigned"
-    void updateVolunteer(
-      signup,
-      { assigned_role_id: roleId, ...(signup.is_leader ? { is_leader: false } : {}) },
-      `${signup.volunteer_name} moved to ${roleName}.${signup.is_leader ? " Lead status was removed." : ""}`,
-    )
-  }
-
-  function volunteersFor(roleId: number | null) {
-    return approved
-      .filter((signup) => signup.assigned_role_id === roleId)
-      .sort((left, right) => Number(right.is_leader) - Number(left.is_leader)
-        || left.volunteer_name.localeCompare(right.volunteer_name))
   }
 
   function assignedToRole(roleId: number) {
@@ -242,128 +269,43 @@ export default function EventVolunteerTab({ eventId, readOnly, api = defaultApi 
     }
   }
 
-  function volunteerCard(signup: Signup) {
-    const profile = profiles[signup.volunteer_id]
-    return (
-      <article
-        className={`event-volunteer-card${signup.is_leader ? " is-lead" : ""}${draggedSignupId === signup.id ? " dragging" : ""}`}
-        draggable={!readOnly && busySignupId !== signup.id}
-        key={signup.id}
-        onDragEnd={() => {
-          setDraggedSignupId(null)
-          setDragOverRole(null)
-        }}
-        onDragStart={(dragEvent) => {
-          if (readOnly) return
-          setDraggedSignupId(signup.id)
-          dragEvent.dataTransfer.effectAllowed = "move"
-          dragEvent.dataTransfer.setData("text/plain", String(signup.id))
-        }}
-      >
-        <header>
-          <div>
-            {signup.is_leader && <span className="event-volunteer-lead">Lead</span>}
-            <strong>{signup.volunteer_name}</strong>
-          </div>
-          {!readOnly && (
-            <button
-              type="button"
-              disabled={busySignupId === signup.id}
-              onClick={() => void updateVolunteer(
-                signup,
-                { is_leader: !signup.is_leader },
-                signup.is_leader
-                  ? `${signup.volunteer_name} is no longer a role lead.`
-                  : `${signup.volunteer_name} is now a role lead.`,
-              )}
-            >
-              {signup.is_leader ? "Remove lead" : "Make lead"}
-            </button>
-          )}
-        </header>
-        <span className="event-volunteer-contact">{contactFor(profile)}</span>
-        <div className="event-volunteer-skills">
-          {profile?.skills.length
-            ? profile.skills.slice(0, 3).map((skill) => <span key={skill.id}>{skill.name}</span>)
-            : <span className="empty">No skills added</span>}
-        </div>
-        {!readOnly && (
-          <div className="event-volunteer-card-controls">
-            <label>
-              <span>Role</span>
-              <select
-                aria-label={`Role for ${signup.volunteer_name}`}
-                disabled={busySignupId === signup.id}
-                value={signup.assigned_role_id ?? ""}
-                onChange={(event) => moveVolunteer(signup, event.target.value ? Number(event.target.value) : null)}
-              >
-                <option value="">Unassigned</option>
-                {roles.map((role) => <option key={role.id} value={role.id}>{role.name}</option>)}
-              </select>
-            </label>
-            <label>
-              <span>Attendance</span>
-              <select
-                aria-label={`Attendance for ${signup.volunteer_name}`}
-                disabled={busySignupId === signup.id}
-                value={attendanceValue(signup.attendance)}
-                onChange={(event) => {
-                  const attendance = event.target.value === "" ? null : event.target.value === "attended"
-                  void updateVolunteer(signup, { attendance }, `Attendance updated for ${signup.volunteer_name}.`)
-                }}
-              >
-                <option value="">Not recorded</option>
-                <option value="attended">Attended</option>
-                <option value="absent">Absent</option>
-              </select>
-            </label>
-          </div>
-        )}
-        {readOnly && (
-          <span className={`event-volunteer-attendance ${attendanceValue(signup.attendance) || "pending"}`}>
-            {signup.attendance === null ? "Attendance not recorded" : signup.attendance ? "Attended" : "Absent"}
-          </span>
-        )}
-      </article>
-    )
+  async function handleAddOrganizer() {
+    if (!organizerChoice || !api.addEventOrganizer) return
+    const [personType, rawId] = organizerChoice.split(":")
+    setSavingOrganizer(true)
+    setError("")
+    setNotice("")
+    try {
+      const created = await api.addEventOrganizer(eventId, {
+        person_type: personType as "team_member" | "volunteer",
+        person_id: Number(rawId),
+      })
+      await refreshOrganizerData()
+      setOrganizerChoice("")
+      setNotice(`${created.name} is now an event organiser.`)
+      onPeopleChanged?.()
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Unable to add this organiser.")
+    } finally {
+      setSavingOrganizer(false)
+    }
   }
 
-  function roleColumn(role: Role | null) {
-    const roleId = role?.id ?? null
-    const roleKey = role ? String(role.id) : "unassigned"
-    const volunteers = volunteersFor(roleId)
-    return (
-      <section
-        aria-label={`${role?.name ?? "Unassigned"} volunteers`}
-        className={`event-volunteer-role-column${dragOverRole === roleKey ? " drag-over" : ""}`}
-        key={roleKey}
-        onDragLeave={() => setDragOverRole((current) => current === roleKey ? null : current)}
-        onDragOver={(event) => {
-          if (readOnly) return
-          event.preventDefault()
-          event.dataTransfer.dropEffect = "move"
-          setDragOverRole(roleKey)
-        }}
-        onDrop={(event) => {
-          if (readOnly) return
-          event.preventDefault()
-          const signupId = Number(event.dataTransfer.getData("text/plain")) || draggedSignupId
-          setDraggedSignupId(null)
-          setDragOverRole(null)
-          const signup = signups.find((item) => item.id === signupId)
-          if (signup) moveVolunteer(signup, roleId)
-        }}
-      >
-        <h4>
-          <span>{role?.name ?? "Unassigned"}</span>
-          <span>{volunteers.length} {volunteers.length === 1 ? "volunteer" : "volunteers"}</span>
-        </h4>
-        {!volunteers.length && (
-          <p>{normalizedSearch ? "No matching volunteers" : role ? "Drag an approved volunteer here" : "Everyone has a role"}</p>
-        )}
-        {volunteers.map(volunteerCard)}
-      </section>
-    )
+  async function handleRemoveOrganizer(organizer: EventOrganizer) {
+    if (!api.deleteEventOrganizer) return
+    setBusyOrganizerId(organizer.id)
+    setError("")
+    setNotice("")
+    try {
+      await api.deleteEventOrganizer(eventId, organizer.id)
+      await refreshOrganizerData()
+      setNotice(`${organizer.name} is no longer an event organiser.`)
+      onPeopleChanged?.()
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Unable to remove this organiser.")
+    } finally {
+      setBusyOrganizerId(null)
+    }
   }
 
   if (loading) return <p className="event-volunteer-loading" role="status">Loading event volunteers…</p>
@@ -380,7 +322,7 @@ export default function EventVolunteerTab({ eventId, readOnly, api = defaultApi 
       <div className="event-volunteer-toolbar">
         <div>
           <h3>Volunteer workspace</h3>
-          <p>Review requests, then drag approved volunteers into their event roles.</p>
+          <p>Review requests, manage organisers and allocate people to event tasks.</p>
         </div>
         <label>
           <span className="sr-only">Search event volunteers</span>
@@ -402,7 +344,10 @@ export default function EventVolunteerTab({ eventId, readOnly, api = defaultApi 
             <h3 id="pending-volunteer-heading">Pending requests</h3>
             <p>{pending.length ? `${pending.length} awaiting review` : "No requests awaiting review"}</p>
           </div>
-          {roles.length === 0 && pending.length > 0 && <span>No event roles configured</span>}
+          <div className="event-volunteer-request-header-actions">
+            {roles.length === 0 && pending.length > 0 && <span>No preference options configured</span>}
+            {!readOnly && <button type="button" onClick={() => setShowRoleManager(true)}>Manage preference options</button>}
+          </div>
         </header>
         {pending.length > 0 && (
           <div className="event-volunteer-request-list">
@@ -460,24 +405,47 @@ export default function EventVolunteerTab({ eventId, readOnly, api = defaultApi 
         )}
       </section>
 
-      <section className="event-volunteer-allocation" aria-labelledby="role-allocation-heading">
+      <section className="event-organizer-panel" aria-labelledby="event-organizer-heading">
         <header>
           <div>
-            <h3 id="role-allocation-heading">Role allocation</h3>
-            <p>{readOnly ? "Final volunteer allocation for this event." : "Drag cards between roles or use the role selector on each card."}</p>
+            <h3 id="event-organizer-heading">Event organisers</h3>
+            <p>People coordinating planning and delivery for this event.</p>
           </div>
-          <div className="event-volunteer-allocation-actions">
-            <span>{approved.length} approved</span>
-            {!readOnly && <button type="button" onClick={() => setShowRoleManager(true)}>Manage roles</button>}
+          {!readOnly && <button type="button" onClick={() => setShowOrganizerManager(true)}>Manage organisers</button>}
+        </header>
+        {organizers.length ? (
+          <div className="event-organizer-list">
+            {organizers.map((organizer) => (
+              <article key={organizer.id}>
+                <div>
+                  <strong>{organizer.name}</strong>
+                  <span>{organizer.email || "No email recorded"}</span>
+                </div>
+                <span className={`event-organizer-badge ${organizer.person_type}`}>
+                  {organizer.identity_label}
+                </span>
+              </article>
+            ))}
+          </div>
+        ) : <p className="event-organizer-empty">No event organisers assigned yet.</p>}
+      </section>
+
+      {event && enrichedTaskPeople && onUpdateTaskAssignees && onOpenTask && <section className="event-volunteer-task-allocation" aria-labelledby="team-allocation-heading">
+        <header>
+          <div>
+            <h3 id="team-allocation-heading">Team allocation</h3>
+            <p>{readOnly ? "Final task assignments for this event." : "Drag people onto tasks or subtasks. Drag an assignment back to People to remove it."}</p>
           </div>
         </header>
-        <div className="event-volunteer-unassigned">
-          {roleColumn(null)}
-        </div>
-        <div className="event-volunteer-role-board">
-          {roles.map(roleColumn)}
-        </div>
-      </section>
+        <TaskAllocationView
+          event={event}
+          people={enrichedTaskPeople}
+          readOnly={readOnly}
+          onUpdateTaskAssignees={onUpdateTaskAssignees}
+          onUpdateSubtaskAssignees={onUpdateSubtaskAssignees ?? (async () => undefined)}
+          onOpenTask={onOpenTask}
+        />
+      </section>}
 
       {signups.some((signup) => signup.status === "rejected") && (
         <section className="event-volunteer-rejected">
@@ -498,8 +466,8 @@ export default function EventVolunteerTab({ eventId, readOnly, api = defaultApi 
           <section aria-labelledby="event-role-manager-title" aria-modal="true" className="event-creation-dialog event-role-manager-dialog" role="dialog">
             <header>
               <div>
-                <p>Event volunteer roles</p>
-                <h2 id="event-role-manager-title">Manage roles</h2>
+                <p>Volunteer preferences</p>
+                <h2 id="event-role-manager-title">Manage preference options</h2>
               </div>
               <button aria-label="Close role manager" className="event-creation-close" type="button" onClick={() => setShowRoleManager(false)}>×</button>
             </header>
@@ -509,7 +477,7 @@ export default function EventVolunteerTab({ eventId, readOnly, api = defaultApi 
               </p>
               <form className="event-role-manager-add" onSubmit={(event) => void handleAddRole(event)}>
                 <label>
-                  <span>New role</span>
+                  <span>New preference</span>
                   <input
                     maxLength={80}
                     placeholder="e.g. Translation support"
@@ -518,7 +486,7 @@ export default function EventVolunteerTab({ eventId, readOnly, api = defaultApi 
                   />
                 </label>
                 <button disabled={savingRole || !newRoleName.trim()} type="submit">
-                  {savingRole ? "Adding…" : "Add role"}
+                  {savingRole ? "Adding…" : "Add preference"}
                 </button>
               </form>
               <div className="event-role-manager-list">
@@ -542,12 +510,63 @@ export default function EventVolunteerTab({ eventId, readOnly, api = defaultApi 
                     </article>
                   )
                 })}
-                {!roles.length && <p>No roles have been added to this event yet.</p>}
+                {!roles.length && <p>No preference options have been added to this event yet.</p>}
               </div>
             </div>
             <footer>
               <button type="button" onClick={() => setShowRoleManager(false)}>Done</button>
             </footer>
+          </section>
+        </div>
+      )}
+
+      {showOrganizerManager && (
+        <div className="event-creation-overlay event-role-manager-overlay" role="presentation">
+          <section aria-labelledby="event-organizer-manager-title" aria-modal="true" className="event-creation-dialog event-organizer-manager-dialog" role="dialog">
+            <header>
+              <div>
+                <p>Event planning team</p>
+                <h2 id="event-organizer-manager-title">Manage organisers</h2>
+              </div>
+              <button aria-label="Close organiser manager" className="event-creation-close" type="button" onClick={() => setShowOrganizerManager(false)}>×</button>
+            </header>
+            <div className="event-creation-body event-organizer-manager-body">
+              <p className="event-role-manager-note">
+                Organiser access is event-specific. Approved volunteers keep their event-day role when promoted.
+              </p>
+              <div className="event-organizer-add">
+                <label>
+                  <span>Add organiser</span>
+                  <select value={organizerChoice} onChange={(event) => setOrganizerChoice(event.target.value)}>
+                    <option value="">Select a person</option>
+                    <optgroup label="PTS staff">
+                      {organizerCandidates.pts_staff.map((person) => (
+                        <option key={`team-${person.person_id}`} value={`team_member:${person.person_id}`}>{person.name}</option>
+                      ))}
+                    </optgroup>
+                    <optgroup label="Approved volunteers">
+                      {organizerCandidates.volunteers.map((person) => (
+                        <option key={`volunteer-${person.person_id}`} value={`volunteer:${person.person_id}`}>{person.name}</option>
+                      ))}
+                    </optgroup>
+                  </select>
+                </label>
+                <button disabled={savingOrganizer || !organizerChoice} type="button" onClick={() => void handleAddOrganizer()}>Add organiser</button>
+              </div>
+              <div className="event-organizer-manager-list">
+                {organizers.map((organizer) => (
+                  <article key={organizer.id}>
+                    <div>
+                      <strong>{organizer.name}</strong>
+                      <span>{organizer.identity_label}</span>
+                    </div>
+                    <button disabled={busyOrganizerId === organizer.id} type="button" onClick={() => void handleRemoveOrganizer(organizer)}>Remove</button>
+                  </article>
+                ))}
+                {!organizers.length && <p>No organisers assigned yet.</p>}
+              </div>
+            </div>
+            <footer><button type="button" onClick={() => setShowOrganizerManager(false)}>Done</button></footer>
           </section>
         </div>
       )}

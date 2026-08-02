@@ -57,6 +57,13 @@ class EventVolunteerManagementTest(unittest.TestCase):
             created.json()["signup"]["preferred_role_names"],
             [preferred_role["name"]],
         )
+        volunteer_id = created.json()["signup"]["volunteer_id"]
+        history = self.client.get(f"/api/v1/volunteers/{volunteer_id}/events")
+        self.assertEqual(history.status_code, 200)
+        self.assertEqual(
+            history.json()["items"][0]["preferred_role_names"],
+            [preferred_role["name"]],
+        )
 
     def test_assignment_and_attendance_can_be_cleared(self) -> None:
         signups = self.client.get(

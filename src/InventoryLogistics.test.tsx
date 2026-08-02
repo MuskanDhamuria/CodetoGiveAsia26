@@ -10,6 +10,13 @@ import type { LogisticsApi } from "./logistics-api"
 afterEach(cleanup)
 
 describe("Inventory and Event Logistics", () => {
+  it("keeps the inventory header below the fixed navigation on mobile", () => {
+    const styles = readFileSync("src/InventoryLogistics.css", "utf8")
+
+    expect(styles).toMatch(/\.inventory-workbench\s*\{[^}]*padding:\s*96px/)
+    expect(styles).toMatch(/@media\s*\(max-width:\s*700px\)[\s\S]*\.inventory-workbench\s*\{[^}]*padding:\s*150px/)
+  })
+
   it("constrains the Event Logistics workspace and scrolls wide tables inside it", () => {
     const styles = readFileSync("src/InventoryLogistics.css", "utf8")
 

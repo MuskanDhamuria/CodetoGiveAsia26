@@ -48,6 +48,42 @@ describe("API-backed organizer events", () => {
     expect(document.querySelector(".event-collection-header")).toBeNull()
   })
 
+  it("opens and closes the selected Event dialog on mobile", async () => {
+    const event: EventDetail = {
+      id: 4, event_template_id: null, name: "Wellness session", venue: "Hall",
+      event_date: "2027-09-01", status: "open", is_cancelled: false, created_at: "", updated_at: "", tasks: [],
+    }
+    const api = {
+      listEventTemplates: vi.fn().mockResolvedValue([]),
+      listEvents: vi.fn().mockResolvedValue([event]),
+      listTeamMembers: vi.fn().mockResolvedValue([]),
+    } as unknown as AdminApi
+    const originalWidth = window.innerWidth
+    const scrollTo = vi.spyOn(window, "scrollTo").mockImplementation(() => {})
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 375 })
+
+    try {
+      const user = userEvent.setup()
+      render(<AdminEventsPage api={api} />)
+      await user.click(await screen.findByRole("button", { name: "Open Wellness session" }))
+
+      expect(screen.getByRole("dialog", { name: "Wellness session" })).toBeTruthy()
+      expect(screen.queryByRole("region", { name: "Mobile selected Event actions" })).toBeNull()
+      expect(document.body.style.overflow).toBe("hidden")
+
+      await user.click(screen.getByRole("button", { name: "Close selected Event" }))
+      expect(screen.queryByRole("dialog", { name: "Wellness session" })).toBeNull()
+      expect(document.body.style.overflow).toBe("")
+
+      await user.click(screen.getByRole("button", { name: "Open Wellness session" }))
+      await user.click(document.querySelector(".portfolio-preview-overlay")!)
+      expect(screen.queryByRole("dialog", { name: "Wellness session" })).toBeNull()
+    } finally {
+      Object.defineProperty(window, "innerWidth", { configurable: true, value: originalWidth })
+      scrollTo.mockRestore()
+    }
+  })
+
   it("shows Event and Subtask completion in the workspace", async () => {
     const event: EventDetail = {
       id: 4, event_template_id: null, name: "Wellness session", venue: "Hall",

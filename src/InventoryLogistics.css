@@ -1,4 +1,4 @@
-.inventory-workbench { --ops-green: #176c49; --ops-green-dark: #105239; --ops-green-soft: #edf7f1; --ops-ink: #17241d; --ops-muted: #66736b; --ops-line: #dce4df; --ops-bg: #f5f7f5; color: var(--ops-ink); display: grid; gap: 18px; padding: 28px clamp(18px, 4vw, 58px) 56px; }
+.inventory-workbench { --ops-green: #176c49; --ops-green-dark: #105239; --ops-green-soft: #edf7f1; --ops-ink: #17241d; --ops-muted: #66736b; --ops-line: #dce4df; --ops-bg: #f5f7f5; color: var(--ops-ink); display: grid; gap: 18px; padding: 96px clamp(18px, 4vw, 58px) 56px; }
 .inventory-header { align-items: flex-end; display: flex; gap: 24px; justify-content: space-between; }
 .inventory-header p, .logistics-drawer header p, .event-reconciliation > div > p { color: var(--ops-green); font-size: 11px; font-weight: 750; letter-spacing: .1em; margin: 0 0 5px; text-transform: uppercase; }
 .inventory-header h1 { font-size: clamp(28px, 3vw, 42px); letter-spacing: -.035em; margin: 0; }
@@ -111,7 +111,7 @@
   .venue-booking-form, .event-reconciliation { grid-template-columns: 1fr 1fr; }
 }
 @media (max-width: 700px) {
-  .inventory-workbench { padding: 20px 14px 40px; }
+  .inventory-workbench { padding: 150px 14px 40px; }
   .inventory-header { align-items: stretch; flex-direction: column; }
   .inventory-primary-actions { display: grid; grid-template-columns: 1fr 1fr; }
   .inventory-form, .logistics-form { grid-template-columns: 1fr; }

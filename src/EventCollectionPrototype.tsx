@@ -133,6 +133,12 @@ type VariantProps = {
   openOnSelect: boolean;
 };
 
+type VariantCProps = VariantProps & {
+  onCloseSelected: () => void;
+  isMobile: boolean;
+  selectedDialogOpen: boolean;
+};
+
 function VariantA({ events, view, month, showClosed, showCancelled, onMonth, onNewEvent, onOpen, onShowClosed, onShowCancelled, onView }: VariantProps) {
   return (
     <div className="collection-variant collection-variant-a">
@@ -185,7 +191,7 @@ function VariantB({ events, month, showClosed, showCancelled, onMonth, onNewEven
   );
 }
 
-function VariantC({ events, view, month, showClosed, showCancelled, selected, onMonth, onNewEvent, onOpen, onSelect, onShowClosed, onShowCancelled, onView, openOnSelect }: VariantProps) {
+function VariantC({ events, view, month, showClosed, showCancelled, selected, onMonth, onNewEvent, onOpen, onSelect, onShowClosed, onShowCancelled, onView, openOnSelect, onCloseSelected, isMobile, selectedDialogOpen }: VariantCProps) {
   return (
     <div className="collection-variant collection-variant-c">
       <header className="portfolio-header">
@@ -215,10 +221,33 @@ function VariantC({ events, view, month, showClosed, showCancelled, selected, on
           </aside>
         </div>
       )}
-      {view === "list" && !openOnSelect && (
-        <div aria-label="Mobile selected Event actions" className="portfolio-mobile-actions" role="region">
-          <span>{selected.name}</span>
-          <button type="button" onClick={() => onOpen(selected)}>Open workspace</button>
+      {view === "list" && selectedDialogOpen && !openOnSelect && isMobile && (
+        <div
+          className="portfolio-preview-overlay"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) onCloseSelected();
+          }}
+          role="presentation"
+        >
+          <section aria-labelledby="selected-event-dialog-title" aria-modal="true" className="portfolio-preview portfolio-preview-dialog" role="dialog">
+            <header>
+              <p>Selected event</p>
+              <EventStatus status={selected.status} />
+              <button
+                aria-label="Close selected Event"
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onCloseSelected();
+                }}
+              >×</button>
+            </header>
+            <h2 id="selected-event-dialog-title">{selected.name}</h2>
+            <span>{selected.date} · {selected.venue}</span>
+            <div className="portfolio-score"><strong>{selected.progress}%</strong><span>plan complete</span><i><b style={{ width: `${selected.progress}%` }} /></i></div>
+            <dl><div><dt>Tasks done</dt><dd>{selected.tasksDone}</dd></div><div><dt>Tasks remaining</dt><dd>{selected.tasksTotal - selected.tasksDone}</dd></div></dl>
+            <button type="button" onClick={() => onOpen(selected)}>Open event workspace <span>→</span></button>
+          </section>
         </div>
       )}
     </div>
@@ -246,11 +275,52 @@ export default function EventCollectionPrototype({
   const [view, setView] = useState<View>(variant === "B" ? "calendar" : "list");
   const [showClosed, setShowClosed] = useState(initialShowClosed);
   const [showCancelled, setShowCancelled] = useState(initialShowCancelled);
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 760);
+  const [selectedDialogOpen, setSelectedDialogOpen] = useState(false);
   const [month, setMonth] = useState(8);
   const sourceEvents = liveEvents ?? prototypeEvents;
   const [selected, setSelected] = useState(sourceEvents[0]);
   const [notice, setNotice] = useState("");
 
+  useEffect(() => {
+    const updateViewport = () => setIsMobile(window.innerWidth <= 760);
+    window.addEventListener("resize", updateViewport);
+    return () => window.removeEventListener("resize", updateViewport);
+  }, []);
+
+  useEffect(() => {
+    if (!selectedDialogOpen || view !== "list" || openOnSelect || !isMobile) return;
+
+    const scrollY = window.scrollY;
+    const html = document.documentElement;
+    const body = document.body;
+    const previousHtmlOverflow = html.style.overflow;
+    const previousBodyOverflow = body.style.overflow;
+    const previousBodyPosition = body.style.position;
+    const previousBodyTop = body.style.top;
+    const previousBodyWidth = body.style.width;
+
+    html.style.overflow = "hidden";
+    body.style.overflow = "hidden";
+    body.style.position = "fixed";
+    body.style.top = `-${scrollY}px`;
+    body.style.width = "100%";
+
+    return () => {
+      html.style.overflow = previousHtmlOverflow;
+      body.style.overflow = previousBodyOverflow;
+      body.style.position = previousBodyPosition;
+      body.style.top = previousBodyTop;
+      body.style.width = previousBodyWidth;
+      if (scrollY !== 0) {
+        try {
+          window.scrollTo(0, scrollY);
+        } catch {
+          // Some test DOMs do not implement scroll restoration.
+        }
+      }
+    };
+  }, [isMobile, openOnSelect, selectedDialogOpen, view]);
   const visibleEvents = useMemo(
     () =>
       sourceEvents
@@ -264,9 +334,22 @@ export default function EventCollectionPrototype({
   );
 
   useEffect(() => {
-    setSelected((current) =>
-      sourceEvents.find((event) => event.id === current?.id) ?? sourceEvents[0],
-    );
+    setSelected((current) => {
+      const next = sourceEvents.find((event) => event.id === current?.id) ?? sourceEvents[0];
+      if (!current || !next) return next;
+
+      const unchanged = current.id === next.id
+        && current.name === next.name
+        && current.date === next.date
+        && current.day === next.day
+        && current.venue === next.venue
+        && current.status === next.status
+        && current.progress === next.progress
+        && current.tasksDone === next.tasksDone
+        && current.tasksTotal === next.tasksTotal;
+
+      return unchanged ? current : next;
+    });
   }, [sourceEvents]);
 
   if (!selected) {
@@ -280,7 +363,7 @@ export default function EventCollectionPrototype({
     );
   }
 
-  const props: VariantProps = {
+  const props: VariantCProps = {
     events: visibleEvents,
     view,
     month,
@@ -290,18 +373,23 @@ export default function EventCollectionPrototype({
     onMonth: (direction) => setMonth((value) => Math.min(9, Math.max(7, value + direction))),
     onNewEvent: onNewEvent ?? (() => setNotice("New Event flow would open here.")),
     onOpen: onOpen ?? ((event) => setNotice(`Opening ${event.name} workspace…`)),
-    onSelect: setSelected,
+    onSelect: (event) => {
+      setSelected(event);
+      setSelectedDialogOpen(!openOnSelect);
+    },
     onShowClosed: () => setShowClosed((value) => !value),
     onShowCancelled: () => setShowCancelled((value) => !value),
     onView: setView,
     openOnSelect,
+    onCloseSelected: () => setSelectedDialogOpen(false),
+    isMobile,
   };
 
   return (
     <>
       {variant === "A" && <VariantA {...props} />}
       {variant === "B" && <VariantB {...props} />}
-      {variant === "C" && <VariantC {...props} />}
+      {variant === "C" && <VariantC {...props} selectedDialogOpen={selectedDialogOpen} />}
       {notice && <button className="collection-notice" type="button" onClick={() => setNotice("")}>{notice}<span>Dismiss</span></button>}
     </>
   );

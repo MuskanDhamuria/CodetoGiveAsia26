@@ -8,15 +8,26 @@ import EventOperationsMvp from "./EventOperationsMvp"
 afterEach(cleanup)
 
 describe("Event Operations MVP primary organizer journey", () => {
-  it("provides a mobile action bar for opening the selected Event workspace", async () => {
+  it("opens the selected Event in a mobile dialog before entering its workspace", async () => {
     const user = userEvent.setup()
-    render(<EventOperationsMvp />)
+    const originalWidth = window.innerWidth
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 375 })
 
-    const actionBar = screen.getByRole("region", { name: "Mobile selected Event actions" })
-    expect(within(actionBar).getByText("Distribution of clothes")).toBeTruthy()
+    try {
+      render(<EventOperationsMvp />)
 
-    await user.click(within(actionBar).getByRole("button", { name: "Open workspace" }))
-    expect(screen.getByRole("region", { name: "Distribution of clothes" })).toBeTruthy()
+      const eventButton = screen.getByRole("button", { name: "Open Distribution of clothes" })
+      await user.click(eventButton)
+
+      const dialog = screen.getByRole("dialog", { name: "Distribution of clothes" })
+      expect(within(dialog).getByText("Distribution of clothes")).toBeTruthy()
+      expect(screen.queryByRole("region", { name: "Mobile selected Event actions" })).toBeNull()
+
+      await user.click(within(dialog).getByRole("button", { name: /Open event workspace/ }))
+      expect(screen.getByRole("region", { name: "Distribution of clothes" })).toBeTruthy()
+    } finally {
+      Object.defineProperty(window, "innerWidth", { configurable: true, value: originalWidth })
+    }
   })
 
   it("renders the Event workspace as a three-column Kanban board", async () => {

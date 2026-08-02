@@ -1,9 +1,11 @@
 // Typed client for the volunteer-segment backend (FastAPI, /api/v1).
 // Response shapes mirror backend/api/routes/*.py exactly.
 
+// VITE_API_BASE_URL is the one env var name used across the whole frontend
+// (App.tsx, admin-api.ts, participant/api/client.ts) — keep this in sync so
+// a single env var configures every API client consistently.
 const API_BASE =
-  (import.meta.env.VITE_API_BASE as string | undefined) ??
-  "http://localhost:8000/api/v1"
+  (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "/api/v1"
 
 export type ListEnvelope<T> = {
   items: T[]

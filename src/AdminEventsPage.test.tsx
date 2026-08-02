@@ -404,6 +404,45 @@ describe("API-backed organizer events", () => {
     expect(await screen.findByRole("button", { name: "Mark done" })).toBeTruthy()
   })
 
+  it("shows mobile status tabs and keeps task actions available", async () => {
+    const event: EventDetail = {
+      id: 4,
+      event_template_id: null,
+      name: "Wellness session",
+      venue: "Hall",
+      event_date: "2027-09-01",
+      status: "open",
+      created_at: "",
+      updated_at: "",
+      tasks: [{
+        id: 11,
+        team_member_id: null,
+        template_task_id: null,
+        name: "Prepare room",
+        body: "",
+        due_at: "2027-08-30",
+        category: "planning",
+        status: "incomplete",
+        position: 0,
+        subtasks: [],
+      }],
+    }
+    const updateEventTask = vi.fn().mockResolvedValue({ ...event.tasks[0], status: "ongoing" })
+    const api = {
+      listEventTemplates: vi.fn().mockResolvedValue([]),
+      listEvents: vi.fn().mockResolvedValue([event]),
+      listTeamMembers: vi.fn().mockResolvedValue([]),
+      updateEventTask,
+    } as unknown as AdminApi
+    const user = userEvent.setup()
+
+    render(<AdminEventsPage api={api} initialEventId={4} />)
+    const tabs = await screen.findByRole("tablist", { name: "Task status" })
+    expect(within(tabs).getByRole("tab", { name: /To do 1/ }).getAttribute("aria-selected")).toBe("true")
+    await user.click(screen.getByRole("button", { name: "Start task" }))
+    expect(updateEventTask).toHaveBeenCalledWith(4, 11, { status: "ongoing" })
+  })
+
   it("renders a compact read-only workspace for a closed event", async () => {
     const event: EventDetail = {
       id: 1,

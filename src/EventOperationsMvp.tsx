@@ -72,6 +72,7 @@ function EventWorkspace({
   onMessage: (message: string) => void
 }) {
   const [showNewTask, setShowNewTask] = useState(false)
+  const [mobileStatus, setMobileStatus] = useState<"To do" | "In progress" | "Done">("To do")
   const [confirmation, setConfirmation] = useState<{
     title: string
     description: string
@@ -155,11 +156,27 @@ function EventWorkspace({
         <button className="event-operations-action-button event-operations-action-button-delete" type="button" onClick={() => setConfirmation({ title: `Delete “${event.name}” permanently?`, description: "This cannot be undone.", cancelLabel: "Keep event", confirmLabel: "Delete event", onConfirm: () => { operations.deleteEvent(event.id); onDeleted(); onMessage(`Event deleted: ${event.name}.`) } })}>Delete event</button>
       </div>
       <h3>Task workspace</h3>
+      <div aria-label="Task status" className="event-operations-mobile-status-tabs" role="tablist">
+        {(["To do", "In progress", "Done"] as const).map((status) => {
+          const count = event.tasks.filter((task) => task.status === status).length
+          return <button
+            aria-controls={`event-operations-column-${status.replace(" ", "-").toLowerCase()}`}
+            aria-selected={mobileStatus === status}
+            className={mobileStatus === status ? "active" : ""}
+            key={status}
+            onClick={() => setMobileStatus(status)}
+            role="tab"
+            type="button"
+          >
+            {status}<span>{count}</span>
+          </button>
+        })}
+      </div>
       <div className="event-operations-kanban">{(["To do", "In progress", "Done"] as const).map((status) => {
         const tasks = event.tasks.filter((task) => task.status === status)
         const firstTask = tasks[0]
         const remainingTasks = tasks.slice(1)
-        return <section className="event-operations-kanban-column" key={status}><h4 data-count={tasks.length}>{status}</h4>{firstTask && taskCard(firstTask)}{remainingTasks.length > 0 && <details className="event-operations-task-expander"><summary>Show {remainingTasks.length} more {remainingTasks.length === 1 ? "Task" : "Tasks"}</summary><div className="event-operations-task-expander-content">{remainingTasks.map(taskCard)}</div></details>}</section>
+        return <section aria-labelledby={`event-operations-tab-${status.replace(" ", "-").toLowerCase()}`} className={`event-operations-kanban-column ${mobileStatus === status ? "mobile-active" : ""}`} id={`event-operations-column-${status.replace(" ", "-").toLowerCase()}`} key={status}><h4 data-count={tasks.length} id={`event-operations-tab-${status.replace(" ", "-").toLowerCase()}`}>{status}</h4>{firstTask && taskCard(firstTask)}{remainingTasks.length > 0 && <details className="event-operations-task-expander"><summary>Show {remainingTasks.length} more {remainingTasks.length === 1 ? "Task" : "Tasks"}</summary><div className="event-operations-task-expander-content">{remainingTasks.map(taskCard)}</div></details>}</section>
       })}</div>
       {event.status === "Open" && <div className="event-operations-add-task">{showNewTask ? <><label>Task title<input value={newTask.title} onChange={(input) => setNewTask({ ...newTask, title: input.target.value })} /></label><label>Phase<select value={newTask.phase} onChange={(input) => setNewTask({ ...newTask, phase: input.target.value as EventPhase })}>{phases.map((phase) => <option key={phase}>{phase}</option>)}</select></label><label>Deadline<input type="date" value={newTask.deadline} onChange={(input) => setNewTask({ ...newTask, deadline: input.target.value })} /></label><button type="button" onClick={() => { try { operations.addEventTask({ eventId: event.id, ...newTask }); onEventChanged(operations.getEvent(event.id)!); setShowNewTask(false); setNewTask({ title: "", phase: "Planning", deadline: event.date }) } catch (error) { onMessage(error instanceof Error ? error.message : "Unable to add Task.") } }}>Add Task</button><button type="button" onClick={() => setShowNewTask(false)}>Cancel</button></> : <button type="button" onClick={() => setShowNewTask(true)}>Add Task</button>}</div>}
       {confirmation && <section aria-label="Confirm action" className="event-operations-confirmation"><strong>{confirmation.title}</strong><p>{confirmation.description}</p><button type="button" onClick={() => setConfirmation(null)}>{confirmation.cancelLabel}</button><button type="button" onClick={() => { confirmation.onConfirm(); setConfirmation(null) }}>{confirmation.confirmLabel}</button></section>}

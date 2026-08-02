@@ -42,6 +42,10 @@ describe("Event Operations MVP primary organizer journey", () => {
       "In progress",
       "Done",
     ])
+    expect(screen.getByRole("tablist", { name: "Task status" })).toBeTruthy()
+    expect(screen.getByRole("tab", { name: /To do/ })).toHaveAttribute("aria-selected", "true")
+    await user.click(screen.getByRole("tab", { name: /Done/ }))
+    expect(screen.getByRole("tab", { name: /Done/ })).toHaveAttribute("aria-selected", "true")
 
     const styles = readFileSync("src/EventOperationsMvp.css", "utf8")
     expect(styles).toMatch(/\.event-operations-kanban\s*\{[^}]*display:\s*grid/)

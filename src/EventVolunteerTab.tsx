@@ -74,7 +74,7 @@ export default function EventVolunteerTab({ eventId, event, taskPeople, readOnly
   const [roles, setRoles] = useState<Role[]>([])
   const [signups, setSignups] = useState<Signup[]>([])
   const [profiles, setProfiles] = useState<Record<number, VolunteerDetail>>({})
-  const [roleChoice, setRoleChoice] = useState<Record<number, number>>({})
+  const [roleChoice, setRoleChoice] = useState<Record<number, number | null>>({})
   const [search, setSearch] = useState("")
   const [showRejected, setShowRejected] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -187,15 +187,11 @@ export default function EventVolunteerTab({ eventId, event, taskPeople, readOnly
   }
 
   function chosenRole(signup: Signup) {
-    return roleChoice[signup.id] ?? signup.assigned_role_id ?? roles[0]?.id
+    return roleChoice[signup.id] ?? signup.assigned_role_id ?? null
   }
 
   async function handleApprove(signup: Signup) {
     const roleId = chosenRole(signup)
-    if (roleId === undefined) {
-      setError("This event has no volunteer roles available for assignment.")
-      return
-    }
     setBusySignupId(signup.id)
     setError("")
     setNotice("")
@@ -371,23 +367,24 @@ export default function EventVolunteerTab({ eventId, event, taskPeople, readOnly
                   {!readOnly && (
                     <div className="event-volunteer-request-actions">
                       <label>
-                        <span>Assign role</span>
+                        <span>Interest label (optional)</span>
                         <select
-                          aria-label={`Assign role to ${signup.volunteer_name}`}
-                          disabled={busySignupId === signup.id || roles.length === 0}
+                          aria-label={`Interest label for ${signup.volunteer_name}`}
+                          disabled={busySignupId === signup.id}
                           value={chosenRole(signup) ?? ""}
                           onChange={(event) => setRoleChoice((current) => ({
                             ...current,
-                            [signup.id]: Number(event.target.value),
+                            [signup.id]: event.target.value ? Number(event.target.value) : null,
                           }))}
                         >
+                          <option value="">No role assignment</option>
                           {roles.map((role) => <option key={role.id} value={role.id}>{role.name}</option>)}
                         </select>
                       </label>
                       <button
                         type="button"
                         className="approve"
-                        disabled={busySignupId === signup.id || roles.length === 0}
+                        disabled={busySignupId === signup.id}
                         onClick={() => void handleApprove(signup)}
                       >Approve</button>
                       <button

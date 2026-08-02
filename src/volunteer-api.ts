@@ -341,7 +341,7 @@ export function deleteEventOrganizer(eventId: number, organizerId: number): Prom
 export function approveSignup(
   eventId: number,
   signupId: number,
-  body: { assigned_role_id: number; is_leader?: boolean },
+  body: { assigned_role_id: number | null; is_leader?: boolean },
 ): Promise<Signup> {
   return postJson(`/events/${eventId}/volunteer-signups/${signupId}/approve`, body)
 }

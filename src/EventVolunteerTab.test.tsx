@@ -52,11 +52,11 @@ function profile(id: number, name: string): VolunteerDetail {
   }
 }
 
-function buildApi(signups: Signup[]) {
+function buildApi(signups: Signup[], availableRoles = roles) {
   const updateSignup = vi.fn().mockImplementation(
     (_eventId: number, signupId: number, changes: Partial<Signup>) => {
       const current = signups.find((signup) => signup.id === signupId)!
-      const assignedRole = roles.find((role) => role.id === changes.assigned_role_id)
+      const assignedRole = availableRoles.find((role) => role.id === changes.assigned_role_id)
       return Promise.resolve({
         ...current,
         ...changes,
@@ -73,7 +73,7 @@ function buildApi(signups: Signup[]) {
       category: "volunteer",
       is_required: false,
     })),
-    listEventRoles: vi.fn().mockResolvedValue(roles),
+    listEventRoles: vi.fn().mockResolvedValue(availableRoles),
     listEventSignups: vi.fn().mockResolvedValue({ items: signups, total: signups.length, limit: 50, offset: 0 }),
     getVolunteer: vi.fn().mockImplementation((id: number) => {
       const signup = signups.find((item) => item.volunteer_id === id)!
@@ -83,7 +83,7 @@ function buildApi(signups: Signup[]) {
       ...signups.find((signup) => signup.id === signupId)!,
       status: "approved" as const,
       assigned_role_id: body.assigned_role_id,
-      assigned_role_name: roles.find((role) => role.id === body.assigned_role_id)?.name ?? null,
+      assigned_role_name: availableRoles.find((role) => role.id === body.assigned_role_id)?.name ?? null,
     })),
     rejectSignup: vi.fn(),
     updateSignup,
@@ -98,12 +98,22 @@ describe("event volunteer workspace", () => {
     const user = userEvent.setup()
     render(<EventVolunteerTab eventId={4} readOnly={false} api={api} />)
 
-    const roleSelect = await screen.findByRole("combobox", { name: "Assign role to Farah Hassan" })
+    const roleSelect = await screen.findByRole("combobox", { name: "Interest label for Farah Hassan" })
     await user.selectOptions(roleSelect, "2")
     await user.click(screen.getByRole("button", { name: "Approve" }))
 
     expect(api.approveSignup).toHaveBeenCalledWith(4, 10, { assigned_role_id: 2 })
     expect(await screen.findByText("Farah Hassan was approved and added to the event team.")).toBeTruthy()
+  })
+
+  it("approves a pending request without assigning a role", async () => {
+    const { api } = buildApi([requested], [])
+    const user = userEvent.setup()
+    render(<EventVolunteerTab eventId={4} readOnly={false} api={api} />)
+
+    await user.click(await screen.findByRole("button", { name: "Approve" }))
+
+    expect(api.approveSignup).toHaveBeenCalledWith(4, 10, { assigned_role_id: null })
   })
 
   it("removes the old role board while preserving preference management", async () => {

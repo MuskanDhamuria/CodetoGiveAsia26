@@ -98,13 +98,38 @@ describe("VolunteerDirectory", () => {
 
     render(<VolunteerDirectory />)
     await user.click(await screen.findByRole("button", { name: "View profile" }))
-    expect(await screen.findByRole("combobox", { name: "Role for Food drive" })).toBeTruthy()
+    expect(await screen.findByRole("combobox", { name: "Interest label for Food drive" })).toBeTruthy()
     await user.click(screen.getByRole("button", { name: "Approve" }))
 
     expect(await screen.findByText("Food drive request approved.")).toBeTruthy()
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/v1/events/4/volunteer-signups/8/approve",
       expect.objectContaining({ method: "POST", body: JSON.stringify({ assigned_role_id: 3 }) }),
+    )
+  })
+
+  it("approves a requested event without any role options", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url.endsWith("/api/v1/volunteers")) return json({ items: [{ id: 1, name: "Aisha Rahman", contact_number: "+6584567890", email: "aisha@example.com", signup_status: "approved", skills: [], counts: { events_signed_up: 1, events_approved: 0, events_attended: 0 } }], total: 1, limit: 50, offset: 0 })
+      if (url.endsWith("/api/v1/events")) return json({ items: [{ id: 4, name: "Food drive", venue: "Hall", event_date: "2027-09-01", description: "", start_time: null, end_time: null, status: "open", beneficiary_id: 1 }], total: 1, limit: 50, offset: 0 })
+      if (url.endsWith("/api/v1/volunteers/1")) return json({ id: 1, name: "Aisha Rahman", contact_number: "+6584567890", email: "aisha@example.com", signup_status: "approved", skills: [], interests: [], counts: { events_signed_up: 1, events_approved: 0, events_attended: 0 } })
+      if (url.endsWith("/api/v1/volunteers/1/events")) return json({ items: [{ signup_id: 8, event_id: 4, event_name: "Food drive", event_date: "2027-09-01", status: "requested", assigned_role_id: null, assigned_role_name: null, preferred_role_names: [], is_leader: false, attendance: null }], total: 1, limit: 50, offset: 0 })
+      if (url.endsWith("/api/v1/events/4/roles")) return json([])
+      if (url.endsWith("/api/v1/events/4/volunteer-signups/8/approve") && init?.method === "POST") return json({ id: 8, event_id: 4, volunteer_id: 1, volunteer_name: "Aisha Rahman", status: "approved", assigned_role_id: null, assigned_role_name: null, preferred_role_names: [], is_leader: false, attendance: null })
+      return json({ detail: `Unexpected request: ${url}` }, 500)
+    })
+    vi.stubGlobal("fetch", fetchMock)
+    const user = userEvent.setup()
+
+    render(<VolunteerDirectory />)
+    await user.click(await screen.findByRole("button", { name: "View profile" }))
+    expect(await screen.findByText("No interest options configured; approval can continue.")).toBeTruthy()
+    await user.click(screen.getByRole("button", { name: "Approve" }))
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/events/4/volunteer-signups/8/approve",
+      expect.objectContaining({ method: "POST", body: JSON.stringify({ assigned_role_id: null }) }),
     )
   })
 })

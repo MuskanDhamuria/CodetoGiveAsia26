@@ -84,6 +84,27 @@ class EventVolunteerManagementTest(unittest.TestCase):
         self.assertIsNone(cleared.json()["assigned_role_id"])
         self.assertIsNone(cleared.json()["attendance"])
 
+    def test_signup_can_be_approved_without_a_role(self) -> None:
+        created = self.client.post(
+            f"/api/v1/public/events/{self.event_id}/volunteer-signups",
+            json={
+                "name": "Unassigned Approval Tester",
+                "contact_number": "+6591112233",
+                "role_ids": [],
+            },
+        )
+        self.assertEqual(created.status_code, 200)
+        signup_id = created.json()["signup"]["id"]
+
+        approved = self.client.post(
+            f"/api/v1/events/{self.event_id}/volunteer-signups/{signup_id}/approve",
+            json={"assigned_role_id": None},
+        )
+
+        self.assertEqual(approved.status_code, 200)
+        self.assertEqual(approved.json()["status"], "approved")
+        self.assertIsNone(approved.json()["assigned_role_id"])
+
     def test_event_role_changes_do_not_change_another_event(self) -> None:
         created = self.client.post(
             f"/api/v1/events/{self.wellness_event_id}/roles",

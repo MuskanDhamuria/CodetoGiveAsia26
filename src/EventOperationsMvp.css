@@ -115,7 +115,7 @@
   .api-event-workspace .event-operations-kanban > section.mobile-active { display: grid; }
 }
 .api-event-workspace-back { justify-self: start; margin-bottom: 2px; width: max-content; }
-.api-event-workspace { gap: 22px; }
+.api-event-workspace { gap: 22px; grid-template-columns: minmax(0, 1fr); }
 .api-event-workspace-header { align-items: flex-start; display: flex; gap: 20px; justify-content: space-between; }
 .api-event-workspace-header p { color: #44765b; font-size: .76rem; font-weight: 800; letter-spacing: .08em; margin: 0 0 6px; text-transform: uppercase; }
 .api-event-workspace-header h2 { font-size: clamp(1.45rem, 2.5vw, 2rem); }

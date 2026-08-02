@@ -3233,6 +3233,7 @@ button {
   font-weight: 800;
   letter-spacing: 0.05em;
   padding: 0 12px 12px;
+  position: relative;
   text-align: left;
   text-transform: uppercase;
 }
@@ -4507,12 +4508,13 @@ button {
   }
 
   .hero {
-    min-height: 760px;
-    padding: 134px 22px 120px;
+    justify-content: flex-start;
+    min-height: 100svh;
+    padding: 24px 18px 24px;
   }
 
   .hero h1 {
-    font-size: 56px;
+    font-size: 44px;
   }
 
   .hero sup {
@@ -4520,8 +4522,24 @@ button {
   }
 
   .hero p {
-    font-size: 16px;
+    font-size: 14px;
+    line-height: 1.35;
+    margin-top: 14px;
   }
+
+  .landing-actions {
+    gap: 8px;
+    margin-top: 18px;
+  }
+
+  .landing-role {
+    min-height: 58px;
+    padding: 11px 14px;
+  }
+
+  .landing-role span { font-size: 14px; }
+  .landing-role small { font-size: 11px; margin-top: 4px; }
+  .landing-role b { font-size: 16px; right: 12px; top: 10px; }
 
   .side-lines {
     display: none;

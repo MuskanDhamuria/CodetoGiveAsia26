@@ -56,6 +56,9 @@ export default defineConfig(({ mode }) => {
         },
       }),
     ],
+    optimizeDeps: {
+      include: ['qrcode.react'],
+    },
     resolve: {
       alias: {
         '@': path.resolve(__dirname, './src'),

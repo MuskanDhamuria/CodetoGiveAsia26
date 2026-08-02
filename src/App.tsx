@@ -2071,7 +2071,7 @@ function AdminPanel() {
 
   function handleQuickAction(action: FlowAction) {
     if (action === "create-event") {
-      setOpenEventIndex(0);
+      setOpenEventIndex(null);
       navigate("events");
       return;
     }

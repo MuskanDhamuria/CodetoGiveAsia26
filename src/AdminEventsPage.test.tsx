@@ -10,6 +10,20 @@ afterEach(cleanup)
 
 
 describe("API-backed organizer events", () => {
+  it("reports an invalid Event 0 instead of requesting its dependent data", async () => {
+    const api = {
+      listEventTemplates: vi.fn().mockResolvedValue([]),
+      listEvents: vi.fn().mockResolvedValue([]),
+      listTeamMembers: vi.fn().mockResolvedValue([]),
+      listEventTaskAssignees: vi.fn().mockResolvedValue({ organizers: [], volunteers: [] }),
+    } as unknown as AdminApi
+
+    render(<AdminEventsPage api={api} initialEventId={0} />)
+    expect((await screen.findByRole("alert")).textContent).toContain("Event 0 was not found")
+
+    expect(api.listEventTaskAssignees).not.toHaveBeenCalled()
+  })
+
   it("updates the selected event panel without opening the workspace", async () => {
     const events: EventDetail[] = [
       { id: 4, event_template_id: null, name: "First event", venue: "Hall A", event_date: "2027-09-01", status: "open", is_cancelled: false, created_at: "", updated_at: "", tasks: [] },

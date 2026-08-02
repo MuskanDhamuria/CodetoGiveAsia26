@@ -103,7 +103,9 @@ def seed_logistics(db) -> None:
 
     item_definitions = [
         ("Drinking water", "WATER-1L", "litre", "consumable", 40, 220),
-        ("Folding chairs", "CHAIR-FOLD", "piece", "reusable", 20, 90),
+        ("Tables", "TABLE-FOLD", "piece", "reusable", 5, 30),
+        ("Chairs", "CHAIR-FOLD", "piece", "reusable", 20, 90),
+        ("Clothes", "CLOTHES-BUNDLE", "bundle", "consumable", 20, 150),
         ("First-aid kits", "FIRST-AID", "kit", "reusable", 3, 8),
     ]
     item_ids = {}
@@ -117,30 +119,48 @@ def seed_logistics(db) -> None:
         item_id = db.execute("SELECT id FROM inventory_items WHERE sku = ?", (sku,)).fetchone()[0]
         item_ids[sku] = item_id
 
-    location = db.execute(
-        "SELECT id FROM inventory_locations WHERE name = 'Main Store' LIMIT 1"
-    ).fetchone()
-    if location is None:
-        location_id = db.execute(
-            "INSERT INTO inventory_locations (name, address) VALUES ('Main Store', 'Central operations store') RETURNING id"
-        ).fetchone()[0]
-    else:
-        location_id = location[0]
-    for _name, sku, _unit, _item_type, _reorder, opening in item_definitions:
-        item_id = item_ids[sku]
-        if db.execute("SELECT COUNT(*) FROM inventory_lots WHERE item_id = ?", (item_id,)).fetchone()[0] == 0:
-            lot_id = db.execute(
-                """INSERT INTO inventory_lots
-                   (item_id, location_id, source_type, condition, current_quantity)
-                   VALUES (?, ?, 'adjustment', 'usable', ?) RETURNING id""",
-                (item_id, location_id, opening),
+    seeded_location_definitions = [
+        ("Main Store", "Central operations store"),
+        ("Tampines Hub", "1 Tampines Walk"),
+        ("Tampines CC", "1 Tampines Street 41"),
+        ("West Coast CC", "2 Clementi West Street 2"),
+        ("Migrant Dormitories", "Demo migrant worker community stores"),
+    ]
+    location_ids = {}
+    for name, address in seeded_location_definitions:
+        location = db.execute(
+            "SELECT id FROM inventory_locations WHERE name = ? LIMIT 1", (name,)
+        ).fetchone()
+        if location is None:
+            location_id = db.execute(
+                "INSERT INTO inventory_locations (name, address) VALUES (?, ?) RETURNING id",
+                (name, address),
             ).fetchone()[0]
-            db.execute(
-                """INSERT INTO stock_movements
-                   (item_id, lot_id, location_id, movement_type, quantity_delta, reason)
-                   VALUES (?, ?, ?, 'adjustment', ?, 'Demo opening balance')""",
-                (item_id, lot_id, location_id, opening),
-            )
+        else:
+            location_id = location[0]
+        location_ids[name] = location_id
+
+    location_id = location_ids["Main Store"]
+    for stock_location_name, stock_location_id in location_ids.items():
+        for _name, sku, _unit, _item_type, _reorder, opening in item_definitions:
+            item_id = item_ids[sku]
+            if db.execute(
+                "SELECT COUNT(*) FROM inventory_lots WHERE item_id = ? AND location_id = ?",
+                (item_id, stock_location_id),
+            ).fetchone()[0] == 0:
+                lot_id = db.execute(
+                    """INSERT INTO inventory_lots
+                       (item_id, location_id, source_type, condition, current_quantity)
+                       VALUES (?, ?, 'adjustment', 'usable', ?) RETURNING id""",
+                    (item_id, stock_location_id, opening),
+                ).fetchone()[0]
+                db.execute(
+                    """INSERT INTO stock_movements
+                       (item_id, lot_id, location_id, movement_type, quantity_delta, reason)
+                       VALUES (?, ?, ?, 'adjustment', ?, ?)""",
+                    (item_id, lot_id, stock_location_id, opening,
+                     f"Demo opening balance at {stock_location_name}"),
+                )
 
     venue = db.execute("SELECT id FROM venues WHERE name = 'Tampines Hub' LIMIT 1").fetchone()
     if venue is None:
@@ -165,10 +185,13 @@ def seed_logistics(db) -> None:
         is_distribution = "distribution" in template["name"].lower()
         requirements = [
             (item_ids["WATER-1L"], 10, .6, 10, "litre", -1),
-            (item_ids["FIRST-AID"], 1, 0, 0, "kit", -1),
+            (item_ids["CHAIR-FOLD"], 20, .1, 5, "piece", -1),
         ]
         if is_distribution:
-            requirements.append((item_ids["CHAIR-FOLD"], 20, .1, 5, "piece", -1))
+            requirements = [
+                (item_ids["CLOTHES-BUNDLE"], 40, .5, 10, "bundle", -1),
+                (item_ids["CHAIR-FOLD"], 20, .1, 5, "piece", -1),
+            ]
         for item_id, base, per_person, buffer, unit, relative_day in requirements:
             db.execute(
                 """INSERT INTO template_logistics_requirements
@@ -221,6 +244,40 @@ def seed_logistics(db) -> None:
             ),
         ).fetchall()
     }
+
+    # Give every seeded event a visible inventory allocation.  These are
+    # reservations rather than issues, so the demo stock remains available to
+    # explore while the logistics screen shows a realistic allocation state.
+    allocation_locations = {
+        "Yoga at Tampines Hub": "Tampines Hub",
+        "Zumba at Boon Lay Dormitory": "Migrant Dormitories",
+        "Clothes & Essentials Distribution": "West Coast CC",
+    }
+    for event_name, event_id in event_ids.items():
+        source_location_id = location_ids[allocation_locations[event_name]]
+        requirements = db.execute(
+            """SELECT id, inventory_item_id, required_quantity
+               FROM event_logistics_requirements
+               WHERE event_id = ? AND requirement_type = 'goods' AND is_cancelled = 0
+               ORDER BY id LIMIT 2""",
+            (event_id,),
+        ).fetchall()
+        for requirement in requirements:
+            already_allocated = db.execute(
+                """SELECT 1 FROM inventory_allocations
+                   WHERE requirement_id = ? AND source_location_id = ?
+                   LIMIT 1""",
+                (requirement["id"], source_location_id),
+            ).fetchone()
+            if already_allocated is not None:
+                continue
+            db.execute(
+                """INSERT INTO inventory_allocations
+                   (requirement_id, item_id, source_location_id, reserved_quantity, status)
+                   VALUES (?, ?, ?, ?, 'reserved')""",
+                (requirement["id"], requirement["inventory_item_id"],
+                 source_location_id, requirement["required_quantity"]),
+            )
 
     def create_donation(
         marker: str,

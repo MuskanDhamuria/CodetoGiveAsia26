@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Literal
 
 import httpx
+import sqlite3
 from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
@@ -179,16 +180,15 @@ async def generate_caption_with_gemini(
     return parse_gemini_caption(text, event_name, file_name)
 
 
-@router.get(
-    "/completed",
-    response_model=list[CompletedEventReport],
-    summary="List completed events for post-event reports",
-)
-def completed_reports(request: Request) -> list[CompletedEventReport]:
-    database_path: Path = request.app.state.database_path
-    with connect(database_path) as connection:
-        rows = connection.execute(
-            """
+def completed_event_reports(connection: sqlite3.Connection) -> list[CompletedEventReport]:
+    """TICKET-41: pulled out of the `completed_reports` route so the AI tool
+
+    layer can call it with an already-open connection instead of duplicating
+    this query — the route below just wraps it with its own connection.
+    """
+
+    rows = connection.execute(
+        """
             SELECT
                 events.id,
                 events.name,
@@ -223,8 +223,8 @@ def completed_reports(request: Request) -> list[CompletedEventReport]:
             WHERE events.status = 'closed'
             GROUP BY events.id
             ORDER BY events.event_date DESC, events.id DESC
-            """
-        ).fetchall()
+        """
+    ).fetchall()
 
     reports: list[CompletedEventReport] = []
     for row in rows:
@@ -266,6 +266,17 @@ def completed_reports(request: Request) -> list[CompletedEventReport]:
             )
         )
     return reports
+
+
+@router.get(
+    "/completed",
+    response_model=list[CompletedEventReport],
+    summary="List completed events for post-event reports",
+)
+def completed_reports(request: Request) -> list[CompletedEventReport]:
+    database_path: Path = request.app.state.database_path
+    with connect(database_path) as connection:
+        return completed_event_reports(connection)
 
 
 @router.put(

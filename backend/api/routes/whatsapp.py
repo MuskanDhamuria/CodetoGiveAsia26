@@ -230,6 +230,13 @@ def list_announcements(event_id: int, db: Connection) -> list[AnnouncementOut]:
     return [_announcement_model(db, row) for row in rows]
 
 
+def default_reminder_body(event: sqlite3.Row) -> str:
+    return (
+        f"Reminder: you're assigned to {event['name']} on {event['event_date']} "
+        f"at {event['venue']}. Reply TASKS for details."
+    )
+
+
 @router.post(
     "/events/{event_id}/reminders",
     response_model=AnnouncementOut,
@@ -240,10 +247,7 @@ def create_reminder(event_id: int, payload: ReminderCreate, db: Connection) -> A
     event = db.execute("SELECT * FROM events WHERE id = ?", (event_id,)).fetchone()
     if event is None:
         raise HTTPException(status_code=404, detail=f"Event {event_id} was not found")
-    body = payload.body or (
-        f"Reminder: you're assigned to {event['name']} on {event['event_date']} "
-        f"at {event['venue']}. Reply TASKS for details."
-    )
+    body = payload.body or default_reminder_body(event)
     row = db.execute(
         """
         INSERT INTO announcements
@@ -273,6 +277,48 @@ def _certificate_model(row: sqlite3.Row) -> CertificateOut:
         delivered_at=row["delivered_at"],
         link=certificate_link(row["download_token"]),
     )
+
+
+def certificate_recipient_counts(db: sqlite3.Connection, event_id: int) -> dict:
+    """Read-only preview of what generate_certificates would do — same
+
+    attendance filters as its two loops, but counting only, no writes.
+    """
+
+    participant_total = db.execute(
+        "SELECT COUNT(*) FROM participations WHERE event_id = ? AND attendance = 1",
+        (event_id,),
+    ).fetchone()[0]
+    participant_already_delivered = db.execute(
+        """
+        SELECT COUNT(*) FROM certificates
+        WHERE event_id = ? AND participant_id IS NOT NULL AND delivered_at IS NOT NULL
+        """,
+        (event_id,),
+    ).fetchone()[0]
+    volunteer_total = db.execute(
+        "SELECT COUNT(*) FROM volunteer_signups WHERE event_id = ? AND attendance = 1",
+        (event_id,),
+    ).fetchone()[0]
+    volunteer_already_delivered = db.execute(
+        """
+        SELECT COUNT(*) FROM certificates
+        WHERE event_id = ? AND volunteer_id IS NOT NULL AND delivered_at IS NOT NULL
+        """,
+        (event_id,),
+    ).fetchone()[0]
+    return {
+        "event_id": event_id,
+        "eligible_participants": participant_total,
+        "eligible_volunteers": volunteer_total,
+        "already_delivered": participant_already_delivered + volunteer_already_delivered,
+        "pending_delivery": (
+            participant_total
+            + volunteer_total
+            - participant_already_delivered
+            - volunteer_already_delivered
+        ),
+    }
 
 
 @router.post(

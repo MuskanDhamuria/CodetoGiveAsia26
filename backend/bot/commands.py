@@ -631,7 +631,7 @@ def confirm_assignment(db: sqlite3.Connection, contact: sqlite3.Row, raw_id: str
 # --------------------------------------------------------------------------- #
 # Admin commands
 # --------------------------------------------------------------------------- #
-def _audience_contacts(db: sqlite3.Connection, event_id: int | None, audience: str) -> list[sqlite3.Row]:
+def audience_contacts(db: sqlite3.Connection, event_id: int | None, audience: str) -> list[sqlite3.Row]:
     if event_id is None or audience == "all":
         return db.execute("SELECT * FROM whatsapp_contacts WHERE notify_new_events = 1").fetchall()
     if audience == "volunteers":
@@ -691,7 +691,7 @@ def send_announcement(db: sqlite3.Connection, announcement_id: int, client=None)
         logger.warning("send_announcement called with unknown announcement id %s", announcement_id)
         return 0
     message = format_announcement_message(db, announcement)
-    contacts = _audience_contacts(db, announcement["event_id"], announcement["audience"])
+    contacts = audience_contacts(db, announcement["event_id"], announcement["audience"])
     logger.info(
         "Delivering announcement %s (%r) to %d contact(s), audience=%s",
         announcement_id,

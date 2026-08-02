@@ -135,6 +135,13 @@ const quickActions: { label: string; action: FlowAction }[] = [
   { label: "Send Broadcast", action: "send-broadcast" },
 ];
 
+export const quickActionPages: Record<FlowAction, Page> = {
+  "create-event": "events",
+  "invite-volunteers": "volunteers",
+  "generate-report": "reports",
+  "send-broadcast": "broadcasts",
+};
+
 const events = [
   {
     name: "National Day Celebration 2027",
@@ -1970,21 +1977,13 @@ function AdminPanel() {
   function handleQuickAction(action: FlowAction) {
     if (action === "create-event") {
       setOpenEventIndex(null);
-      navigate("events");
-      return;
     }
 
     if (action === "invite-volunteers") {
       setOpenVolunteerIndex(0);
-      navigate("volunteers");
-      return;
     }
 
-    if (action === "generate-report") {
-      navigate("reports");
-      return;
-    }
-
+    navigate(quickActionPages[action]);
   }
 
   function openEventWorkspace(eventId: number) {

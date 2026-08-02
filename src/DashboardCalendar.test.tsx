@@ -2,7 +2,7 @@
 import { cleanup, render, screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { DashboardPage, EventCalendar } from "./App"
+import { DashboardPage, EventCalendar, quickActionPages } from "./App"
 import type { AdminApi, EventDetail } from "./admin-api"
 
 
@@ -10,6 +10,15 @@ afterEach(cleanup)
 
 
 describe("dashboard Event calendar", () => {
+  it("maps every Quick Action to an Admin BrowserRouter page", () => {
+    expect(quickActionPages).toEqual({
+      "create-event": "events",
+      "invite-volunteers": "volunteers",
+      "generate-report": "reports",
+      "send-broadcast": "broadcasts",
+    })
+  })
+
   it("renders API-backed KPIs and deadlines", async () => {
     const openEvent = vi.fn()
     const api = {

@@ -5,9 +5,15 @@ import tempfile
 import unittest
 from datetime import date, timedelta
 from pathlib import Path
+from unittest.mock import patch
 
 from backend.ai_tools import TOOL_SPECS, dispatch_tool_call
+from backend.api.routes import inventory as inventory_routes
+from backend.bot import commands as bot_commands
 from backend.database import connect, initialize_database
+from backend.integrations import whatsapp_client
+from backend.schema.inventory import StockAdjustment
+from backend.tests.test_whatsapp import FakeWhatsAppClient
 
 
 class AiToolsTest(unittest.TestCase):
@@ -167,6 +173,18 @@ class AiToolsTest(unittest.TestCase):
                 "list_event_signups",
                 "list_pending_signups",
                 "approve_event_signup",
+                "list_inventory_items",
+                "list_inventory_locations",
+                "get_stock_levels",
+                "list_inventory_movements",
+                "preview_announcement",
+                "send_announcement",
+                "preview_shift_reminder",
+                "send_shift_reminder",
+                "list_completed_event_reports",
+                "list_event_certificates",
+                "preview_certificate_generation",
+                "generate_event_certificates",
             },
         )
 
@@ -795,6 +813,265 @@ class AiToolsTest(unittest.TestCase):
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["tool_name"], "create_event_draft")
         self.assertEqual(rows[0]["success"], 1)
+
+
+class AiToolsInventoryTest(unittest.TestCase):
+    """TICKET-39: read-only inventory tools."""
+
+    def setUp(self) -> None:
+        self.temporary_directory = tempfile.TemporaryDirectory()
+        database_path = Path(self.temporary_directory.name) / "test.sqlite3"
+        initialize_database(database_path)
+        self.db = connect(database_path)
+
+    def tearDown(self) -> None:
+        self.db.close()
+        self.temporary_directory.cleanup()
+
+    def create_item(self, **overrides) -> int:
+        fields = {"name": "Bottled Water", "unit": "case", "item_type": "consumable"}
+        fields.update(overrides)
+        row = self.db.execute(
+            "INSERT INTO inventory_items (name, unit, item_type) VALUES (?, ?, ?) RETURNING id",
+            (fields["name"], fields["unit"], fields["item_type"]),
+        ).fetchone()
+        self.db.commit()
+        return row["id"]
+
+    def create_location(self, **overrides) -> int:
+        fields = {"name": "Main Store"}
+        fields.update(overrides)
+        row = self.db.execute(
+            "INSERT INTO inventory_locations (name) VALUES (?) RETURNING id", (fields["name"],)
+        ).fetchone()
+        self.db.commit()
+        return row["id"]
+
+    def test_list_inventory_items_returns_created_items(self) -> None:
+        self.create_item(name="Bottled Water")
+        self.create_item(name="First Aid Kit", item_type="reusable", unit="kit")
+        result = dispatch_tool_call(self.db, "list_inventory_items", {})
+        self.assertTrue(result["success"])
+        names = {item["name"] for item in result["result"]["items"]}
+        self.assertEqual(names, {"Bottled Water", "First Aid Kit"})
+
+    def test_list_inventory_locations_returns_created_locations(self) -> None:
+        self.create_location(name="Main Store")
+        result = dispatch_tool_call(self.db, "list_inventory_locations", {})
+        self.assertTrue(result["success"])
+        names = {location["name"] for location in result["result"]["items"]}
+        self.assertEqual(names, {"Main Store"})
+
+    def test_get_stock_levels_reflects_an_adjustment_made_via_the_admin_route(self) -> None:
+        item_id = self.create_item()
+        location_id = self.create_location()
+        # No AI tool performs adjustments yet (TICKET-39 is read-only) —
+        # go through the admin route directly, same as an organizer would.
+        inventory_routes.adjust_stock(
+            StockAdjustment(item_id=item_id, location_id=location_id, quantity_delta=10, reason="Initial stock"),
+            self.db,
+        )
+        result = dispatch_tool_call(self.db, "get_stock_levels", {})
+        self.assertTrue(result["success"])
+        [row] = result["result"]["items"]
+        self.assertEqual(row["item_id"], item_id)
+        self.assertEqual(row["on_hand"], 10)
+        self.assertEqual(row["available"], 10)
+
+    def test_list_inventory_movements_reflects_an_adjustment(self) -> None:
+        item_id = self.create_item()
+        location_id = self.create_location()
+        inventory_routes.adjust_stock(
+            StockAdjustment(item_id=item_id, location_id=location_id, quantity_delta=5, reason="Donation received"),
+            self.db,
+        )
+        result = dispatch_tool_call(self.db, "list_inventory_movements", {})
+        self.assertTrue(result["success"])
+        [movement] = result["result"]["items"]
+        self.assertEqual(movement["quantity_delta"], 5)
+        self.assertEqual(movement["reason"], "Donation received")
+
+    def test_no_write_tool_exists_for_inventory_adjustments(self) -> None:
+        result = dispatch_tool_call(
+            self.db,
+            "adjust_stock",
+            {"item_id": 1, "location_id": 1, "quantity_delta": 1, "reason": "test"},
+        )
+        self.assertEqual(result, {"success": False, "reason": "Unknown tool 'adjust_stock'"})
+
+
+class AiToolsBroadcastAndReportsTest(AiToolsTest):
+    """TICKET-40 (broadcast) and TICKET-41 (reports/certificates)."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.fake_whatsapp = FakeWhatsAppClient()
+        self.get_client_patchers = [
+            patch.object(whatsapp_client, "get_client", return_value=self.fake_whatsapp),
+            patch.object(bot_commands, "get_client", return_value=self.fake_whatsapp),
+        ]
+        for patcher in self.get_client_patchers:
+            patcher.start()
+
+    def tearDown(self) -> None:
+        for patcher in self.get_client_patchers:
+            patcher.stop()
+        super().tearDown()
+
+    def create_participant(self, **overrides) -> int:
+        fields = {"name": "Aisha Rahman", "contact_number": "+6591234567"}
+        fields.update(overrides)
+        row = self.db.execute(
+            "INSERT INTO participants (name, contact_number) VALUES (?, ?) RETURNING id",
+            (fields["name"], fields["contact_number"]),
+        ).fetchone()
+        self.db.commit()
+        return row["id"]
+
+    def create_whatsapp_contact(self, phone_number: str, **overrides) -> int:
+        fields = {"participant_id": None, "volunteer_id": None, "notify_new_events": 1}
+        fields.update(overrides)
+        row = self.db.execute(
+            """
+            INSERT INTO whatsapp_contacts
+                (phone_number, participant_id, volunteer_id, notify_new_events)
+            VALUES (?, ?, ?, ?) RETURNING id
+            """,
+            (phone_number, fields["participant_id"], fields["volunteer_id"], fields["notify_new_events"]),
+        ).fetchone()
+        self.db.commit()
+        return row["id"]
+
+    # -- preview_announcement / send_announcement --------------------------
+
+    def test_preview_announcement_does_not_write_or_send(self) -> None:
+        event = self._publish()
+        self.create_whatsapp_contact("+6590000001", notify_new_events=1)
+        result = dispatch_tool_call(
+            self.db,
+            "preview_announcement",
+            {"event_id": event["id"], "title": "Update", "body": "Bring water bottles", "audience": "all"},
+        )
+        self.assertTrue(result["success"])
+        self.assertEqual(result["result"]["recipient_count"], 1)
+        self.assertEqual(self.db.execute("SELECT COUNT(*) FROM announcements").fetchone()[0], 0)
+        self.assertEqual(self.fake_whatsapp.sent, [])
+
+    def test_preview_announcement_rejects_unknown_event(self) -> None:
+        result = dispatch_tool_call(
+            self.db,
+            "preview_announcement",
+            {"event_id": 9999, "title": "Update", "body": "Bring water bottles", "audience": "all"},
+        )
+        self.assertFalse(result["success"])
+        self.assertIn("not found", result["reason"])
+
+    def test_send_announcement_writes_and_sends_to_the_audience(self) -> None:
+        event = self._publish()
+        self.create_whatsapp_contact("+6590000001", notify_new_events=1)
+        result = dispatch_tool_call(
+            self.db,
+            "send_announcement",
+            {"event_id": event["id"], "title": "Update", "body": "Bring water bottles", "audience": "all"},
+        )
+        self.assertTrue(result["success"])
+        self.assertEqual(result["result"]["delivered_count"], 1)
+        self.assertEqual(len(self.fake_whatsapp.sent), 1)
+        self.assertEqual(self.fake_whatsapp.sent[0][0], "+6590000001")
+
+    # -- preview_shift_reminder / send_shift_reminder -----------------------
+
+    def test_preview_shift_reminder_defaults_the_body_and_targets_volunteers_only(self) -> None:
+        fixture = self.create_event_with_role()
+        volunteer_id = self.create_volunteer()
+        self.create_signup(fixture["event"]["id"], volunteer_id, status="approved")
+        self.create_whatsapp_contact("+6590000002", volunteer_id=volunteer_id)
+        # A participant contact should not count toward a reminder's audience.
+        self.create_whatsapp_contact("+6590000003", notify_new_events=1)
+        result = dispatch_tool_call(
+            self.db, "preview_shift_reminder", {"event_id": fixture["event"]["id"]}
+        )
+        self.assertTrue(result["success"])
+        self.assertIn(fixture["event"]["name"], result["result"]["body"])
+        self.assertEqual(result["result"]["audience"], "volunteers")
+        self.assertEqual(result["result"]["recipient_count"], 1)
+        self.assertEqual(self.db.execute("SELECT COUNT(*) FROM announcements").fetchone()[0], 0)
+
+    def test_send_shift_reminder_sends_only_to_approved_volunteers(self) -> None:
+        fixture = self.create_event_with_role()
+        volunteer_id = self.create_volunteer()
+        self.create_signup(fixture["event"]["id"], volunteer_id, status="approved")
+        self.create_whatsapp_contact("+6590000002", volunteer_id=volunteer_id)
+        result = dispatch_tool_call(
+            self.db, "send_shift_reminder", {"event_id": fixture["event"]["id"]}
+        )
+        self.assertTrue(result["success"])
+        self.assertEqual(len(self.fake_whatsapp.sent), 1)
+        self.assertEqual(self.fake_whatsapp.sent[0][0], "+6590000002")
+
+    # -- list_completed_event_reports ---------------------------------------
+
+    def test_list_completed_event_reports_only_includes_closed_events(self) -> None:
+        template_id = self.create_template()
+        open_event = self._publish(name="Still Open", event_template_id=template_id)
+        closed_event = self._publish(name="Wrapped Up", event_template_id=template_id)
+        self.db.execute("UPDATE events SET status = 'closed' WHERE id = ?", (closed_event["id"],))
+        self.db.commit()
+        result = dispatch_tool_call(self.db, "list_completed_event_reports", {})
+        self.assertTrue(result["success"])
+        names = {item["name"] for item in result["result"]["items"]}
+        self.assertIn("Wrapped Up", names)
+        self.assertNotIn("Still Open", names)
+
+    # -- preview_certificate_generation / generate_event_certificates -------
+
+    def test_preview_certificate_generation_counts_eligible_attendees(self) -> None:
+        event = self._publish()
+        participant_id = self.create_participant()
+        self.db.execute(
+            "INSERT INTO participations (event_id, participant_id, rsvp_status, attendance) VALUES (?, ?, 1, 1)",
+            (event["id"], participant_id),
+        )
+        self.db.commit()
+        result = dispatch_tool_call(
+            self.db, "preview_certificate_generation", {"event_id": event["id"]}
+        )
+        self.assertTrue(result["success"])
+        self.assertEqual(result["result"]["eligible_participants"], 1)
+        self.assertEqual(result["result"]["already_delivered"], 0)
+        self.assertEqual(self.db.execute("SELECT COUNT(*) FROM certificates").fetchone()[0], 0)
+
+    def test_generate_event_certificates_creates_and_delivers_a_certificate(self) -> None:
+        event = self._publish()
+        participant_id = self.create_participant()
+        self.db.execute(
+            "INSERT INTO participations (event_id, participant_id, rsvp_status, attendance) VALUES (?, ?, 1, 1)",
+            (event["id"], participant_id),
+        )
+        self.db.commit()
+        self.create_whatsapp_contact("+6590000004", participant_id=participant_id)
+        result = dispatch_tool_call(
+            self.db, "generate_event_certificates", {"event_id": event["id"]}
+        )
+        self.assertTrue(result["success"])
+        [certificate] = result["result"]["items"]
+        self.assertEqual(certificate["participant_id"], participant_id)
+        self.assertEqual(len(self.fake_whatsapp.sent), 1)
+
+    # -- list_event_certificates ---------------------------------------------
+
+    def test_list_event_certificates_returns_issued_certificates(self) -> None:
+        event = self._publish()
+        participant_id = self.create_participant()
+        self.db.execute(
+            "INSERT INTO participations (event_id, participant_id, rsvp_status, attendance) VALUES (?, ?, 1, 1)",
+            (event["id"], participant_id),
+        )
+        self.db.commit()
+        dispatch_tool_call(self.db, "generate_event_certificates", {"event_id": event["id"]})
+        result = dispatch_tool_call(self.db, "list_event_certificates", {"event_id": event["id"]})
+        self.assertTrue(result["success"])
+        self.assertEqual(len(result["result"]["items"]), 1)
 
 
 if __name__ == "__main__":

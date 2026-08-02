@@ -78,14 +78,12 @@ def certificate_link(token: str) -> str:
 # --------------------------------------------------------------------------- #
 # Menus
 # --------------------------------------------------------------------------- #
-GENERAL_MENU = (
-    "Here's what I can do:\n"
-    "EVENTS - list upcoming events\n"
-    "EVENT <id> - event details\n"
-    "SIGNUP <id> - RSVP for an event\n"
+GENERAL_MENU_HEADER = "Here's what I can do:\nEVENTS - list upcoming events\nEVENT <id> - event details"
+PARTICIPANT_SIGNUP_LINE = "SIGNUP <id> - RSVP for an event"
+VOLUNTEER_SIGNUP_LINE = "VOLUNTEER SIGNUP <id> - apply to volunteer"
+GENERAL_MENU_FOOTER = (
     "MYEVENTS - your registrations\n"
     "CERT - get your certificate (asks which event if you attended more than one)\n"
-    "VOLUNTEER SIGNUP <id> - apply to volunteer\n"
     "STOP / START - turn new-event alerts off/on"
 )
 
@@ -105,8 +103,28 @@ ADMIN_MENU_EXTRA = (
 )
 
 
+def _general_menu_for(contact: sqlite3.Row) -> str:
+    is_participant = contact["participant_id"] is not None
+    is_volunteer = contact["volunteer_id"] is not None
+
+    signup_lines = []
+    if is_volunteer and not is_participant:
+        # Volunteer-only contacts sign up for shifts, not as attendees.
+        signup_lines.append(VOLUNTEER_SIGNUP_LINE)
+    elif is_participant and not is_volunteer:
+        # Participant-only contacts RSVP, not apply as volunteers.
+        signup_lines.append(PARTICIPANT_SIGNUP_LINE)
+    else:
+        # Neither role decided yet (e.g. an admin, or START before the role
+        # prompt has resolved) — show both rather than guessing.
+        signup_lines.append(PARTICIPANT_SIGNUP_LINE)
+        signup_lines.append(VOLUNTEER_SIGNUP_LINE)
+
+    return "\n".join([GENERAL_MENU_HEADER, *signup_lines, GENERAL_MENU_FOOTER])
+
+
 def menu_for(contact: sqlite3.Row) -> str:
-    parts = [GENERAL_MENU]
+    parts = [_general_menu_for(contact)]
     if contact["volunteer_id"] is not None:
         parts.append(VOLUNTEER_MENU_EXTRA)
     if contact["team_member_id"] is not None:

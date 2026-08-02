@@ -111,5 +111,14 @@ def dispatch_tool_call(
         return _finish({"success": False, "reason": error.reason})
     except HTTPException as error:
         return _finish({"success": False, "reason": str(error.detail)})
+    except Exception as error:
+        # See docs/tickets.md TICKET-53: an unexpected executor failure (a
+        # raw sqlite3.OperationalError under concurrent writes, for
+        # instance) must still become a structured result and an audit-log
+        # row rather than propagating out of dispatch_tool_call — letting it
+        # escape here would kill the SSE stream mid-turn in
+        # ai_assistant.py's event_stream() with no error/done event at all.
+        db.rollback()
+        return _finish({"success": False, "reason": f"{type(error).__name__}: {error}"})
 
     return _finish({"success": True, "result": result})

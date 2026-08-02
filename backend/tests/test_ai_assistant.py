@@ -212,6 +212,129 @@ class RunChatTurnTest(unittest.TestCase):
         self.assertFalse(tool_result_event["result"]["success"])
         self.assertIn("Unknown tool", tool_result_event["result"]["reason"])
 
+    def test_chains_two_rounds_of_tool_calls_within_one_turn(self) -> None:
+        # TICKET-48: SYSTEM_PROMPT tells the model to call
+        # list_event_templates first, match the name, then call
+        # create_event_draft with the resolved id — all within one user
+        # turn. That needs two rounds of tool-calling, not one.
+        round_one = sse_page(
+            [
+                {
+                    "choices": [
+                        {
+                            "delta": {
+                                "tool_calls": [
+                                    {
+                                        "index": 0,
+                                        "id": "call_1",
+                                        "type": "function",
+                                        "function": {
+                                            "name": "list_event_templates",
+                                            "arguments": "{}",
+                                        },
+                                    }
+                                ]
+                            },
+                            "finish_reason": None,
+                        }
+                    ]
+                },
+                {"choices": [{"delta": {}, "finish_reason": "tool_calls"}]},
+            ]
+        )
+        round_two = sse_page(
+            [
+                {
+                    "choices": [
+                        {
+                            "delta": {
+                                "tool_calls": [
+                                    {
+                                        "index": 0,
+                                        "id": "call_2",
+                                        "type": "function",
+                                        "function": {
+                                            "name": "create_event_draft",
+                                            "arguments": json.dumps(
+                                                {
+                                                    "event_template_id": None,
+                                                    "name": "Chained",
+                                                    "venue": "Hub",
+                                                    "event_date": "2099-01-01",
+                                                }
+                                            ),
+                                        },
+                                    }
+                                ]
+                            },
+                            "finish_reason": None,
+                        }
+                    ]
+                },
+                {"choices": [{"delta": {}, "finish_reason": "tool_calls"}]},
+            ]
+        )
+        round_three = sse_page(
+            [
+                {"choices": [{"delta": {"content": "Draft ready."}, "finish_reason": None}]},
+                {"choices": [{"delta": {}, "finish_reason": "stop"}]},
+            ]
+        )
+
+        async def run():
+            async with httpx.AsyncClient(
+                transport=mock_transport([round_one, round_two, round_three])
+            ) as client:
+                return await self._collect(client)
+
+        events = parse_sse(asyncio.run(run()))
+        tool_calls = [data["tool"] for event, data in events if event == "tool_call"]
+        self.assertEqual(tool_calls, ["list_event_templates", "create_event_draft"])
+        self.assertEqual(events[-1][0], "done")
+        final_tokens = [data["delta"] for event, data in events if event == "token"]
+        self.assertEqual(final_tokens, ["Draft ready."])
+
+    def test_stops_after_max_rounds_instead_of_looping_forever(self) -> None:
+        # A model that keeps asking for tool calls every round must not
+        # hang the turn indefinitely.
+        def tool_call_page(call_id: str) -> str:
+            return sse_page(
+                [
+                    {
+                        "choices": [
+                            {
+                                "delta": {
+                                    "tool_calls": [
+                                        {
+                                            "index": 0,
+                                            "id": call_id,
+                                            "type": "function",
+                                            "function": {
+                                                "name": "list_event_templates",
+                                                "arguments": "{}",
+                                            },
+                                        }
+                                    ]
+                                },
+                                "finish_reason": None,
+                            }
+                        ]
+                    },
+                    {"choices": [{"delta": {}, "finish_reason": "tool_calls"}]},
+                ]
+            )
+
+        pages = [tool_call_page(f"call_{n}") for n in range(ai_assistant.MAX_TOOL_ROUNDS + 2)]
+
+        async def run():
+            async with httpx.AsyncClient(transport=mock_transport(pages)) as client:
+                return await self._collect(client)
+
+        events = parse_sse(asyncio.run(run()))
+        tool_call_count = sum(1 for event, _ in events if event == "tool_call")
+        self.assertEqual(tool_call_count, ai_assistant.MAX_TOOL_ROUNDS)
+        self.assertEqual(events[-1][0], "done")
+
     async def _collect(self, client: httpx.AsyncClient) -> list[str]:
         return [
             item

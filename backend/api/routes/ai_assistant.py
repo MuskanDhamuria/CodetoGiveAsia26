@@ -137,6 +137,14 @@ def _accumulate_tool_calls(existing: list[dict], delta_calls: list[dict]) -> Non
             call["function"]["arguments"] += function_delta["arguments"]
 
 
+# Bounds the number of sequential tool-calling rounds within one user turn
+# (see TICKET-48) — high enough for the multi-step lookups SYSTEM_PROMPT
+# itself describes (e.g. list_event_templates then create_event_draft), low
+# enough to guarantee the loop terminates instead of chasing a misbehaving
+# model indefinitely.
+MAX_TOOL_ROUNDS = 5
+
+
 async def run_chat_turn(
     client: httpx.AsyncClient,
     db,
@@ -146,61 +154,69 @@ async def run_chat_turn(
 ) -> AsyncIterator[str]:
     """Drive one user turn: stream assistant text, dispatch any tool calls.
 
-    Only one round of tool-calling is executed per turn (call the tools the
-    model asked for, feed the results back, stream the follow-up reply) —
-    not an open-ended agent loop. That matches TICKET-2's draft-then-approve
-    flow: `publish_event` only fires on an explicit later user turn once the
-    organizer approves what `create_event_draft` returned here.
+    Loops the stream-then-dispatch step for up to MAX_TOOL_ROUNDS rounds
+    within this single turn, so the model can chain tool calls the way
+    SYSTEM_PROMPT already promises it can (e.g. "call list_event_templates
+    first ... to get the id" before create_event_draft) instead of being
+    limited to exactly one round. This does not turn the loop into an
+    open-ended agent: TICKET-2's draft-then-approve flow still holds
+    because `publish_event`/`approve_event_signup`/send-tools only fire when
+    the model chooses to call them, and SYSTEM_PROMPT still tells it to wait
+    for explicit organizer confirmation before those specific calls — a
+    higher round bound doesn't change what the model is instructed to wait
+    for, only how many *lookup*-style calls it can chain before replying.
     """
 
     messages = [{"role": "system", "content": SYSTEM_PROMPT}, *conversation]
 
-    tool_calls: list[dict] = []
-    content_so_far = ""
-    finish_reason: str | None = None
+    for _round in range(MAX_TOOL_ROUNDS):
+        tool_calls: list[dict] = []
+        content_so_far = ""
+        finish_reason: str | None = None
 
+        async for chunk in _stream_openrouter_completion(client, api_key, model, messages):
+            choice = (chunk.get("choices") or [{}])[0]
+            delta = choice.get("delta") or {}
+            if delta.get("content"):
+                content_so_far += delta["content"]
+                yield _sse("token", {"delta": delta["content"]})
+            if delta.get("tool_calls"):
+                _accumulate_tool_calls(tool_calls, delta["tool_calls"])
+            if choice.get("finish_reason"):
+                finish_reason = choice["finish_reason"]
+
+        if finish_reason != "tool_calls" or not tool_calls:
+            yield _sse("done", {})
+            return
+
+        assistant_message = {
+            "role": "assistant",
+            "content": content_so_far or None,
+            "tool_calls": tool_calls,
+        }
+        messages = [*messages, assistant_message]
+
+        for call in tool_calls:
+            name = call["function"]["name"]
+            try:
+                arguments = json.loads(call["function"]["arguments"] or "{}")
+            except json.JSONDecodeError:
+                arguments = {}
+            yield _sse("tool_call", {"tool": name, "arguments": arguments})
+            result = dispatch_tool_call(db, name, arguments)
+            yield _sse("tool_result", {"tool": name, "result": result})
+            messages.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": call["id"],
+                    "content": json.dumps(result),
+                }
+            )
+
+    # Ran out of rounds with the model still asking for tools — stop
+    # dispatching further calls and let it produce a final text reply from
+    # what it has so far, same as if this were the true last round.
     async for chunk in _stream_openrouter_completion(client, api_key, model, messages):
-        choice = (chunk.get("choices") or [{}])[0]
-        delta = choice.get("delta") or {}
-        if delta.get("content"):
-            content_so_far += delta["content"]
-            yield _sse("token", {"delta": delta["content"]})
-        if delta.get("tool_calls"):
-            _accumulate_tool_calls(tool_calls, delta["tool_calls"])
-        if choice.get("finish_reason"):
-            finish_reason = choice["finish_reason"]
-
-    if finish_reason != "tool_calls" or not tool_calls:
-        yield _sse("done", {})
-        return
-
-    assistant_message = {
-        "role": "assistant",
-        "content": content_so_far or None,
-        "tool_calls": tool_calls,
-    }
-    follow_up_messages = [*messages, assistant_message]
-
-    for call in tool_calls:
-        name = call["function"]["name"]
-        try:
-            arguments = json.loads(call["function"]["arguments"] or "{}")
-        except json.JSONDecodeError:
-            arguments = {}
-        yield _sse("tool_call", {"tool": name, "arguments": arguments})
-        result = dispatch_tool_call(db, name, arguments)
-        yield _sse("tool_result", {"tool": name, "result": result})
-        follow_up_messages.append(
-            {
-                "role": "tool",
-                "tool_call_id": call["id"],
-                "content": json.dumps(result),
-            }
-        )
-
-    async for chunk in _stream_openrouter_completion(
-        client, api_key, model, follow_up_messages
-    ):
         choice = (chunk.get("choices") or [{}])[0]
         delta = choice.get("delta") or {}
         if delta.get("content"):
@@ -237,5 +253,16 @@ async def chat(payload: ChatRequest, db: Connection) -> StreamingResponse:
                     yield event
         except httpx.HTTPError as error:
             yield _sse("error", {"reason": f"OpenRouter request failed: {error}"})
+            yield _sse("done", {})
+        except Exception as error:
+            # See docs/tickets.md TICKET-53: anything unexpected escaping
+            # run_chat_turn (dispatch_tool_call already turns tool-executor
+            # failures into structured results, but a failure in the
+            # streaming/accumulation logic itself, or in something dispatch
+            # doesn't wrap, would otherwise kill this generator with no
+            # terminal event at all — the frontend would just see the
+            # connection end mid-turn with no explanation).
+            yield _sse("error", {"reason": f"Unexpected error: {error}"})
+            yield _sse("done", {})
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")

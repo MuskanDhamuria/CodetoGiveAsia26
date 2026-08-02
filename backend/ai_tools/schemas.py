@@ -15,7 +15,30 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from backend.api.routes._common import DEFAULT_LIMIT, MAX_LIMIT
 from backend.schema.common import TaskCategory, TaskStatus
-from backend.schema.events import EventCreate, EventUpdate
+from backend.schema.events import EventCreate, EventTaskCreate, EventTaskUpdate, EventUpdate
+from backend.schema.inventory import (
+    InventoryItemCreate,
+    InventoryItemUpdate,
+    InventoryLocationCreate,
+    InventoryLocationUpdate,
+    StockAdjustment,
+    StockTransfer,
+)
+from backend.schema.logistics import (
+    AllocationQuantity,
+    AllocationReconcile,
+    EventRequirementCreate,
+    EventRequirementUpdate,
+    ReserveAllocation,
+)
+from backend.schema.venues import (
+    VenueBookingCreate,
+    VenueBookingUpdate,
+    VenueCreate,
+    VenueSpaceCreate,
+    VenueSpaceUpdate,
+    VenueUpdate,
+)
 
 
 class CreateEventDraftArgs(EventCreate):
@@ -420,6 +443,176 @@ class ListEventLogisticsRequirementsArgs(BaseModel):
     event_id: int
 
 
+class CreateEventTaskArgs(EventTaskCreate):
+    """TICKET-55."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    event_id: int
+
+
+class UpdateEventTaskArgs(EventTaskUpdate):
+    """TICKET-55."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    event_id: int
+    task_id: int
+
+
+class CreateInventoryItemArgs(InventoryItemCreate):
+    """TICKET-56."""
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class UpdateInventoryItemArgs(InventoryItemUpdate):
+    """TICKET-56."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    item_id: int
+
+
+class CreateInventoryLocationArgs(InventoryLocationCreate):
+    """TICKET-56."""
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class UpdateInventoryLocationArgs(InventoryLocationUpdate):
+    """TICKET-56."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    location_id: int
+
+
+class AdjustStockArgs(StockAdjustment):
+    """TICKET-56."""
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class TransferStockArgs(StockTransfer):
+    """TICKET-56."""
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class CreateVenueArgs(VenueCreate):
+    """TICKET-57."""
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class UpdateVenueArgs(VenueUpdate):
+    """TICKET-57."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    venue_id: int
+
+
+class CreateVenueSpaceArgs(VenueSpaceCreate):
+    """TICKET-57."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    venue_id: int
+
+
+class UpdateVenueSpaceArgs(VenueSpaceUpdate):
+    """TICKET-57."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    venue_id: int
+    space_id: int
+
+
+class CreateVenueBookingArgs(VenueBookingCreate):
+    """TICKET-57."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    event_id: int
+
+
+class UpdateVenueBookingArgs(VenueBookingUpdate):
+    """TICKET-57."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    event_id: int
+    booking_id: int
+
+
+class CreateEventLogisticsRequirementArgs(EventRequirementCreate):
+    """TICKET-58."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    event_id: int
+
+
+class UpdateEventLogisticsRequirementArgs(EventRequirementUpdate):
+    """TICKET-58."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    event_id: int
+    requirement_id: int
+
+
+class CancelEventLogisticsRequirementArgs(BaseModel):
+    """TICKET-58."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    event_id: int
+    requirement_id: int
+
+
+class ReserveLogisticsInventoryArgs(ReserveAllocation):
+    """TICKET-58."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    event_id: int
+    requirement_id: int
+
+
+class ReleaseLogisticsInventoryArgs(AllocationQuantity):
+    """TICKET-58."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    event_id: int
+    requirement_id: int
+    allocation_id: int
+
+
+class IssueLogisticsInventoryArgs(AllocationQuantity):
+    """TICKET-58."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    event_id: int
+    requirement_id: int
+    allocation_id: int
+
+
+class ReconcileLogisticsAllocationArgs(AllocationReconcile):
+    """TICKET-58."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    event_id: int
+    requirement_id: int
+    allocation_id: int
+
+
 TOOL_ARG_MODELS: dict[str, type[BaseModel]] = {
     "create_event_draft": CreateEventDraftArgs,
     "publish_event": PublishEventArgs,
@@ -458,4 +651,25 @@ TOOL_ARG_MODELS: dict[str, type[BaseModel]] = {
     "get_attendance_forecast": GetAttendanceForecastArgs,
     "get_event_logistics": GetEventLogisticsArgs,
     "list_event_logistics_requirements": ListEventLogisticsRequirementsArgs,
+    "create_event_task": CreateEventTaskArgs,
+    "update_event_task": UpdateEventTaskArgs,
+    "create_inventory_item": CreateInventoryItemArgs,
+    "update_inventory_item": UpdateInventoryItemArgs,
+    "create_inventory_location": CreateInventoryLocationArgs,
+    "update_inventory_location": UpdateInventoryLocationArgs,
+    "adjust_stock": AdjustStockArgs,
+    "transfer_stock": TransferStockArgs,
+    "create_venue": CreateVenueArgs,
+    "update_venue": UpdateVenueArgs,
+    "create_venue_space": CreateVenueSpaceArgs,
+    "update_venue_space": UpdateVenueSpaceArgs,
+    "create_venue_booking": CreateVenueBookingArgs,
+    "update_venue_booking": UpdateVenueBookingArgs,
+    "create_event_logistics_requirement": CreateEventLogisticsRequirementArgs,
+    "update_event_logistics_requirement": UpdateEventLogisticsRequirementArgs,
+    "cancel_event_logistics_requirement": CancelEventLogisticsRequirementArgs,
+    "reserve_logistics_inventory": ReserveLogisticsInventoryArgs,
+    "release_logistics_inventory": ReleaseLogisticsInventoryArgs,
+    "issue_logistics_inventory": IssueLogisticsInventoryArgs,
+    "reconcile_logistics_allocation": ReconcileLogisticsAllocationArgs,
 }

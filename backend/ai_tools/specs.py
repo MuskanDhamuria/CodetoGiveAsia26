@@ -162,6 +162,66 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
         "List the goods/services logistics requirements for one event "
         "(quantities needed, sourced, on-site, still-to-source)."
     ),
+    "create_event_task": "Create a new task on an event.",
+    "update_event_task": (
+        "Update fields on an existing event task (name, due date, category, "
+        "status, position). Use assign_event_task instead if you only need "
+        "to change who it's assigned to."
+    ),
+    "create_inventory_item": "Add a new inventory catalogue item (name, SKU, unit, type, reorder level).",
+    "update_inventory_item": "Update an inventory catalogue item's fields.",
+    "create_inventory_location": "Add a new inventory storage location.",
+    "update_inventory_location": "Update an inventory storage location's fields.",
+    "adjust_stock": (
+        "Record a stock adjustment (correction, receipt of new stock, "
+        "write-off) for one item at one location. Use a positive "
+        "quantity_delta to add stock, negative to remove it."
+    ),
+    "transfer_stock": "Move stock for one item from one location to another.",
+    "create_venue": "Add a new venue.",
+    "update_venue": "Update a venue's fields.",
+    "create_venue_space": "Add a new bookable space within a venue.",
+    "update_venue_space": "Update a venue space's fields.",
+    "create_venue_booking": (
+        "Book a venue space for an event. Confirmed bookings are checked "
+        "for overlapping confirmed bookings on the same space and rejected "
+        "if one exists."
+    ),
+    "update_venue_booking": (
+        "Update an existing venue booking (times, status, space, etc.). "
+        "Same overlap check as create_venue_booking applies when the "
+        "result is 'confirmed'."
+    ),
+    "create_event_logistics_requirement": (
+        "Add a new goods/service logistics requirement to an event."
+    ),
+    "update_event_logistics_requirement": (
+        "Update an event logistics requirement's fields (quantity, "
+        "deadline, priority, notes)."
+    ),
+    "cancel_event_logistics_requirement": (
+        "Cancel an event logistics requirement. Any issued inventory must "
+        "be reconciled first."
+    ),
+    "reserve_logistics_inventory": (
+        "Reserve inventory stock at a location against a goods "
+        "requirement. Fails if available stock is insufficient."
+    ),
+    "release_logistics_inventory": (
+        "Release some or all of a reserved (not yet issued) inventory "
+        "allocation back to available stock."
+    ),
+    "issue_logistics_inventory": (
+        "Issue reserved inventory for actual use — deducts it from stock. "
+        "Only call after the organizer has confirmed the reservation is "
+        "ready to be issued."
+    ),
+    "reconcile_logistics_allocation": (
+        "Record final outcomes (returned/consumed/damaged/lost/"
+        "distributed quantities) for an issued allocation after the event "
+        "is closed. The four quantities must sum to exactly the issued "
+        "quantity."
+    ),
 }
 
 

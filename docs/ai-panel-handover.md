@@ -118,6 +118,33 @@ no-organizer-use-case-yet rationale as inventory's TICKET-39 for deferring
 writes. `organizations.py` and `beneficiaries.py` were deliberately left
 out of this pass — see TICKET-54 in `tickets.md` for why.
 
+**Write-tool expansion — tasks, inventory, venues, logistics
+(TICKET-55–58).** Explicit organizer request superseded TICKET-39/54/57's
+"no use case yet" deferral for these four areas: the tool set grew from 37
+to 58. Event tasks got `create_event_task`/`update_event_task`. Inventory
+got its previously-deferred writes: `create_inventory_item`,
+`update_inventory_item`, `create_inventory_location`,
+`update_inventory_location`, `adjust_stock`, `transfer_stock`. Venues went
+from zero coverage to full CRUD plus booking: `create_venue`,
+`update_venue`, `create_venue_space`, `update_venue_space`,
+`create_venue_booking`, `update_venue_booking` (the latter two run through
+`ensure_no_overlap`, same as the human route). Logistics requirements and
+allocations got `create_event_logistics_requirement`,
+`update_event_logistics_requirement`,
+`cancel_event_logistics_requirement`, `reserve_logistics_inventory`,
+`release_logistics_inventory`, and `issue_logistics_inventory`. Every new
+tool is a thin wrapper around its matching route handler, same pattern as
+every prior tool — no new business logic. Deliberately still deferred:
+task deletion/reordering, item/location/venue/space deactivation (soft
+deletes), the donation-batch lifecycle, and
+`finalize_reconciliation`/`reconcile_logistics_allocation` as a bare tool —
+`reconcile_logistics_allocation` was wired up directly (not
+preview-then-confirm) since the route itself already gates on the event
+being closed, but `finalize_reconciliation` stays out entirely as a
+one-way, event-closing operation in the same category as `cancel_event`;
+see TICKET-58's note on hard deletes/irreversible closes staying
+human-only.
+
 **Correctness/robustness fixes (TICKET-48/50/53).** The chat loop now
 resolves up to 5 rounds of tool-calling per user turn (was exactly 1),
 bounded to avoid runaway loops — the model can now chain

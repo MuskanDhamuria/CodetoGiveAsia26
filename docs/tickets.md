@@ -820,3 +820,164 @@ existed.
 
 ---
 
+~~TICKET-55: AI tool — create and update event tasks~~
+— **Done.** `create_event_task`/`update_event_task` AI tools added, thin wrappers around `events.py`'s existing handlers — no new business logic. Task deletion/reordering intentionally left out per the ticket's own scope. Covered by `test_create_event_task_*`/`test_update_event_task_*` in `backend/tests/test_ai_tools.py`.
+
+<details>
+<summary>Original ticket text</summary>
+
+TICKET-55: AI tool — create and update event tasks
+
+**Priority:** High — task creation is core event-management work an organizer does constantly, and the AI can currently only list/assign/status-change tasks that a human already created.
+**Area:** `backend/ai_tools/` (`schemas.py`, `tools.py`, `specs.py`), `backend/api/routes/events.py` (`create_event_task` at `events.py:593`, the `PATCH /events/{event_id}/tasks/{task_id}` handler at `events.py:691`)
+
+### What's wrong
+
+`list_event_tasks`, `assign_event_task`, and `update_task_status` exist, but there is no
+`create_event_task` or generic `update_event_task` AI tool — an organizer asking the AI to
+"add a setup task due Friday for the cleanup event" has no path to it today. Task deletion
+(`events.py:644`) is a hard delete and should stay out of scope, same rationale as
+`cancel_event`/`delete_event` in TICKET-1.
+
+### What to do
+
+Add `create_event_task` and `update_event_task` AI tools as thin wrappers around the existing
+`create_event_task`/`update_event_task` handlers in `events.py`, following the exact pattern
+`update_event`/`CreateEventDraftArgs` already use (arg model built on the same
+`EventTaskCreate`/`EventTaskUpdate` schema classes `events.py` itself uses, executor calls
+straight into the handler, no separate business-logic copy). Do not wrap task deletion or
+reordering (`PUT /events/{event_id}/tasks/order`) — no organizer use case identified yet for
+either, same deferral rationale TICKET-39/54 used elsewhere.
+
+</details>
+
+---
+
+~~TICKET-56: AI tool — inventory writes (items, locations, stock adjustments/transfers)~~
+— **Done.** `create_inventory_item`, `update_inventory_item`, `create_inventory_location`, `update_inventory_location`, `adjust_stock`, and `transfer_stock` AI tools added, each a thin wrapper around the matching `inventory.py` handler. Deactivation tools intentionally left out, per the ticket's own scope. Covered by new tests in `AiToolsInventoryTest` (`backend/tests/test_ai_tools.py`).
+
+<details>
+<summary>Original ticket text</summary>
+
+TICKET-56: AI tool — inventory writes (items, locations, stock adjustments/transfers)
+
+**Priority:** Medium-High — inventory reads are covered but every write (catalogue upkeep,
+stock corrections, transfers between locations) still requires a human, even though the
+underlying handlers already exist and are exercised by the admin UI.
+**Area:** `backend/ai_tools/`, `backend/api/routes/inventory.py` (`create_item`, `update_item`,
+`create_location`, `update_location`, `adjust_stock`, `transfer_stock`)
+
+### What's wrong
+
+TICKET-39/54 deliberately deferred inventory write tools for lack of a concrete organizer use
+case; this request supersedes that deferral. Today an organizer can't ask the AI to "add 50
+more folding tables to stock" or "log that we received a new item" — inventory writes are
+entirely human-only despite the routes existing.
+
+### What to do
+
+Add AI tools for `create_inventory_item`, `update_inventory_item`, `create_inventory_location`,
+`update_inventory_location`, `adjust_stock`, and `transfer_stock`, each a thin wrapper around
+the matching `inventory.py` handler and its existing Pydantic schema
+(`InventoryItemCreate`/`InventoryItemUpdate`/`InventoryLocationCreate`/
+`InventoryLocationUpdate`/`StockAdjustment`/`StockTransfer`). Do not wrap
+`deactivate_item`/`deactivate_location` — those are effectively soft-deletes and, absent an
+explicit organizer request for AI-driven deactivation, keep them human-only for now (flag as a
+follow-up if wanted). A direct mutating tool is acceptable for adjustments/transfers without an
+extra preview step, since both are already reversible via a follow-up adjustment, unlike a
+WhatsApp send.
+
+</details>
+
+---
+
+~~TICKET-57: AI tool — venue and space writes, plus event venue-booking~~
+— **Done.** `create_venue`, `update_venue`, `create_venue_space`, `update_venue_space`, `create_venue_booking`, and `update_venue_booking` AI tools added; booking tools run through the existing `ensure_no_overlap` check, no separate copy. Donation-batch lifecycle intentionally left out, per the ticket's own scope. Covered by new tests in `AiToolsParticipantsVenuesLogisticsTest` (`backend/tests/test_ai_tools.py`), including an overlap-rejection test.
+
+<details>
+<summary>Original ticket text</summary>
+
+TICKET-57: AI tool — venue and space writes, plus event venue-booking
+
+**Priority:** Medium — venues have zero AI coverage today (read or write); this ticket adds
+both since read-only-first (TICKET-54's usual staging) isn't warranted when the explicit ask is
+for full parity with what a human admin can do.
+**Area:** `backend/ai_tools/`, `backend/api/routes/venues.py` (`create_venue`, `update_venue`,
+`create_space`, `update_space`, `create_booking`, `update_booking`; `venue_out`/`space_out`/
+`booking_out` for read shapes)
+
+### What's wrong
+
+No AI tool can list, create, or update a venue, a bookable space within it, or an event's
+venue booking — an organizer can't ask "book the main hall for Saturday's event" or "add a new
+venue" through the AI at all.
+
+### What to do
+
+Add `list_venues`, `get_venue`, `create_venue`, `update_venue`, `create_venue_space`,
+`update_venue_space`, `create_venue_booking`, `list_venue_bookings`, and `update_venue_booking`
+AI tools, each a thin wrapper around the matching `venues.py` handler and existing schema.
+`create_venue_booking`/`update_venue_booking` must go through `ensure_no_overlap`
+(`venues.py:193`) exactly as the human route does — no separate overlap-checking copy. Do not
+wrap the donation-batch lifecycle (`collect_donation` → `close_donation`) — that's a separate,
+not-yet-requested workflow with its own state machine; flag it as a follow-up if the user wants
+it too, don't fold it into this ticket silently.
+
+</details>
+
+---
+
+~~TICKET-58: AI tool — logistics requirement and allocation writes~~
+— **Done.** `create_event_logistics_requirement`, `update_event_logistics_requirement`, `cancel_event_logistics_requirement`, `reserve_logistics_inventory`, `release_logistics_inventory`, and `issue_logistics_inventory` AI tools added, each a thin wrapper around the matching `logistics.py` handler with its existing business checks reused as-is. `finalize_reconciliation` intentionally left out (one-way, event-closing operation); `reconcile_logistics_allocation` was wired up directly rather than preview-then-confirm since the route itself already gates on the event being closed. Covered by new tests in `AiToolsParticipantsVenuesLogisticsTest` (`backend/tests/test_ai_tools.py`).
+
+<details>
+<summary>Original ticket text</summary>
+
+TICKET-58: AI tool — logistics requirement and allocation writes
+
+**Priority:** Medium-High — `get_event_logistics`/`list_event_logistics_requirements` already
+give the AI full read visibility into an event's operational picture, but it can't act on any
+of it: every requirement/allocation state change is still human-only.
+**Area:** `backend/ai_tools/`, `backend/api/routes/logistics.py` (`create_event_requirement`,
+`update_event_requirement`, `cancel_event_requirement`, `reserve_inventory`,
+`backfill_requirement`, `release_inventory`, `issue_inventory`, `reconcile_allocation`,
+`finalize_reconciliation`; `ensure_event_editable` at `logistics.py:132`)
+
+### What's wrong
+
+An organizer asking the AI "we need 20 more chairs for Saturday, reserve them from the main
+store" has no path today — the AI can report the shortage via `get_event_logistics` but cannot
+create the requirement or reserve stock against it.
+
+### What to do
+
+Add AI tools for `create_event_logistics_requirement`, `update_event_logistics_requirement`,
+`cancel_event_logistics_requirement`, `reserve_logistics_inventory`,
+`release_logistics_inventory`, `issue_logistics_inventory`, and `reconcile_logistics_allocation`,
+each a thin wrapper around the matching `logistics.py` handler, running through
+`ensure_event_editable`/`require_event_requirement`/`require_allocation` exactly as the human
+routes do (no separate copy of those checks). Defer `finalize_reconciliation` — it's a
+one-way, event-closing operation in the same "irreversible, needs explicit confirmation"
+category as `cancel_event`/`send_announcement`; wrap it only with an explicit
+preview-then-confirm pair (`preview_finalize_reconciliation` / `finalize_reconciliation`)
+mirroring the `preview_announcement`/`send_announcement` pattern, not as a bare mutating tool.
+
+</details>
+
+---
+
+### Note: things a human admin can do that the AI should not
+
+Reviewed while scoping TICKET-55–58 — nothing in the tasks/inventory/venues/logistics
+add-or-update request above is actually impossible for the AI to do safely; all of it goes
+through the same handlers a human admin uses. Two adjacent things came up that are worth
+flagging explicitly rather than silently including or excluding:
+
+- **Hard deletes and irreversible closes** (`delete_event_task`, `delete_event`,
+  `finalize_reconciliation`) are intentionally left out of TICKET-55/58 above, consistent with
+  `cancel_event`'s never-wired-to-`delete_event` rule in `CLAUDE.md`. If AI-driven deletion is
+  actually wanted, say so explicitly — it shouldn't be added as a side effect of an "update"
+  ticket.
+- **`volunteer_auth.py` (password-based login) and anything requiring real authentication**
+  can't be given to the AI at all under the current no-auth-system design (TICKET-43/49's
+  "won't fix" rationale) — that's a human-only boundary, not a gap to fill.

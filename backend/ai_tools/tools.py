@@ -23,10 +23,19 @@ from backend.api.routes import whatsapp as whatsapp_routes
 from backend.api.routes._common import Pagination
 from backend.bot.commands import audience_contacts
 from backend.ai_tools.schemas import (
+    AdjustStockArgs,
     ApproveEventSignupArgs,
     AssignEventTaskArgs,
     CancelEventArgs,
+    CancelEventLogisticsRequirementArgs,
     CreateEventDraftArgs,
+    CreateEventLogisticsRequirementArgs,
+    CreateEventTaskArgs,
+    CreateInventoryItemArgs,
+    CreateInventoryLocationArgs,
+    CreateVenueArgs,
+    CreateVenueBookingArgs,
+    CreateVenueSpaceArgs,
     GenerateEventCertificatesArgs,
     GetAttendanceForecastArgs,
     GetEventArgs,
@@ -34,6 +43,7 @@ from backend.ai_tools.schemas import (
     GetParticipantArgs,
     GetStockLevelsArgs,
     GetVenueArgs,
+    IssueLogisticsInventoryArgs,
     ListCompletedEventReportsArgs,
     ListEventCertificatesArgs,
     ListEventLogisticsRequirementsArgs,
@@ -56,12 +66,46 @@ from backend.ai_tools.schemas import (
     PreviewCertificateGenerationArgs,
     PreviewShiftReminderArgs,
     PublishEventArgs,
+    ReconcileLogisticsAllocationArgs,
+    ReleaseLogisticsInventoryArgs,
+    ReserveLogisticsInventoryArgs,
     SendAnnouncementArgs,
     SendShiftReminderArgs,
+    TransferStockArgs,
     UpdateEventArgs,
+    UpdateEventLogisticsRequirementArgs,
+    UpdateEventTaskArgs,
+    UpdateInventoryItemArgs,
+    UpdateInventoryLocationArgs,
     UpdateTaskStatusArgs,
+    UpdateVenueArgs,
+    UpdateVenueBookingArgs,
+    UpdateVenueSpaceArgs,
 )
-from backend.schema.events import EventCreate, EventTaskUpdate, EventUpdate
+from backend.schema.events import EventCreate, EventTaskCreate, EventTaskUpdate, EventUpdate
+from backend.schema.inventory import (
+    InventoryItemCreate,
+    InventoryItemUpdate,
+    InventoryLocationCreate,
+    InventoryLocationUpdate,
+    StockAdjustment,
+    StockTransfer,
+)
+from backend.schema.logistics import (
+    AllocationQuantity,
+    AllocationReconcile,
+    EventRequirementCreate,
+    EventRequirementUpdate,
+    ReserveAllocation,
+)
+from backend.schema.venues import (
+    VenueBookingCreate,
+    VenueBookingUpdate,
+    VenueCreate,
+    VenueSpaceCreate,
+    VenueSpaceUpdate,
+    VenueUpdate,
+)
 from backend.schema.volunteers import SignupApprove
 from backend.schema.whatsapp import AnnouncementCreate, ReminderCreate
 
@@ -486,6 +530,185 @@ def list_event_logistics_requirements(
     return logistics_routes.list_event_requirements(args.event_id, db)
 
 
+def create_event_task(db: sqlite3.Connection, args: CreateEventTaskArgs) -> dict:
+    """TICKET-55."""
+
+    payload = EventTaskCreate(**args.model_dump(exclude={"event_id"}))
+    detail = events_routes.create_event_task(args.event_id, payload, db)
+    return detail.model_dump(mode="json")
+
+
+def update_event_task(db: sqlite3.Connection, args: UpdateEventTaskArgs) -> dict:
+    """TICKET-55."""
+
+    fields = args.model_dump(exclude={"event_id", "task_id"}, exclude_unset=True)
+    payload = EventTaskUpdate(**fields)
+    detail = events_routes.update_event_task(args.event_id, args.task_id, payload, db)
+    return detail.model_dump(mode="json")
+
+
+def create_inventory_item(db: sqlite3.Connection, args: CreateInventoryItemArgs) -> dict:
+    """TICKET-56."""
+
+    payload = InventoryItemCreate(**args.model_dump())
+    return inventory_routes.create_item(payload, db)
+
+
+def update_inventory_item(db: sqlite3.Connection, args: UpdateInventoryItemArgs) -> dict:
+    """TICKET-56."""
+
+    fields = args.model_dump(exclude={"item_id"}, exclude_unset=True)
+    payload = InventoryItemUpdate(**fields)
+    return inventory_routes.update_item(args.item_id, payload, db)
+
+
+def create_inventory_location(db: sqlite3.Connection, args: CreateInventoryLocationArgs) -> dict:
+    """TICKET-56."""
+
+    payload = InventoryLocationCreate(**args.model_dump())
+    return inventory_routes.create_location(payload, db)
+
+
+def update_inventory_location(db: sqlite3.Connection, args: UpdateInventoryLocationArgs) -> dict:
+    """TICKET-56."""
+
+    fields = args.model_dump(exclude={"location_id"}, exclude_unset=True)
+    payload = InventoryLocationUpdate(**fields)
+    return inventory_routes.update_location(args.location_id, payload, db)
+
+
+def adjust_stock(db: sqlite3.Connection, args: AdjustStockArgs) -> dict:
+    """TICKET-56."""
+
+    payload = StockAdjustment(**args.model_dump())
+    return inventory_routes.adjust_stock(payload, db)
+
+
+def transfer_stock(db: sqlite3.Connection, args: TransferStockArgs) -> dict:
+    """TICKET-56."""
+
+    payload = StockTransfer(**args.model_dump())
+    return inventory_routes.transfer_stock(payload, db)
+
+
+def create_venue(db: sqlite3.Connection, args: CreateVenueArgs) -> dict:
+    """TICKET-57."""
+
+    payload = VenueCreate(**args.model_dump())
+    return venues_routes.create_venue(payload, db)
+
+
+def update_venue(db: sqlite3.Connection, args: UpdateVenueArgs) -> dict:
+    """TICKET-57."""
+
+    fields = args.model_dump(exclude={"venue_id"}, exclude_unset=True)
+    payload = VenueUpdate(**fields)
+    return venues_routes.update_venue(args.venue_id, payload, db)
+
+
+def create_venue_space(db: sqlite3.Connection, args: CreateVenueSpaceArgs) -> dict:
+    """TICKET-57."""
+
+    payload = VenueSpaceCreate(**args.model_dump(exclude={"venue_id"}))
+    return venues_routes.create_space(args.venue_id, payload, db)
+
+
+def update_venue_space(db: sqlite3.Connection, args: UpdateVenueSpaceArgs) -> dict:
+    """TICKET-57."""
+
+    fields = args.model_dump(exclude={"venue_id", "space_id"}, exclude_unset=True)
+    payload = VenueSpaceUpdate(**fields)
+    return venues_routes.update_space(args.venue_id, args.space_id, payload, db)
+
+
+def create_venue_booking(db: sqlite3.Connection, args: CreateVenueBookingArgs) -> dict:
+    """TICKET-57. `ensure_no_overlap` runs inside `create_booking` itself —
+
+    not duplicated here.
+    """
+
+    payload = VenueBookingCreate(**args.model_dump(exclude={"event_id"}))
+    return venues_routes.create_booking(args.event_id, payload, db)
+
+
+def update_venue_booking(db: sqlite3.Connection, args: UpdateVenueBookingArgs) -> dict:
+    """TICKET-57."""
+
+    fields = args.model_dump(exclude={"event_id", "booking_id"}, exclude_unset=True)
+    payload = VenueBookingUpdate(**fields)
+    return venues_routes.update_booking(args.event_id, args.booking_id, payload, db)
+
+
+def create_event_logistics_requirement(
+    db: sqlite3.Connection, args: CreateEventLogisticsRequirementArgs
+) -> dict:
+    """TICKET-58."""
+
+    payload = EventRequirementCreate(**args.model_dump(exclude={"event_id"}))
+    return logistics_routes.create_event_requirement(args.event_id, payload, db)
+
+
+def update_event_logistics_requirement(
+    db: sqlite3.Connection, args: UpdateEventLogisticsRequirementArgs
+) -> dict:
+    """TICKET-58."""
+
+    fields = args.model_dump(exclude={"event_id", "requirement_id"}, exclude_unset=True)
+    payload = EventRequirementUpdate(**fields)
+    return logistics_routes.update_event_requirement(args.event_id, args.requirement_id, payload, db)
+
+
+def cancel_event_logistics_requirement(
+    db: sqlite3.Connection, args: CancelEventLogisticsRequirementArgs
+) -> dict:
+    """TICKET-58. Reuses `cancel_event_requirement`, which itself dispatches
+
+    to `update_event_requirement(is_cancelled=True)` — no separate copy of
+    that business rule here.
+    """
+
+    logistics_routes.cancel_event_requirement(args.event_id, args.requirement_id, db)
+    return {"event_id": args.event_id, "requirement_id": args.requirement_id, "is_cancelled": True}
+
+
+def reserve_logistics_inventory(db: sqlite3.Connection, args: ReserveLogisticsInventoryArgs) -> dict:
+    """TICKET-58."""
+
+    payload = ReserveAllocation(**args.model_dump(exclude={"event_id", "requirement_id"}))
+    return logistics_routes.reserve_inventory(args.event_id, args.requirement_id, payload, db)
+
+
+def release_logistics_inventory(db: sqlite3.Connection, args: ReleaseLogisticsInventoryArgs) -> dict:
+    """TICKET-58."""
+
+    payload = AllocationQuantity(**args.model_dump(exclude={"event_id", "requirement_id", "allocation_id"}))
+    return logistics_routes.release_inventory(
+        args.event_id, args.requirement_id, args.allocation_id, payload, db
+    )
+
+
+def issue_logistics_inventory(db: sqlite3.Connection, args: IssueLogisticsInventoryArgs) -> dict:
+    """TICKET-58."""
+
+    payload = AllocationQuantity(**args.model_dump(exclude={"event_id", "requirement_id", "allocation_id"}))
+    return logistics_routes.issue_inventory(
+        args.event_id, args.requirement_id, args.allocation_id, payload, db
+    )
+
+
+def reconcile_logistics_allocation(
+    db: sqlite3.Connection, args: ReconcileLogisticsAllocationArgs
+) -> dict:
+    """TICKET-58."""
+
+    payload = AllocationReconcile(
+        **args.model_dump(exclude={"event_id", "requirement_id", "allocation_id"})
+    )
+    return logistics_routes.reconcile_allocation(
+        args.event_id, args.requirement_id, args.allocation_id, payload, db
+    )
+
+
 TOOL_EXECUTORS = {
     "create_event_draft": create_event_draft,
     "publish_event": publish_event,
@@ -524,4 +747,25 @@ TOOL_EXECUTORS = {
     "get_attendance_forecast": get_attendance_forecast,
     "get_event_logistics": get_event_logistics,
     "list_event_logistics_requirements": list_event_logistics_requirements,
+    "create_event_task": create_event_task,
+    "update_event_task": update_event_task,
+    "create_inventory_item": create_inventory_item,
+    "update_inventory_item": update_inventory_item,
+    "create_inventory_location": create_inventory_location,
+    "update_inventory_location": update_inventory_location,
+    "adjust_stock": adjust_stock,
+    "transfer_stock": transfer_stock,
+    "create_venue": create_venue,
+    "update_venue": update_venue,
+    "create_venue_space": create_venue_space,
+    "update_venue_space": update_venue_space,
+    "create_venue_booking": create_venue_booking,
+    "update_venue_booking": update_venue_booking,
+    "create_event_logistics_requirement": create_event_logistics_requirement,
+    "update_event_logistics_requirement": update_event_logistics_requirement,
+    "cancel_event_logistics_requirement": cancel_event_logistics_requirement,
+    "reserve_logistics_inventory": reserve_logistics_inventory,
+    "release_logistics_inventory": release_logistics_inventory,
+    "issue_logistics_inventory": issue_logistics_inventory,
+    "reconcile_logistics_allocation": reconcile_logistics_allocation,
 }

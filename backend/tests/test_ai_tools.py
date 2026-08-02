@@ -194,6 +194,27 @@ class AiToolsTest(unittest.TestCase):
                 "get_attendance_forecast",
                 "get_event_logistics",
                 "list_event_logistics_requirements",
+                "create_event_task",
+                "update_event_task",
+                "create_inventory_item",
+                "update_inventory_item",
+                "create_inventory_location",
+                "update_inventory_location",
+                "adjust_stock",
+                "transfer_stock",
+                "create_venue",
+                "update_venue",
+                "create_venue_space",
+                "update_venue_space",
+                "create_venue_booking",
+                "update_venue_booking",
+                "create_event_logistics_requirement",
+                "update_event_logistics_requirement",
+                "cancel_event_logistics_requirement",
+                "reserve_logistics_inventory",
+                "release_logistics_inventory",
+                "issue_logistics_inventory",
+                "reconcile_logistics_allocation",
             },
         )
 
@@ -471,6 +492,64 @@ class AiToolsTest(unittest.TestCase):
             self.db,
             "list_event_tasks",
             {"event_id": event["id"], "run_sql": "DROP TABLE event_tasks"},
+        )
+        self.assertFalse(result["success"])
+
+    # -- create_event_task / update_event_task (TICKET-55) -----------------
+
+    def test_create_event_task_writes_a_new_task(self) -> None:
+        event = self._publish()
+
+        result = dispatch_tool_call(
+            self.db,
+            "create_event_task",
+            {
+                "event_id": event["id"],
+                "name": "Set up chairs",
+                "due_at": "2099-01-01",
+                "category": "planning",
+            },
+        )
+
+        self.assertTrue(result["success"], result)
+        self.assertEqual(result["result"]["name"], "Set up chairs")
+        total = self.db.execute(
+            "SELECT COUNT(*) FROM event_tasks WHERE event_id = ?", (event["id"],)
+        ).fetchone()[0]
+        self.assertEqual(total, 1)
+
+    def test_create_event_task_missing_event_is_a_structured_error(self) -> None:
+        result = dispatch_tool_call(
+            self.db,
+            "create_event_task",
+            {
+                "event_id": 9999,
+                "name": "Set up chairs",
+                "due_at": "2099-01-01",
+                "category": "planning",
+            },
+        )
+        self.assertFalse(result["success"])
+
+    def test_update_event_task_changes_fields(self) -> None:
+        event = self._publish()
+        task_id = self.create_task(event["id"])
+
+        result = dispatch_tool_call(
+            self.db,
+            "update_event_task",
+            {"event_id": event["id"], "task_id": task_id, "name": "Renamed task"},
+        )
+
+        self.assertTrue(result["success"], result)
+        self.assertEqual(result["result"]["name"], "Renamed task")
+
+    def test_update_event_task_missing_task_is_a_structured_error(self) -> None:
+        event = self._publish()
+        result = dispatch_tool_call(
+            self.db,
+            "update_event_task",
+            {"event_id": event["id"], "task_id": 9999, "name": "Renamed task"},
         )
         self.assertFalse(result["success"])
 
@@ -923,13 +1002,138 @@ class AiToolsInventoryTest(unittest.TestCase):
         self.assertEqual(movement["quantity_delta"], 5)
         self.assertEqual(movement["reason"], "Donation received")
 
-    def test_no_write_tool_exists_for_inventory_adjustments(self) -> None:
+    # -- TICKET-56: inventory writes --------------------------------------
+
+    def test_create_inventory_item_writes_a_new_catalogue_row(self) -> None:
+        result = dispatch_tool_call(
+            self.db,
+            "create_inventory_item",
+            {"name": "Bottled Water", "unit": "case", "item_type": "consumable"},
+        )
+
+        self.assertTrue(result["success"], result)
+        self.assertEqual(result["result"]["name"], "Bottled Water")
+        total = self.db.execute("SELECT COUNT(*) FROM inventory_items").fetchone()[0]
+        self.assertEqual(total, 1)
+
+    def test_update_inventory_item_changes_fields(self) -> None:
+        item_id = self.create_item(name="Bottled Water")
+
+        result = dispatch_tool_call(
+            self.db, "update_inventory_item", {"item_id": item_id, "reorder_level": 20}
+        )
+
+        self.assertTrue(result["success"], result)
+        self.assertEqual(result["result"]["reorder_level"], 20)
+
+    def test_update_inventory_item_missing_id_is_a_structured_error(self) -> None:
+        result = dispatch_tool_call(
+            self.db, "update_inventory_item", {"item_id": 9999, "reorder_level": 5}
+        )
+        self.assertFalse(result["success"])
+
+    def test_create_inventory_location_writes_a_new_row(self) -> None:
+        result = dispatch_tool_call(
+            self.db, "create_inventory_location", {"name": "Main Store"}
+        )
+
+        self.assertTrue(result["success"], result)
+        self.assertEqual(result["result"]["name"], "Main Store")
+
+    def test_update_inventory_location_changes_fields(self) -> None:
+        location_id = self.create_location(name="Main Store")
+
+        result = dispatch_tool_call(
+            self.db,
+            "update_inventory_location",
+            {"location_id": location_id, "address": "1 Depot Road"},
+        )
+
+        self.assertTrue(result["success"], result)
+        self.assertEqual(result["result"]["address"], "1 Depot Road")
+
+    def test_adjust_stock_increases_available_stock(self) -> None:
+        item_id = self.create_item()
+        location_id = self.create_location()
+
         result = dispatch_tool_call(
             self.db,
             "adjust_stock",
-            {"item_id": 1, "location_id": 1, "quantity_delta": 1, "reason": "test"},
+            {
+                "item_id": item_id,
+                "location_id": location_id,
+                "quantity_delta": 10,
+                "reason": "Initial stock",
+            },
         )
-        self.assertEqual(result, {"success": False, "reason": "Unknown tool 'adjust_stock'"})
+
+        self.assertTrue(result["success"], result)
+        stock = dispatch_tool_call(self.db, "get_stock_levels", {})
+        [row] = stock["result"]["items"]
+        self.assertEqual(row["available"], 10)
+
+    def test_adjust_stock_rejects_a_zero_delta(self) -> None:
+        item_id = self.create_item()
+        location_id = self.create_location()
+
+        result = dispatch_tool_call(
+            self.db,
+            "adjust_stock",
+            {
+                "item_id": item_id,
+                "location_id": location_id,
+                "quantity_delta": 0,
+                "reason": "no-op",
+            },
+        )
+
+        self.assertFalse(result["success"])
+
+    def test_transfer_stock_moves_quantity_between_locations(self) -> None:
+        item_id = self.create_item()
+        source_id = self.create_location(name="Main Store")
+        destination_id = self.create_location(name="Overflow Store")
+        inventory_routes.adjust_stock(
+            StockAdjustment(item_id=item_id, location_id=source_id, quantity_delta=10, reason="Initial stock"),
+            self.db,
+        )
+
+        result = dispatch_tool_call(
+            self.db,
+            "transfer_stock",
+            {
+                "item_id": item_id,
+                "source_location_id": source_id,
+                "destination_location_id": destination_id,
+                "quantity": 4,
+                "reason": "Move to overflow",
+            },
+        )
+
+        self.assertTrue(result["success"], result)
+        stock = dispatch_tool_call(self.db, "get_stock_levels", {})
+        available_by_location = {row["location_id"]: row["available"] for row in stock["result"]["items"]}
+        self.assertEqual(available_by_location[source_id], 6)
+        self.assertEqual(available_by_location[destination_id], 4)
+
+    def test_transfer_stock_rejects_insufficient_available_stock(self) -> None:
+        item_id = self.create_item()
+        source_id = self.create_location(name="Main Store")
+        destination_id = self.create_location(name="Overflow Store")
+
+        result = dispatch_tool_call(
+            self.db,
+            "transfer_stock",
+            {
+                "item_id": item_id,
+                "source_location_id": source_id,
+                "destination_location_id": destination_id,
+                "quantity": 4,
+                "reason": "Move to overflow",
+            },
+        )
+
+        self.assertFalse(result["success"])
 
 
 class AiToolsBroadcastAndReportsTest(AiToolsTest):
@@ -1286,6 +1490,134 @@ class AiToolsParticipantsVenuesLogisticsTest(AiToolsTest):
 
         self.assertFalse(result["success"])
 
+    # -- TICKET-57: venue writes -------------------------------------------
+
+    def test_create_venue_writes_a_new_row(self) -> None:
+        result = dispatch_tool_call(
+            self.db, "create_venue", {"name": "Community Hub", "address": "1 Hub Way"}
+        )
+
+        self.assertTrue(result["success"], result)
+        self.assertEqual(result["result"]["name"], "Community Hub")
+
+    def test_update_venue_changes_fields(self) -> None:
+        venue_id = self.create_venue(name="Community Hub")
+
+        result = dispatch_tool_call(
+            self.db, "update_venue", {"venue_id": venue_id, "notes": "Has a ramp"}
+        )
+
+        self.assertTrue(result["success"], result)
+        self.assertEqual(result["result"]["notes"], "Has a ramp")
+
+    def test_create_venue_space_writes_a_new_space(self) -> None:
+        venue_id = self.create_venue(name="Community Hub")
+
+        result = dispatch_tool_call(
+            self.db,
+            "create_venue_space",
+            {"venue_id": venue_id, "name": "Main Hall", "pax_capacity": 100},
+        )
+
+        self.assertTrue(result["success"], result)
+        self.assertEqual(result["result"]["name"], "Main Hall")
+
+    def test_update_venue_space_changes_fields(self) -> None:
+        venue_id = self.create_venue(name="Community Hub")
+        space = dispatch_tool_call(
+            self.db, "create_venue_space", {"venue_id": venue_id, "name": "Main Hall"}
+        )["result"]
+
+        result = dispatch_tool_call(
+            self.db,
+            "update_venue_space",
+            {"venue_id": venue_id, "space_id": space["id"], "pax_capacity": 50},
+        )
+
+        self.assertTrue(result["success"], result)
+        self.assertEqual(result["result"]["pax_capacity"], 50)
+
+    def test_create_venue_booking_books_a_space_for_an_event(self) -> None:
+        event = self._publish()
+        venue_id = self.create_venue(name="Community Hub")
+        space = dispatch_tool_call(
+            self.db, "create_venue_space", {"venue_id": venue_id, "name": "Main Hall"}
+        )["result"]
+
+        result = dispatch_tool_call(
+            self.db,
+            "create_venue_booking",
+            {
+                "event_id": event["id"],
+                "venue_space_id": space["id"],
+                "status": "confirmed",
+                "start_at": "2099-01-01T09:00:00",
+                "end_at": "2099-01-01T12:00:00",
+            },
+        )
+
+        self.assertTrue(result["success"], result)
+        self.assertEqual(result["result"]["venue_space_id"], space["id"])
+
+    def test_create_venue_booking_rejects_an_overlapping_confirmed_booking(self) -> None:
+        event = self._publish()
+        other_event = self._publish(name="Other")
+        venue_id = self.create_venue(name="Community Hub")
+        space = dispatch_tool_call(
+            self.db, "create_venue_space", {"venue_id": venue_id, "name": "Main Hall"}
+        )["result"]
+        dispatch_tool_call(
+            self.db,
+            "create_venue_booking",
+            {
+                "event_id": event["id"],
+                "venue_space_id": space["id"],
+                "status": "confirmed",
+                "start_at": "2099-01-01T09:00:00",
+                "end_at": "2099-01-01T12:00:00",
+            },
+        )
+
+        result = dispatch_tool_call(
+            self.db,
+            "create_venue_booking",
+            {
+                "event_id": other_event["id"],
+                "venue_space_id": space["id"],
+                "status": "confirmed",
+                "start_at": "2099-01-01T10:00:00",
+                "end_at": "2099-01-01T13:00:00",
+            },
+        )
+
+        self.assertFalse(result["success"])
+
+    def test_update_venue_booking_changes_status(self) -> None:
+        event = self._publish()
+        venue_id = self.create_venue(name="Community Hub")
+        space = dispatch_tool_call(
+            self.db, "create_venue_space", {"venue_id": venue_id, "name": "Main Hall"}
+        )["result"]
+        booking = dispatch_tool_call(
+            self.db,
+            "create_venue_booking",
+            {
+                "event_id": event["id"],
+                "venue_space_id": space["id"],
+                "start_at": "2099-01-01T09:00:00",
+                "end_at": "2099-01-01T12:00:00",
+            },
+        )["result"]
+
+        result = dispatch_tool_call(
+            self.db,
+            "update_venue_booking",
+            {"event_id": event["id"], "booking_id": booking["id"], "status": "cancelled"},
+        )
+
+        self.assertTrue(result["success"], result)
+        self.assertEqual(result["result"]["status"], "cancelled")
+
     # -- logistics ----------------------------------------------------------
 
     def test_get_attendance_forecast_reports_insufficient_history_for_a_new_event(self) -> None:
@@ -1317,6 +1649,213 @@ class AiToolsParticipantsVenuesLogisticsTest(AiToolsTest):
 
         self.assertTrue(result["success"])
         self.assertEqual(result["result"]["items"], [])
+
+    # -- TICKET-58: logistics writes ----------------------------------------
+
+    def create_goods_requirement(self, event_id: int, item_id: int, **overrides) -> dict:
+        fields = {
+            "requirement_type": "goods",
+            "inventory_item_id": item_id,
+            "required_quantity": 10,
+            "unit": "case",
+            "needed_by": "2099-01-01T00:00:00",
+        }
+        fields.update(overrides)
+        result = dispatch_tool_call(
+            self.db,
+            "create_event_logistics_requirement",
+            {"event_id": event_id, **fields},
+        )
+        self.assertTrue(result["success"], result)
+        return result["result"]
+
+    def create_inventory_item_row(self, **overrides) -> int:
+        fields = {"name": "Bottled Water", "unit": "case", "item_type": "consumable"}
+        fields.update(overrides)
+        row = self.db.execute(
+            "INSERT INTO inventory_items (name, unit, item_type) VALUES (?, ?, ?) RETURNING id",
+            (fields["name"], fields["unit"], fields["item_type"]),
+        ).fetchone()
+        self.db.commit()
+        return row["id"]
+
+    def create_inventory_location_row(self, **overrides) -> int:
+        fields = {"name": "Main Store"}
+        fields.update(overrides)
+        row = self.db.execute(
+            "INSERT INTO inventory_locations (name) VALUES (?) RETURNING id", (fields["name"],)
+        ).fetchone()
+        self.db.commit()
+        return row["id"]
+
+    def test_create_event_logistics_requirement_writes_a_new_row(self) -> None:
+        event = self._publish()
+        item_id = self.create_inventory_item_row()
+
+        requirement = self.create_goods_requirement(event["id"], item_id)
+
+        self.assertEqual(requirement["required_quantity"], 10)
+
+    def test_update_event_logistics_requirement_changes_fields(self) -> None:
+        event = self._publish()
+        item_id = self.create_inventory_item_row()
+        requirement = self.create_goods_requirement(event["id"], item_id)
+
+        result = dispatch_tool_call(
+            self.db,
+            "update_event_logistics_requirement",
+            {"event_id": event["id"], "requirement_id": requirement["id"], "required_quantity": 20},
+        )
+
+        self.assertTrue(result["success"], result)
+        self.assertEqual(result["result"]["required_quantity"], 20)
+
+    def test_cancel_event_logistics_requirement_marks_it_cancelled(self) -> None:
+        event = self._publish()
+        item_id = self.create_inventory_item_row()
+        requirement = self.create_goods_requirement(event["id"], item_id)
+
+        result = dispatch_tool_call(
+            self.db,
+            "cancel_event_logistics_requirement",
+            {"event_id": event["id"], "requirement_id": requirement["id"]},
+        )
+
+        self.assertTrue(result["success"], result)
+        listed = dispatch_tool_call(
+            self.db, "list_event_logistics_requirements", {"event_id": event["id"]}
+        )
+        [row] = listed["result"]["items"]
+        self.assertTrue(row["is_cancelled"])
+
+    def test_reserve_logistics_inventory_creates_an_allocation(self) -> None:
+        event = self._publish()
+        item_id = self.create_inventory_item_row()
+        location_id = self.create_inventory_location_row()
+        inventory_routes.adjust_stock(
+            StockAdjustment(item_id=item_id, location_id=location_id, quantity_delta=10, reason="Initial stock"),
+            self.db,
+        )
+        requirement = self.create_goods_requirement(event["id"], item_id)
+
+        result = dispatch_tool_call(
+            self.db,
+            "reserve_logistics_inventory",
+            {"event_id": event["id"], "requirement_id": requirement["id"], "location_id": location_id, "quantity": 5},
+        )
+
+        self.assertTrue(result["success"], result)
+        self.assertEqual(result["result"]["reserved_quantity"], 5)
+
+    def test_reserve_logistics_inventory_rejects_insufficient_stock(self) -> None:
+        event = self._publish()
+        item_id = self.create_inventory_item_row()
+        location_id = self.create_inventory_location_row()
+        requirement = self.create_goods_requirement(event["id"], item_id)
+
+        result = dispatch_tool_call(
+            self.db,
+            "reserve_logistics_inventory",
+            {"event_id": event["id"], "requirement_id": requirement["id"], "location_id": location_id, "quantity": 5},
+        )
+
+        self.assertFalse(result["success"])
+
+    def test_release_logistics_inventory_reduces_the_reservation(self) -> None:
+        event = self._publish()
+        item_id = self.create_inventory_item_row()
+        location_id = self.create_inventory_location_row()
+        inventory_routes.adjust_stock(
+            StockAdjustment(item_id=item_id, location_id=location_id, quantity_delta=10, reason="Initial stock"),
+            self.db,
+        )
+        requirement = self.create_goods_requirement(event["id"], item_id)
+        allocation = dispatch_tool_call(
+            self.db,
+            "reserve_logistics_inventory",
+            {"event_id": event["id"], "requirement_id": requirement["id"], "location_id": location_id, "quantity": 5},
+        )["result"]
+
+        result = dispatch_tool_call(
+            self.db,
+            "release_logistics_inventory",
+            {
+                "event_id": event["id"],
+                "requirement_id": requirement["id"],
+                "allocation_id": allocation["id"],
+                "quantity": 2,
+            },
+        )
+
+        self.assertTrue(result["success"], result)
+        self.assertEqual(result["result"]["reserved_quantity"], 3)
+
+    def test_issue_logistics_inventory_deducts_from_stock(self) -> None:
+        event = self._publish()
+        item_id = self.create_inventory_item_row()
+        location_id = self.create_inventory_location_row()
+        inventory_routes.adjust_stock(
+            StockAdjustment(item_id=item_id, location_id=location_id, quantity_delta=10, reason="Initial stock"),
+            self.db,
+        )
+        requirement = self.create_goods_requirement(event["id"], item_id)
+        allocation = dispatch_tool_call(
+            self.db,
+            "reserve_logistics_inventory",
+            {"event_id": event["id"], "requirement_id": requirement["id"], "location_id": location_id, "quantity": 5},
+        )["result"]
+
+        result = dispatch_tool_call(
+            self.db,
+            "issue_logistics_inventory",
+            {
+                "event_id": event["id"],
+                "requirement_id": requirement["id"],
+                "allocation_id": allocation["id"],
+                "quantity": 5,
+            },
+        )
+
+        self.assertTrue(result["success"], result)
+        self.assertEqual(result["result"]["issued_quantity"], 5)
+
+    def test_reconcile_logistics_allocation_requires_the_event_to_be_closed(self) -> None:
+        event = self._publish()
+        item_id = self.create_inventory_item_row()
+        location_id = self.create_inventory_location_row()
+        inventory_routes.adjust_stock(
+            StockAdjustment(item_id=item_id, location_id=location_id, quantity_delta=10, reason="Initial stock"),
+            self.db,
+        )
+        requirement = self.create_goods_requirement(event["id"], item_id)
+        allocation = dispatch_tool_call(
+            self.db,
+            "reserve_logistics_inventory",
+            {"event_id": event["id"], "requirement_id": requirement["id"], "location_id": location_id, "quantity": 5},
+        )["result"]
+        dispatch_tool_call(
+            self.db,
+            "issue_logistics_inventory",
+            {
+                "event_id": event["id"],
+                "requirement_id": requirement["id"],
+                "allocation_id": allocation["id"],
+                "quantity": 5,
+            },
+        )
+
+        result = dispatch_tool_call(
+            self.db,
+            "reconcile_logistics_allocation",
+            {
+                "event_id": event["id"],
+                "requirement_id": requirement["id"],
+                "allocation_id": allocation["id"],
+                "consumed_quantity": 5,
+            },
+        )
+
+        self.assertFalse(result["success"])
 
 
 if __name__ == "__main__":

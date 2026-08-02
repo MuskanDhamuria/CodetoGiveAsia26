@@ -184,6 +184,55 @@ class DatabaseMigrationTest(unittest.TestCase):
             self.assertEqual(migrations[12], "012_normalize_volunteer_phone_numbers.sql")
             self.assertEqual(migrations[18], "018_volunteer_otp.sql")
 
+    def test_logistics_and_otp_numbering_collision_is_repaired_together(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            database_path = Path(directory) / "combined-collision.sqlite3"
+            initialize_database(database_path)
+            with connect(database_path) as connection:
+                connection.execute("DELETE FROM schema_migrations WHERE version IN (12, 19)")
+                connection.execute(
+                    "INSERT INTO schema_migrations (version, name) VALUES (?, ?), (?, ?)",
+                    (12, "event logistics backfills", 19, "019_participant_otp.sql"),
+                )
+                connection.commit()
+
+            initialize_database(database_path)
+
+            with connect(database_path) as connection:
+                migrations = dict(connection.execute(
+                    "SELECT version, name FROM schema_migrations WHERE version IN (12, 19, 20)"
+                ).fetchall())
+                tables = {
+                    row["name"]
+                    for row in connection.execute(
+                        "SELECT name FROM sqlite_master WHERE type = 'table'"
+                    )
+                }
+
+            self.assertEqual(migrations[12], "012_normalize_volunteer_phone_numbers.sql")
+            self.assertEqual(migrations[19], "019_logistics_backfills.sql")
+            self.assertEqual(migrations[20], "020_participant_otp.sql")
+            self.assertIn("event_logistics_backfills", tables)
+
+    def test_existing_logistics_backfills_table_without_ledger_entry_is_adopted(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            database_path = Path(directory) / "missing-ledger.sqlite3"
+            initialize_database(database_path)
+            with connect(database_path) as connection:
+                connection.execute(
+                    "DELETE FROM schema_migrations WHERE version = 19"
+                )
+                connection.commit()
+
+            initialize_database(database_path)
+
+            with connect(database_path) as connection:
+                migration = connection.execute(
+                    "SELECT name FROM schema_migrations WHERE version = 19"
+                ).fetchone()
+
+            self.assertEqual(migration[0], "019_logistics_backfills.sql")
+
     def test_skill_enhancement_is_created_once_and_seed_does_not_duplicate_it(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             database_path = Path(directory) / "test.sqlite3"

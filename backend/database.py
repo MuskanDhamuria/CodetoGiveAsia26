@@ -162,6 +162,11 @@ def _repair_volunteer_migration_numbering_collisions(
             )
 
     renumberings = (
+        # participant_otp was numbered 019 before a teammate's
+        # 019_logistics_backfills.sql claimed that version. Repair this
+        # collision first so version 19 is free for the logistics migration
+        # below when both legacy records exist in the same database.
+        (19, "019_participant_otp.sql", 20, "020_participant_otp.sql"),
         # logistics_backfills was numbered 012 before being renumbered to
         # 019. That old migration recorded its own name as the literal
         # string 'event logistics backfills' rather than its filename, so
@@ -174,12 +179,6 @@ def _repair_volunteer_migration_numbering_collisions(
         (12, "event logistics backfills", 19, "019_logistics_backfills.sql"),
         (8, "008_normalize_volunteer_phone_numbers.sql", 12, "012_normalize_volunteer_phone_numbers.sql"),
         (9, "009_event_roles.sql", 13, "013_event_roles.sql"),
-        # participant_otp was numbered 019 before a teammate's
-        # 019_logistics_backfills.sql claimed that version; a database that
-        # already applied it as version 19 must be moved to 20, or its
-        # ALTER TABLE participants ADD COLUMN statements re-run and crash
-        # with "duplicate column name".
-        (19, "019_participant_otp.sql", 20, "020_participant_otp.sql"),
     )
     for old_version, old_name, new_version, new_name in renumberings:
         legacy_row = connection.execute(

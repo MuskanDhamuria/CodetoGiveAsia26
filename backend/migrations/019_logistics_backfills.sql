@@ -1,6 +1,6 @@
 BEGIN;
 
-CREATE TABLE event_logistics_backfills (
+CREATE TABLE IF NOT EXISTS event_logistics_backfills (
     id INTEGER PRIMARY KEY,
     requirement_id INTEGER NOT NULL REFERENCES event_logistics_requirements(id) ON DELETE CASCADE,
     quantity REAL NOT NULL CHECK (quantity > 0),
@@ -9,7 +9,7 @@ CREATE TABLE event_logistics_backfills (
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX idx_logistics_backfills_requirement ON event_logistics_backfills(requirement_id);
+CREATE INDEX IF NOT EXISTS idx_logistics_backfills_requirement ON event_logistics_backfills(requirement_id);
 
 INSERT OR IGNORE INTO schema_migrations (version, name)
 VALUES (19, '019_logistics_backfills.sql');

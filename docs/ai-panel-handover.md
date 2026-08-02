@@ -103,6 +103,36 @@ prompt-only, same as every other mutating tool — see TICKET-26 below,
 which now also covers `send_announcement`, `send_shift_reminder`, and
 `generate_event_certificates`.
 
+**Tool expansion — participants, venues, logistics (TICKET-54).** A fresh
+gap audit (this ticket's own framing, mirroring the earlier TICKET-38
+pattern) found three whole feature modules — `participants.py`,
+`venues.py`, `logistics.py` — with zero AI coverage despite having real
+admin-facing frontend pages, and had simply fallen outside every prior
+gap-audit's stated scope. The tool set grew from 28 to 37: participant/RSVP
+roster tools (`list_event_participants`, `get_participant`,
+`list_participants`), venue visibility (`list_venues`, `get_venue`,
+`list_venue_bookings`), and logistics (`get_attendance_forecast`,
+`get_event_logistics` for the full operational picture in one call,
+`list_event_logistics_requirements`) — all read-only, same
+no-organizer-use-case-yet rationale as inventory's TICKET-39 for deferring
+writes. `organizations.py` and `beneficiaries.py` were deliberately left
+out of this pass — see TICKET-54 in `tickets.md` for why.
+
+**Correctness/robustness fixes (TICKET-48/50/53).** The chat loop now
+resolves up to 5 rounds of tool-calling per user turn (was exactly 1),
+bounded to avoid runaway loops — the model can now chain
+`list_event_templates` → `create_event_draft` and similar sequential
+lookups `SYSTEM_PROMPT` already described as possible, within one turn.
+`dispatch_tool_call` catches unexpected executor exceptions generically
+now, and `/ai/chat`'s stream always emits a terminal `error`/`done` event
+pair instead of the SSE stream silently dying mid-turn. Real
+participant/volunteer names and certificate download tokens no longer
+leave the system to OpenRouter by default —
+`list_completed_event_reports` returns counts only unless the organizer's
+question actually needs names (`include_names=true`), and
+`list_event_certificates` drops the bearer-style `download_token`/`link`
+entirely since the model never needs it.
+
 **Not started:** TICKET-7 (system-prompt iteration — live testing surfaced
 a couple of concrete cases worth tuning, like the model over-verifying
 information it already has), TICKET-18 (task-prioritization prompt
@@ -200,13 +230,16 @@ findings — see `tickets.md`, none fixed yet).
   request itself, rather than opening a second connection via
   `backend.database.connect()` as TICKET-2 originally sketched — one
   connection per request was simpler and there was no reason to open two.
-- **The AI endpoint resolves at most one round of tool-calling per user
-  turn**, not an open-ended agent loop: it calls whatever tools the model
-  asked for, feeds the results back, and streams the follow-up reply. This
-  is enough for the draft-then-approve flow — `publish_event` only fires
-  when the organizer explicitly confirms a draft on a separate, later turn,
-  so the model never needs to chain more than one tool call to get useful
-  work done in a single turn.
+- **The AI endpoint resolves up to `MAX_TOOL_ROUNDS` (5) rounds of
+  tool-calling per user turn**, not an unbounded agent loop (TICKET-48).
+  Originally capped at exactly one round; live use surfaced that
+  `SYSTEM_PROMPT` itself promises sequential lookups within one turn (e.g.
+  "call list_event_templates first ... to get the id" before
+  `create_event_draft`) that a single round can't satisfy. The
+  draft-then-approve boundary (`publish_event` only fires on an explicit
+  later turn) still holds — the round bound only changes how many
+  *lookup*-style calls the model can chain before replying, not which
+  tools it's instructed to wait for confirmation on.
 - **Event cancellation gets its own column (`cancelled_at`), not a new
   `status` value.** `EVENT.status` is documented and consumed elsewhere
   purely as a registration open/closed toggle (dashboard queries, the

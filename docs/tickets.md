@@ -381,6 +381,23 @@ TICKET-47: Participant-portal input-validation edge cases
 
 ---
 
+~~TICKET-48: AI chat only runs one round of tool-calling per user turn — breaks the sequential tool chains `SYSTEM_PROMPT` itself promises~~
+— **Done**, via option (a). `run_chat_turn` (`ai_assistant.py`) now loops
+the stream-then-dispatch step for up to `MAX_TOOL_ROUNDS` (5) rounds within
+one turn instead of exactly one — the model can chain
+`list_event_templates` → `create_event_draft` and similar sequential
+lookups within a single turn now. If the model is still requesting tools
+after the round cap, the loop stops dispatching and lets it produce a
+final text reply from whatever it has, so a misbehaving model can't hang
+the turn indefinitely. Option (b) (rewriting the prompt to stop promising
+same-turn sequential behavior) was not chosen, per instruction. Covered by
+`test_chains_two_rounds_of_tool_calls_within_one_turn` and
+`test_stops_after_max_rounds_instead_of_looping_forever` in
+`backend/tests/test_ai_assistant.py`.
+
+<details>
+<summary>Original ticket text</summary>
+
 TICKET-48: AI chat only runs one round of tool-calling per user turn — breaks the sequential tool chains `SYSTEM_PROMPT` itself promises
 
 **Priority:** High — this is a functional/correctness bug in the AI panel's core loop, not just an edge case.
@@ -436,7 +453,22 @@ model to end its turn with a clarifying/confirming question whenever it needs a 
 tool result before proceeding — the current code and the current prompt disagree with
 each other, and either fix is better than leaving that mismatch in place.
 
+</details>
+
 ---
+
+~~TICKET-49: `POST /ai/tools/{tool_name}` has no allowlist — any HTTP client can directly fire any of the 28 tools, including sends/cancels, with zero confirmation~~
+— **Won't fix.** Same rationale as TICKET-43: no auth system exists
+anywhere in this hackathon prototype by design, and every route in the
+admin backend — not just `/ai/tools/*` — is reachable by "any HTTP client
+that can reach the backend at all." A confirmation-token gate scoped only
+to this one endpoint would be a narrow, inconsistent patch over a gap that
+applies uniformly across the whole admin surface, not a fix specific to
+this route. Revisit alongside real admin auth if that's ever built,
+consistent with the original TICKET-0 decision.
+
+<details>
+<summary>Original ticket text</summary>
 
 TICKET-49: `POST /ai/tools/{tool_name}` has no allowlist — any HTTP client can directly fire any of the 28 tools, including sends/cancels, with zero confirmation
 
@@ -479,7 +511,31 @@ real message) or is otherwise irreversible should require a second, server-gener
 confirmation token minted by the matching preview call and consumed by the send call,
 rather than relying entirely on prompt-level convention with no code enforcement.
 
+</details>
+
 ---
+
+~~TICKET-50: Participant/volunteer real names and a certificate access secret are sent to OpenRouter (a third-party LLM) with no redaction~~
+— **Done**, redacting by default while preserving admin access on request.
+`list_completed_event_reports` gained an `include_names` argument
+(default `False`) — with it unset, `participant_names`/`volunteer_names`
+are stripped from every item and only counts are returned; `SYSTEM_PROMPT`
+tells the model to only pass `include_names=true` when the organizer's
+question actually needs the name list (e.g. "who attended"), not for
+general status/headcount questions. This was the priority constraint: an
+admin can still get real names through conversation by asking a question
+that needs them, it's just no longer sent by default on every report
+query. `list_event_certificates` drops `download_token`/`link` from its
+output unconditionally — no toggle, since the model never has a legitimate
+need for that bearer-style secret to answer any question the tool exists
+to answer. Covered by
+`test_list_completed_event_reports_omits_real_names_by_default`,
+`test_list_completed_event_reports_returns_names_when_explicitly_requested`,
+and `test_list_event_certificates_never_includes_the_download_token_or_link`
+in `backend/tests/test_ai_tools.py`.
+
+<details>
+<summary>Original ticket text</summary>
 
 TICKET-50: Participant/volunteer real names and a certificate access secret are sent to OpenRouter (a third-party LLM) with no redaction
 
@@ -513,7 +569,26 @@ organizer questions like "how did the food drive go" only need counts). For
 `list_event_certificates`, drop `download_token` from what's returned to the model
 entirely — it's not needed to answer any question the tool exists to answer.
 
+</details>
+
 ---
+
+~~TICKET-51: Unauthenticated public volunteer-signup name field is a concrete cross-turn prompt-injection surface~~
+— **Won't fix.** The robust fix this ticket itself describes (treat all
+tool-result content as untrusted data rather than instructions — wrap
+returned records in a delimiter the system prompt is told never to treat
+as instructions) is a general LLM-tool-use hardening pattern that applies
+to every tool result in this codebase, not something scoped cleanly to
+just the volunteer-signup name field. Doing it properly means auditing and
+restructuring how every tool result gets folded into the prompt, which is
+a meaningfully larger change than "cap and sanitize one field" and doesn't
+fit as a single ticket's fix. The narrower mitigation (cap/sanitize free-
+text fields from public endpoints) would give a false sense of coverage
+without addressing the general pattern the ticket itself says matters
+more. Deferred rather than shipping a half-measure.
+
+<details>
+<summary>Original ticket text</summary>
 
 TICKET-51: Unauthenticated public volunteer-signup name field is a concrete cross-turn prompt-injection surface
 
@@ -555,7 +630,24 @@ model never to treat as instructions) — this is a general LLM-tool-use hardeni
 pattern, not specific to this one field, but this field is the most directly
 reachable instance of it in this codebase since it needs no auth at all to reach.
 
+</details>
+
 ---
+
+~~TICKET-52: No rate limiting on `/ai/chat` or `/ai/tools/{tool_name}`~~
+— **Won't fix.** No rate-limit middleware exists anywhere in this
+hackathon prototype's backend, on any route, AI or otherwise — this is a
+pre-production infrastructure gap (the same one `API_ENDPOINTS.md` already
+flags for the public volunteer-signup endpoint) rather than something
+specific to the AI panel. Adding rate limiting to just the AI endpoints
+would be inconsistent with every other unmetered route and wouldn't
+meaningfully close the gap this ticket describes (WhatsApp spam via
+`invoke_tool`) without TICKET-49's allowlist, which is itself dropped for
+the same no-auth-system reason. Revisit as part of a real
+pre-production infra pass, not a one-off ticket.
+
+<details>
+<summary>Original ticket text</summary>
 
 TICKET-52: No rate limiting on `/ai/chat` or `/ai/tools/{tool_name}`
 
@@ -571,7 +663,25 @@ no throttle — real WhatsApp spam to real beneficiaries/volunteers. Independent
 `/ai/chat` has no cap on conversation length or request frequency, so it's also an
 unmetered OpenRouter-cost vector on its own.
 
+</details>
+
 ---
+
+~~TICKET-53: `dispatch_tool_call` doesn't catch generic exceptions — a raw DB error silently kills the SSE stream mid-turn with no error event~~
+— **Done**, both halves. `dispatch_tool_call` (`dispatch.py`) now catches
+`Exception` generically around the executor call, rolls back, and returns
+a structured `{"success": False, "reason": "<ExceptionType>: <message>"}`
+result through the same `_finish` path that still records the audit-log
+row. `chat()`'s `event_stream()` (`ai_assistant.py`) now wraps its body in
+a broad `try/except Exception` (in addition to the existing
+`httpx.HTTPError` branch) that always emits a terminal `error` event
+followed by a `done` event, so the frontend never sees the stream just die
+mid-turn with no explanation. Covered by
+`test_unexpected_executor_exception_becomes_a_structured_error` in
+`backend/tests/test_ai_tools.py`.
+
+<details>
+<summary>Original ticket text</summary>
 
 TICKET-53: `dispatch_tool_call` doesn't catch generic exceptions — a raw DB error silently kills the SSE stream mid-turn with no error event
 
@@ -600,7 +710,41 @@ result and still recording the audit-log row), and/or wrap `event_stream()`'s bo
 a broad `try/except` that always emits a terminal `error`/`done` event so the frontend
 can at least show "something went wrong, try again" instead of a silently dead panel.
 
+</details>
+
 ---
+
+~~TICKET-54: AI tool coverage gap — five feature modules with real admin UI have zero AI tools and were never audited by any prior ticket~~
+— **Done** for `participants.py`, `venues.py`, `logistics.py` — nine new
+read-only tools (37 total, up from 28): `list_event_participants`,
+`get_participant`, `list_participants` (roster/RSVP-lookup, prioritized
+per the ticket's own guidance); `list_venues`, `get_venue`,
+`list_venue_bookings`; `get_attendance_forecast`,
+`get_event_logistics` (the full operational picture in one call —
+requirements, bookings, forecast, warnings — matching the ticket's own
+"how are we doing operationally for Saturday's event" framing as the
+highest-value miss), `list_event_logistics_requirements`. Write tools
+(venue booking creation, donation-batch transitions, requirement
+reservation/issue/reconcile) deliberately deferred, same
+no-organizer-use-case-identified-yet rationale TICKET-39 set for inventory.
+
+`organizations.py` and `beneficiaries.py` were deliberately **not**
+covered in this pass. Considered and deferred rather than silently out of
+scope: both hold PII-adjacent data for a vulnerable population
+(`beneficiaries.py` directly — beneficiary contact/group data; `venues.py`
+already touches `external_organizations` read-only via
+`managing_organization_name`, so `organizations.py` itself would add
+external-partner contact details and the full supplier-order/pricing
+history) — the same category of "should this really default to leaving
+the system to a third-party LLM" question TICKET-50 raised for participant
+report names, without a redaction pattern worked out for either module
+yet. Rather than ship broad read access to that data ahead of deciding
+what (if anything) needs redacting, deferring both to their own
+ticket once that's actually scoped, same as this ticket's own text treated
+inventory's write tools as a separate later decision.
+
+<details>
+<summary>Original ticket text</summary>
 
 TICKET-54: AI tool coverage gap — five feature modules with real admin UI have zero AI tools and were never audited by any prior ticket
 
@@ -671,6 +815,8 @@ questions an organizer would naturally ask in chat, then evaluate write tools
 (supplier-order transitions, venue bookings, donation-batch state changes) case by
 case the same way TICKET-39 deferred inventory writes until a concrete use case
 existed.
+
+</details>
 
 ---
 

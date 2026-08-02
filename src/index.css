@@ -4099,9 +4099,16 @@ button {
   display: none;
 }
 
+/* TICKET-66: no longer rendered visually — desktop now reflows
+   .product-page-content instead of dimming it, and mobile's full-width
+   panel already covers the whole screen with nothing left to dim. The
+   element still mounts (AiCopilot.tsx) so its onClick keeps working as a
+   click-outside-to-close affordance where the panel doesn't fill the
+   viewport. */
 .copilot-backdrop {
   background: rgba(10, 10, 10, 0.32);
   bottom: 0;
+  display: none;
   left: 0;
   position: fixed;
   right: 0;
@@ -4135,6 +4142,18 @@ button {
   opacity: 1;
   pointer-events: auto;
   transform: translateX(0);
+}
+
+/* TICKET-66: on desktop the panel reflows the page instead of overlaying
+   it — .product-page-content gets pushed left by the panel's width while
+   it's open. The max-width: 810px block below zeroes this back out so
+   mobile keeps the overlay-only behavior (no room to reflow there). */
+.product-page-content {
+  transition: margin-right 0.24s ease;
+}
+
+.product-frame:has(.copilot-panel.open) .product-page-content {
+  margin-right: 440px;
 }
 
 .copilot-header {
@@ -4432,9 +4451,12 @@ button {
    see TICKET-10 in docs/tickets.md. The collapsible FAB + overlay panel
    design above (.copilot-fab / .copilot-panel / .copilot-header /
    .copilot-context / .copilot-chat / .copilot-message / .suggestion-card /
-   .copilot-composer) is the only live one; AiCopilot.tsx now renders as a
-   fixed overlay, so .product-app/.product-frame/.product-page-content's
-   grid-reservation layout is gone too. */
+   .copilot-composer) is the only live one; AiCopilot.tsx renders the panel
+   as a fixed-position element (never in normal flow). TICKET-66 reintroduced
+   a narrower version of the old reflow behavior on top of that: on desktop,
+   .product-page-content picks up a margin-right while the panel is open
+   (see .product-frame:has(.copilot-panel.open) above); mobile stays a pure
+   full-screen overlay with no reflow, same as TICKET-10 left it. */
 
 @keyframes line-pulse {
   0% {
@@ -4649,8 +4671,8 @@ button {
     padding: 14px 16px 16px;
   }
 
-  .copilot-backdrop {
-    display: none;
+  .product-frame:has(.copilot-panel.open) .product-page-content {
+    margin-right: 0;
   }
 }
 

@@ -12,7 +12,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.api.router import api_router
-from backend.database import DEFAULT_DATABASE_PATH, initialize_database
+from backend.database import DEFAULT_DATABASE_PATH, connect, initialize_database
+from backend.seed import seed_admin_whatsapp_links
 
 
 DEFAULT_CORS_ORIGINS = (
@@ -85,6 +86,8 @@ def create_app(database_path: str | Path | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         initialize_database(resolved_database_path)
+        with connect(resolved_database_path) as connection:
+            seed_admin_whatsapp_links(connection)
         application.state.database_path = resolved_database_path
         yield
 

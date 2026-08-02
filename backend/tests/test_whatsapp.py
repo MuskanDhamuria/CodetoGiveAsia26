@@ -232,6 +232,15 @@ class WhatsAppBotTest(unittest.TestCase):
         self.assertIn("SIGNUP <id>", reply)
         self.assertNotIn("Reply PARTICIPANT or VOLUNTEER", reply)
 
+    def test_hardcoded_admin_phone_has_bot_admin_commands_without_manual_linking(self) -> None:
+        # backend.seed.ADMIN_WHATSAPP_LINKS is re-applied on every app
+        # startup (see backend.main's lifespan), so these numbers should
+        # already have admin access with no /whatsapp-link call needed —
+        # this survives a database reset, unlike a manual link.
+        help_response = self.send_message("6593430297", "HELP")
+        self.assertEqual(help_response.status_code, 200)
+        self.assertIn("BROADCAST", self.fake_whatsapp.sent[-1][1])
+
     def test_admins_are_not_shown_the_role_prompt(self) -> None:
         admin_phone = "6580000037"
         self.make_team_member_contact(admin_phone)

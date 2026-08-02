@@ -525,6 +525,27 @@ class WhatsAppBotTest(unittest.TestCase):
         self.assertEqual(page.status_code, 200)
         self.assertIn("Sam", page.text)
 
+    def test_website_volunteer_registration_auto_links_whatsapp(self) -> None:
+        # Registering through the website's volunteer signup form should be
+        # enough on its own — no separate WhatsApp SIGNUP step required for
+        # the bot to already recognize them.
+        register_response = self.client.post(
+            "/api/v1/volunteer-auth/register",
+            json={
+                "name": "Wei Ling Tan",
+                "contact_number": "+65 8000 0038",
+                "password": "Str0ngPass!",
+            },
+        )
+        self.assertEqual(register_response.status_code, 201)
+
+        event = self.create_event()
+        response = self.send_message("6580000038", f"VOLUNTEER SIGNUP {event['id']}")
+        self.assertEqual(response.status_code, 200)
+        # Already linked, so this should confirm immediately rather than
+        # asking "What name should we register...".
+        self.assertIn("Thanks for volunteering", self.fake_whatsapp.sent[-1][1])
+
     def test_reminder_endpoint_notifies_approved_volunteers(self) -> None:
         event = self.create_event()
         role_id = self.add_role_to_event_template(event["event_template_id"])

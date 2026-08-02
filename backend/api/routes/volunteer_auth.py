@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, Security, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from backend.api.routes._common import Connection
+from backend.bot.commands import get_or_create_contact
 from backend.schema.volunteer_auth import (
     VolunteerAccountOut,
     VolunteerDashboardEvent,
@@ -174,6 +175,18 @@ def register(payload: VolunteerRegister, db: Connection) -> VolunteerAuthResult:
             token = issue_session(db, account["id"])
     except sqlite3.IntegrityError as error:
         raise HTTPException(status_code=409, detail="An account already exists for this volunteer") from error
+
+    # Auto-link this phone number to the WhatsApp bot so it already
+    # recognizes them as a volunteer if they message it later — no separate
+    # WhatsApp signup step required. Safe to run every time: never overwrites
+    # an existing link to a different volunteer.
+    contact = get_or_create_contact(db, volunteer["contact_number"])
+    if contact["volunteer_id"] is None:
+        db.execute(
+            "UPDATE whatsapp_contacts SET volunteer_id = ? WHERE id = ?",
+            (volunteer["id"], contact["id"]),
+        )
+        db.commit()
 
     row = db.execute(
         """

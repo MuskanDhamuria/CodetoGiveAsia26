@@ -75,6 +75,17 @@ otherwise have (a failure, or a result the model didn't already describe
 in its own reply), to keep the conversation readable rather than
 duplicating everything twice.
 
+**Getting started and staying in sync (TICKET-34/35).** The panel now
+opens with four clickable starter prompts on an empty conversation (e.g.
+"List my upcoming events") that fire immediately through the same send
+path as anything typed by hand — a first-time organizer doesn't have to
+guess what to type. Separately, the admin page behind the panel (Dashboard,
+Events, Volunteers) now refetches its data automatically the moment an AI
+tool call actually writes something (`publish_event`, `update_event`,
+`cancel_event`, `assign_event_task`, `update_task_status`,
+`approve_event_signup`) — no manual reload needed to see the change
+reflected outside the chat.
+
 **Not started:** TICKET-7 (system-prompt iteration — live testing surfaced
 a couple of concrete cases worth tuning, like the model over-verifying
 information it already has), TICKET-18 (task-prioritization prompt
@@ -83,6 +94,11 @@ workload-based team-member recommendation tool, the team-member roster
 tool it depends on, and a dashboard-summary tool — see `tickets.md` for
 scope). TICKET-8's future-tool backlog is otherwise mostly picked up now;
 volunteer management has real AI coverage as of TICKET-16/19/23 above.
+A 2026-08-02 code review (TICKET-24–33) also found real gaps in what's
+shipped — most notably no allowlist on the direct tool-invoke endpoint
+(TICKET-25) and no confirmation gate for mutating tools besides
+`publish_event` (TICKET-26) — see `tickets.md` for the full list; none of
+those are fixed yet.
 
 ## How to run and see it
 
@@ -139,15 +155,17 @@ questions — live in [`tickets.md`](tickets.md). That's the single source of
 truth; don't duplicate it here. TICKET-9, TICKET-2, TICKET-3, TICKET-1,
 TICKET-4, TICKET-5, TICKET-6, TICKET-11 (a formatting bug found after
 TICKET-5 shipped), TICKET-12 (template visibility, found during
-TICKET-6's verification), and TICKET-13/14/15/16/17/19/23 (task
+TICKET-6's verification), TICKET-13/14/15/16/17/19/23 (task
 visibility/assignment, volunteer visibility, cross-event deadlines, and
-the skill-match volunteer recommendation) are all done. What's left:
-TICKET-7 (system prompt iteration — now with several concrete cases to
-test against), TICKET-8 (future tool backlog — mostly picked up, see
-above), TICKET-18 (task-prioritization prompt guidance, folds into
-TICKET-7), and TICKET-20/21/22 (workload-based team-member
-recommendation, the team-member roster tool, and a dashboard-summary
-tool).
+the skill-match volunteer recommendation), and TICKET-34/35 (starter
+prompts, refresh-after-mutation) are all done. What's left: TICKET-7
+(system prompt iteration — now with several concrete cases to test
+against), TICKET-8 (future tool backlog — mostly picked up, see above),
+TICKET-18 (task-prioritization prompt guidance, folds into TICKET-7),
+TICKET-20/21/22 (workload-based team-member recommendation, the
+team-member roster tool, and a dashboard-summary tool), and TICKET-24–33
+(the 2026-08-02 review's compatibility audit and nine concrete bug/gap
+findings — see `tickets.md`, none fixed yet).
 
 ## Key decisions worth knowing the "why" of
 

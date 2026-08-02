@@ -1536,3 +1536,644 @@ whether the skill-matching judgment call in TICKET-19 ever gets built.
 TICKET-19 depends on this ticket; this ticket does not depend on TICKET-19.
 
 </details>
+
+---
+
+## Findings from strict code review (2026-08-02)
+
+A full pass over everything TICKET-1 through TICKET-23 shipped — backend
+dispatch pipeline, all 15 tools, the chat endpoint, and the frontend panel
+— against both correctness/coverage and the newer
+"Adaptive Workflow Engine" proposal now circulating. TICKET-24 covers the
+latter; TICKET-25–33 are concrete bugs and gaps found in the former. None
+of these have been fixed yet — filing only, per review scope.
+
+---
+
+## TICKET-24: Phase-2 compatibility audit — what shipped is a chatbot over existing entities, not the Adaptive Workflow Engine the new proposal asks for
+
+**Priority:** Highest — blocking further AI-panel implementation, per the
+new proposal's own "Repository-First Development" mandate (inspect →
+understand → compatibility report → identify conflicts → recommend the
+least invasive strategy, *before* writing code). Mirrors TICKET-0's role
+for the original proposal.
+**Area:** whole system (read-only investigation, produces a report)
+
+### The new proposal's central claim, and why what's built doesn't meet it
+
+The new RFC opens with: "The objective is not to integrate a chatbot. The
+objective is to introduce an Adaptive Workflow Engine... The AI side panel
+is the primary interaction interface for this engine—not the feature
+itself." Every line of TICKET-1 through TICKET-23, however, **is** a
+chatbot: a constrained tool-calling LLM that directly reads and mutates
+existing entities (events, tasks, volunteers) through 15 thin wrapper
+tools. That was exactly right under the *original* proposal this backlog
+was built from — nothing here is a criticism of that work on its own
+terms, and TICKET-1–23 remain a solid, well-tested "AI ops copilot" for
+today's domain model. But held up against the new RFC, this whole body of
+work is at most the "AI Side Panel" box in the new architecture diagram —
+one leaf interface — sitting on top of an "engine" that does not exist.
+
+Concretely, none of the new proposal's core components have any
+counterpart in the repo today:
+
+- **Workflow Generator** — nothing produces a structured *workflow
+  configuration* object. `create_event_draft` produces an `EventCreate`
+  payload — the same shape a human fills in a form — not a new,
+  self-describing config schema.
+- **Workflow Evolution** — there is no mechanism to add a new step, field,
+  or phase to how events run. The new proposal's own north-star example —
+  "every food distribution event should include a volunteer briefing and
+  collect dietary restrictions during registration" — cannot be expressed
+  by *any* of the 15 existing tools. It needs a new task-template
+  concept (a "briefing" phase type) and a new registration-form field
+  (dietary restrictions on `EventCreate`/participant signup), both of
+  which are exactly the category of change the new proposal says should
+  not require touching application source code. Today it would.
+- **Validation Pipeline**, new-proposal sense — the RFC's version has
+  Schema → Business → Preview → Test stages. What TICKET-3 built is
+  Schema → Business (reused from `events.py`) → Permission (an explicit
+  no-op). There is no preview/simulate stage and no
+  AI-generated-validation-scenario stage anywhere.
+- **Version Manager** — nothing is versioned. `ai_audit_log`
+  (TICKET-4) is an append-only *log* of tool calls, not an immutable,
+  parent-linked, rollback-able configuration version.
+- **Contextual Learning** — no analysis of historical execution data
+  (skipped tasks, volunteer shortages, recurring scheduling issues)
+  exists anywhere in the codebase.
+- **AI-Generated Validation Scenarios** — none exist.
+- **Tool Registry** — `TOOL_SPECS`/`TOOL_EXECUTORS`/`TOOL_ARG_MODELS`
+  (`backend/ai_tools/`) are a reasonable de facto registry and a
+  plausible foundation, but nothing about them is documented or built as
+  an extensible "registry" concept in the new proposal's sense.
+- **Provider abstraction** — see TICKET-32; OpenRouter specifics are
+  hardcoded directly into the route module.
+
+### Recommended scope for this ticket
+
+Produce `docs/adaptive-workflow-engine-compatibility-report.md`,
+mirroring `ai-panel-compatibility-report.md`'s structure, covering at
+least:
+
+- Whether **Event Templates** (`event_templates`/`template_tasks`/
+  `template_roles` — already "a reusable workflow containing ordered task
+  definitions" per `CONTEXT.md`'s own glossary) are the natural substrate
+  to extend into "workflow configuration," rather than inventing a
+  parallel concept from nothing. The new proposal's own principle —
+  "prefer adapting this proposal to the repository rather than
+  restructuring the repository around the proposal" — points here first;
+  Event Template is the closest thing to "workflow" that already exists.
+- What a minimal versioned-config layer would look like bolted onto the
+  existing template tables (e.g. a `template_versions` table with
+  parent/rollback pointers) versus a wholesale new engine.
+- Whether the existing draft-then-confirm UX (`create_event_draft` →
+  `.suggestion-card` → `publish_event`) generalizes to "propose config
+  change → preview → approve → version → activate," or needs a
+  different shape entirely.
+- An explicit recommendation on sequencing: TICKET-25/26 below (the
+  confirmation-gate gaps in what's *already shipped*) matter under the
+  new proposal regardless of which direction workflow-config work takes,
+  since "Human approval over autonomous execution" is a first-class
+  principle either way — fixing those doesn't need to wait on this audit.
+
+### Depends on / affects
+
+Should be read before scoping any further tool or panel work. Does not
+block TICKET-25–33, which are independent fixes to what already exists.
+
+---
+
+## TICKET-25: `POST /ai/tools/{tool_name}` has no allowlist — every mutating tool, not just `publish_event`, is directly reachable over HTTP with no LLM involvement or confirmation
+
+**Priority:** High
+**Area:** `backend/api/routes/ai_assistant.py:196-208` (`invoke_tool`),
+`backend/ai_tools/dispatch.py`
+
+### Problem
+
+TICKET-6 scoped this endpoint narrowly: "lets the frontend execute
+`publish_event` itself once the organizer explicitly confirms a
+`create_event_draft` preview." The implementation, though, takes
+`tool_name` as a raw path parameter and dispatches unconditionally to
+`dispatch_tool_call` — every one of the 15 registered tools, including
+`cancel_event`, `approve_event_signup`, `assign_event_task`, and
+`update_task_status`, is reachable by any client that can reach the
+backend, with no reference to a prior chat turn, no LLM reasoning
+involved at all, and (per TICKET-0's decision) no auth in front of it.
+`_check_permissions` is a named no-op (`dispatch.py:48-51`), so nothing
+anywhere in the pipeline distinguishes "the frontend confirming a
+reviewed draft" from "a script POSTing straight to
+`/ai/tools/cancel_event`." This is untested beyond `publish_event` —
+`test_ai_assistant.py`'s `ToolInvocationEndpointTest` only exercises
+`publish_event`, an unknown tool name, and a missing required field.
+
+### Scope
+
+Either (a) allowlist this endpoint to only the tool(s) that actually have
+a frontend draft-and-confirm flow today (currently just `publish_event`),
+rejecting anything else with a structured error, or (b) if direct
+confirmation is genuinely meant to be available for more tools, build the
+same suggestion-card-and-explicit-confirm UX TICKET-6 built for
+`publish_event` for each one before routing it through this endpoint.
+Cross-reference TICKET-26 — these are two sides of the same gap.
+
+---
+
+## TICKET-26: No confirmation/preview step exists for AI-triggered mutations other than `publish_event`
+
+**Priority:** High
+**Area:** `backend/api/routes/ai_assistant.py` (`SYSTEM_PROMPT`,
+`run_chat_turn`), `backend/ai_tools/`
+
+### Problem
+
+`run_chat_turn` (`ai_assistant.py:124-193`) dispatches whatever tool
+calls the model emits in a single turn immediately, with no structural
+gate. `publish_event` is the *only* tool with a real two-step
+draft-then-confirm mechanism: `create_event_draft` writes nothing and
+returns a preview; `publish_event` only fires from a separate, explicit
+frontend button click via TICKET-6's invoke endpoint. Every other
+mutating tool can execute directly within the same turn the organizer's
+message arrives in:
+
+- `approve_event_signup` — the *only* thing stopping "recommend, don't
+  auto-approve" is one sentence in `SYSTEM_PROMPT`
+  (`ai_assistant.py:44-51`). That's a prompt-level social contract with
+  the model, not anything enforced in code. TICKET-9's own text flagged
+  this exact pattern as needed ("should get the same drafted-then-
+  confirmed treatment TICKET-6 built... not fire-and-forget"), but
+  TICKET-19 shipped only the prompt-level version.
+- `update_event`, `cancel_event`, `assign_event_task`,
+  `update_task_status` — `SYSTEM_PROMPT` doesn't mention a confirmation
+  expectation for these at all, prompt-level or otherwise.
+
+`cancel_event` is the sharpest case: it's close to irreversible in
+practice today (`reopen_event` doesn't clear `cancelled_at`, per
+TICKET-9's own open question, and there is no "uncancel" AI tool), yet an
+organizer's single ambiguous chat message is enough for the model to fire
+it with zero intermediate review.
+
+### Scope
+
+Decide, and record the decision, which of the 15 tools are safe to fire
+on the model's own judgment within a turn (arguably every read-only
+`list_*`/`get_*` tool) versus which must go through an explicit,
+separately-confirmed step (arguably every tool that writes:
+`update_event`, `cancel_event`, `assign_event_task`,
+`update_task_status`, `approve_event_signup`, alongside `publish_event`).
+For the latter group, either extend TICKET-6's
+draft/render-card/explicit-confirm pattern, or introduce a lighter
+"pending confirmation" tool-result shape the frontend renders as an
+inline Confirm/Cancel pair before the mutation reaches the database,
+rather than executing on receipt.
+
+### Depends on / affects
+
+Directly relevant to TICKET-24's "Human approval over autonomous
+execution" principle — worth fixing independent of that audit's outcome.
+
+---
+
+## TICKET-27: `dispatch_tool_call` only catches `ToolValidationError`/`HTTPException` — any other exception skips the audit log and silently breaks the chat stream
+
+**Priority:** High
+**Area:** `backend/ai_tools/dispatch.py:87-115`
+
+### Problem
+
+```python
+try:
+    result = TOOL_EXECUTORS[tool_name](db, parsed_args)
+except ToolValidationError as error: ...
+except HTTPException as error: ...
+```
+
+There is no catch-all. Not every write path a tool executor reaches
+guards itself: `publish_event` → `events.create_event` uses `with db:`
+(auto-rollback on any exception, so data stays consistent, but the
+exception itself is never translated into an `HTTPException`), and
+several other handlers this dispatch layer calls into —
+`cancel_event`, `set_task_status`, `set_event_status` — call
+`db.commit()` directly with no surrounding `try`/`except` at all. If any
+of these raise something other than `ToolValidationError`/`HTTPException`
+(a `sqlite3.OperationalError` from a locked database being the obvious
+real-world case):
+
+1. `_finish`/`_record_audit_log` never runs, so the failed dispatch
+   writes **no row** to `ai_audit_log` — breaking TICKET-4's "every
+   dispatch, success or failure, is audited" guarantee.
+2. In the chat-streaming path, the exception propagates out of
+   `run_chat_turn`'s generator. `chat()`'s `event_stream()` only catches
+   `httpx.HTTPError` (`ai_assistant.py:217-223`) — anything else isn't
+   caught, so no `error` SSE event is ever sent and the response stream
+   just terminates. The frontend's `for await` loop exits with neither an
+   `error` nor a `done` event, leaving the organizer looking at a panel
+   that silently stopped mid-turn with no explanation and no error
+   message rendered.
+
+### Scope
+
+Add a catch-all in `dispatch_tool_call` that turns any unexpected
+exception into a structured `{"success": False, "reason": ...}` result
+(log the real exception server-side; don't leak internals to the
+client), routed through `_finish` so the audit-log guarantee holds
+unconditionally. Add a matching catch-all in `chat()`'s `event_stream()`
+so any exception from `run_chat_turn` still yields an `error` SSE event
+instead of a bare stream termination.
+
+---
+
+## TICKET-28: `list_volunteers` sends volunteers' raw `contact_number`/`email` to the third-party OpenRouter LLM with no redaction
+
+**Priority:** High — privacy, and this organization specifically serves a
+vulnerable population (migrant workers, per root `CLAUDE.md`)
+**Area:** `backend/ai_tools/tools.py:116-129` (`list_volunteers`),
+`backend/schema/volunteers.py:32-42` (`VolunteerSummary`/
+`VolunteerListItem`)
+
+### Problem
+
+`list_volunteers` passes `volunteers_routes.list_volunteers`'s result
+straight through unmodified. `VolunteerListItem` (extends
+`VolunteerSummary`) includes `contact_number` and `email` per volunteer.
+Every time the AI calls this tool — e.g. answering "find approved
+volunteers with a first-aid skill" — the full result, phone numbers and
+email addresses included, is serialized into a `tool`-role message
+(`ai_assistant.py:177-183`, `json.dumps(result)`) and sent to OpenRouter,
+and whichever underlying model OpenRouter routes the request to, as part
+of the follow-up completion call. Real personal contact data leaves the
+organization's infrastructure and lands with a third-party AI provider on
+every such query, with no minimization and no opt-out considered anywhere
+in the tickets that shipped this. (`list_event_signups`/`get_event`
+similarly expose volunteer/team-member *names* — materially lower
+sensitivity than direct contact details, not flagged here.)
+
+### Scope
+
+Decide whether the AI genuinely needs raw contact details to do its job —
+matching by name/skill doesn't require a phone number or email in the
+model's context. If not, strip `contact_number`/`email` from what
+`list_volunteers`'s tool result returns to the model specifically (the
+human-facing admin page can keep showing full detail; this is only about
+what transits to the LLM). If a future feature needs the AI to *act* on
+contact info (e.g. drafting a reminder message), that should be its own
+explicitly-scoped tool rather than incidental exposure through a
+list/search tool.
+
+---
+
+## TICKET-29: No visual distinction between read-only and mutating tool activity in the chat UI
+
+**Priority:** Medium
+**Area:** `src/AiCopilot.tsx:261-321`, `src/index.css`
+(`.copilot-message-tool`)
+
+### Problem
+
+Every tool-activity line — `list_events succeeded.`, `cancel_event
+succeeded.`, `approve_event_signup succeeded.` — renders through the
+same generic `.copilot-message-tool` styling (`index.css:2704-2720`).
+Worse, per the `activity.origin === "chat" && modelRepliedWithText`
+suppression rule (`AiCopilot.tsx:295`), a successful *mutation's* status
+line can be omitted from the DOM entirely whenever the model's own reply
+happens to be non-empty — the organizer's only signal that a real,
+potentially hard-to-reverse change occurred is trusting the model's
+free-form prose to have described it accurately. Unlike `publish_event`,
+none of `cancel_event`/`assign_event_task`/`update_task_status`/
+`approve_event_signup` get a `.suggestion-card`-style structured
+confirmation at all (TICKET-19's own text: "there's no separate frontend
+suggestion-card UI for this ticket... confirmation happens through the
+normal chat turn").
+
+### Scope
+
+At minimum, give mutating tool results a visually distinct treatment
+from read-only ones (different accent/icon), and exempt them from the
+text-suppression rule so a mutation's outcome always renders explicitly
+regardless of the model's prose — mirroring the "failures always show"
+rule already applied a few lines above it. If TICKET-26 adds a real
+confirm-before-execute step for these tools, the *result* of that step
+still needs a clearly distinct "this happened" rendering, so this ticket
+is complementary to that one, not superseded by it.
+
+---
+
+## TICKET-30: Test coverage gaps in the newer AI tools
+
+**Priority:** Medium
+**Area:** `backend/tests/test_ai_tools.py`,
+`src/AiCopilot.chat.test.tsx`/`src/AiCopilot.draft.test.tsx`
+
+### Problem
+
+- `list_event_signups`'s `role_id`, `attendance`, and `q` filters
+  (`schemas.py:143-154`) have no test — only the base list and `status`
+  filter are covered.
+- `list_event_templates`'s `is_built_in` filter (`schemas.py:57-63`) has
+  no test.
+- On the frontend, only `cancel_event`'s *failure* path is exercised
+  (`AiCopilot.chat.test.tsx:107-125` — `cancel_event failed: ...`).
+  There is no test for a *successful* `cancel_event`,
+  `approve_event_signup`, `assign_event_task`, or `update_task_status`
+  tool result reaching the UI at all — so the generic-status-line
+  rendering and the text-suppression interaction described in TICKET-29
+  are entirely unverified for every mutating tool except `publish_event`.
+
+### Scope
+
+Fill in the filter-argument tests for the two backend tools above,
+mirroring the pattern already used for every other tool's filters. Add
+at least one frontend test per untested mutating tool confirming its
+`tool_result` renders (or correctly suppresses, per the
+`modelRepliedWithText` rule) as expected.
+
+---
+
+## TICKET-31: No bound on conversation size or message length — unbounded OpenRouter cost per session
+
+**Priority:** Medium
+**Area:** `backend/schema/ai_assistant.py` (`ChatRequest`/`ChatMessage`),
+`backend/schema/common.py` (`NonEmptyText`), `backend/api/routes/ai_assistant.py`
+
+### Problem
+
+`ChatRequest.messages` (`schema/ai_assistant.py:15-16`) has
+`min_length=1` but no `max_length`; `ChatMessage.content` uses
+`NonEmptyText` (`schema/common.py:8`), which enforces non-empty but has
+no upper bound either. Per TICKET-1's stateless design, the frontend
+resends the *entire* conversation on every turn
+(`AiCopilot.tsx:105-108`) — there's no truncation, summarization, or
+turn-count cap anywhere in the loop. A single long-running organizer
+session — or a buggy/malicious client hitting this unauthenticated
+endpoint directly — can grow the resent payload, and the resulting
+OpenRouter token cost, without any server-side ceiling. This bears
+directly on the newer RFC's own "Cost and Model Independence" success
+criterion, which treats cost control as a first-class concern rather than
+an afterthought.
+
+### Scope
+
+Add a reasonable `max_length` to `ChatRequest.messages` and/or a
+character cap to `ChatMessage.content`, and/or a simple
+conversation-window/summarization strategy once a session exceeds N
+turns. Doesn't need to be sophisticated — just bounded.
+
+---
+
+## TICKET-32: OpenRouter specifics are hardcoded directly into the route module — no provider-abstraction boundary
+
+**Priority:** Medium — architecture, directly relevant to the RFC pivot
+(see TICKET-24)
+**Area:** `backend/api/routes/ai_assistant.py`
+
+### Problem
+
+`OPENROUTER_URL`, `DEFAULT_MODEL`, the SSE line-parsing/`[DONE]`
+handling, and the OpenAI-style `tool_calls` delta-accumulation logic
+(`_accumulate_tool_calls`, `ai_assistant.py:99-121`) all live directly in
+the FastAPI route module, coupled to OpenRouter's specific wire format.
+The new RFC states explicitly: "Abstract the LLM behind a provider
+interface so that different models or providers can be substituted
+without changing business logic." Today, substituting a different
+provider — or even one with a materially different streaming/tool-call
+format — means editing `ai_assistant.py` directly rather than adding an
+implementation behind an interface.
+
+### Scope
+
+Not urgent enough to block anything today (OpenRouter itself already
+routes across many upstream models). Worth extracting
+`_stream_openrouter_completion`/`_accumulate_tool_calls` behind a small
+interface (e.g. a `ChatProvider` protocol with a
+`stream_completion(messages, tools) -> AsyncIterator[...]` method) before
+a second provider is ever actually added, rather than retrofitting it
+under time pressure later. Natural to pair with TICKET-24's audit, since
+the new proposal frames provider-independence as core to the pivot, not
+just a nice-to-have for the existing chatbot.
+
+---
+
+## TICKET-33: `approve_event_signup` has no `reject_event_signup` counterpart — the AI can't undo its own recommendation
+
+**Priority:** Low
+**Area:** `backend/ai_tools/tools.py`, `backend/ai_tools/schemas.py`,
+`backend/ai_tools/specs.py`
+
+### Problem
+
+`volunteers.py` already implements `reject_event_signup`
+(`volunteers.py:434-445`) as the natural undo for `approve_event_signup`,
+but only `approve_event_signup` was wired into `TOOL_EXECUTORS`
+(`tools.py:207-223`). If an organizer approves a recommendation through
+the AI panel and later decides it was wrong, there's no way to correct it
+through the same conversational interface — they have to leave the panel
+and use the admin UI directly, breaking the loop for a feature whose
+whole premise is handling this kind of workflow entirely in chat.
+
+### Scope
+
+Add `reject_event_signup` as a new tool, thin-wrapped exactly like
+`approve_event_signup`, with the same "only after explicit organizer
+confirmation" treatment this ticket family already established. Small
+and mechanical — same pattern as every other tool in `backend/ai_tools/`.
+
+---
+
+~~TICKET-34: Frontend — recommended-action prompt chips on an empty conversation~~
+— **Done.** New `RECOMMENDED_ACTIONS` constant (`src/AiCopilot.tsx`) — four
+fixed, read/list-leaning starter prompts ("Create an event for me using one
+of my templates", "List upcoming tasks across all events", "List my
+upcoming events", "Which volunteer signups need approval?") rendered as
+`.copilot-suggestion-chip` buttons inside the existing empty-state block
+(`conversation.length === 0 && !isStreaming`), styled via new
+`.copilot-suggestions`/`.copilot-suggestion-chip` rules in `src/index.css`.
+`sendMessage` gained an optional `overrideText` parameter
+(`sendMessage(overrideText?: string)`, trimming `overrideText ?? input`) so
+a chip's `onClick={() => sendMessage(action)}` reuses the exact same
+streaming/tool-call/error path a typed-and-submitted message goes through —
+no second code path. Once the conversation has any content the chips
+disappear along with the rest of the empty-state block, same as scoped.
+
+New test in `src/AiCopilot.chat.test.tsx` (`AiCopilot recommended actions`)
+confirms a chip is visible on open, clicking it sends the exact prompt text
+to `/api/v1/ai/chat`, and the chip itself (not the now-sent user message of
+the same text) is gone afterward. Verified live: opened the panel, saw all
+four chips, clicked "List my upcoming events," and it sent immediately and
+streamed back a real reply from the running backend.
+
+<details>
+<summary>Original ticket text</summary>
+
+**Priority:** Medium
+**Area:** `src/AiCopilot.tsx`
+
+### Problem
+
+The panel's only empty-state content today is a static sentence
+(`AiCopilot.tsx:240-244`, "Ask me to help manage an event — I'll show you
+a draft before creating anything.") — an organizer who opens the panel for
+the first time has no hint of the range of things it can actually do
+(15 tools spanning events, tasks, and volunteer signups per
+`docs/ai-panel-handover.md`) beyond that one event-creation example, and
+has to type a full request from scratch every time before seeing anything
+happen. TICKET-10's original design note for this panel never scoped
+starter prompts, and none exist anywhere in the component today — this is
+new surface, not a regression.
+
+### Scope
+
+- A small fixed set of recommended-action chips/buttons (e.g. "Create an
+  event from a template", "List upcoming tasks", "Who's signed up for my
+  next event?"), rendered only in place of — or alongside — the existing
+  empty-state sentence, i.e. only when `conversation.length === 0` and not
+  `isStreaming` (mirrors the existing condition at `AiCopilot.tsx:240`).
+  Once the conversation has any content, the chips must not linger — they
+  represent "get started," not a persistent menu.
+- Clicking a chip should be immediately activated per the request: it
+  populates `input` with the chip's associated prompt text and triggers
+  the same `sendMessage()` path a typed-and-submitted message goes
+  through — not a separate code path, so the chip's request gets the same
+  streaming/tool-call/error handling as anything the organizer types by
+  hand.
+- Keep the chip set small and read-only-leaning (list/lookup style
+  requests, not e.g. "cancel an event") so a first-time click can't
+  itself trigger a destructive action — the tool call it produces still
+  goes through the model and the existing draft/confirm gates
+  (`create_event_draft`'s suggestion-card, etc.) exactly as if the
+  organizer had typed the same words.
+- No backend change — this is purely a canned-input convenience over the
+  existing `sendMessage`/`streamChat` path from TICKET-1/5.
+
+### Out of scope
+
+Personalizing chips to `activePage` or real data (e.g. naming an actual
+upcoming event) is a plausible follow-up but adds a data-fetch dependency
+the panel doesn't have today; ship a fixed, generic set first.
+
+</details>
+
+---
+
+~~TICKET-35: Frontend — refresh the underlying admin page after a successful AI mutation~~
+— **Done, with a simpler implementation than originally sketched.** Rather
+than mixing two idioms (a `key` remount for events/dashboard, a threaded
+`reloadKey` prop for `VolunteerDirectory`), all three admin pages use the
+same uniform `key`-remount mechanism, since it needed no changes to
+`DashboardPage`, `AdminEventsPage`, or `VolunteerDirectory` themselves — a
+smaller diff than plumbing a new prop through `VolunteerDirectory`'s
+existing internal `reloadKey` state for one caller. `AdminPanel`
+(`src/App.tsx:896`) holds a new `refreshKey` counter, incremented via a new
+`onDataChanged` callback passed into `AiCopilot`; `DashboardPage`,
+`EventsPage`, and `VolunteersPage` all fold `refreshKey` into their existing
+(or, for `DashboardPage`, newly added) `key` prop, forcing a clean remount
+and refetch. `AiCopilot.tsx` gained a `MUTATING_TOOLS` set (`publish_event`,
+`update_event`, `cancel_event`, `assign_event_task`, `update_task_status`,
+`approve_event_signup` — the same list TICKET-29 identifies) and calls
+`onDataChanged?.()` only when a result for one of those tools comes back
+successful, from both the chat-turn `tool_result` path (`sendMessage`) and
+the direct-invoke path (`confirmDraft`'s `publish_event`) — never for a
+read/list/preview-only result or a failure. `onDataChanged` is optional
+(`AiCopilot({ activePage, onDataChanged })`, `?.()` call) so every existing
+call site/test that doesn't pass it keeps working unchanged.
+`window.location.reload()` was not used, exactly as scoped, since it would
+have discarded the panel's own open conversation state.
+
+Six new tests: `src/AiCopilot.chat.test.tsx` covers `onDataChanged` firing
+once for a successful mutating chat tool result, not firing for a
+successful read-only result, and not firing for a failed mutating result;
+`src/AiCopilot.draft.test.tsx` covers the direct-invoke path firing on a
+successful `publish_event` confirm and not firing on a failed one.
+
+Verified live end-to-end against the running backend: opened the Dashboard
+(showing "Upcoming Events: 2"), used the panel to draft and confirm a new
+event via `publish_event`, and — with no manual reload — watched the
+network log show `GET /events`, `GET /dashboard/summary`, and
+`GET /dashboard/upcoming-deadlines` refire immediately after
+`POST /ai/tools/publish_event` succeeded; closing the panel showed the
+Dashboard's "Upcoming Events" count updated to 3. The test event was
+deleted afterward via `DELETE /api/v1/events/4` to leave the seed data
+as found, mirroring TICKET-6's cleanup precedent. `npx tsc --noEmit` and
+`npm test -- --run` (111 frontend tests) both pass.
+
+<details>
+<summary>Original ticket text</summary>
+
+**Priority:** Medium
+**Area:** `src/App.tsx`, `src/AiCopilot.tsx`
+
+### Problem
+
+None of the admin pages share a cache or subscribe to any kind of change
+notification — confirmed no `react-query`/`swr` or similar anywhere in the
+app. Each fetches its own data once, in a `useEffect` keyed only on
+stable props, with no dependency that changes after a mutation:
+`DashboardPage`'s `useEffect(..., [api])` (`App.tsx:532-561`),
+`AdminEventsPage`'s `useEffect(..., [api])` (`src/AdminEventsPage.tsx:117-136`),
+and `VolunteersPage` → `VolunteerDirectory`'s `useEffect(..., [reloadKey])`
+(`src/VolunteerDirectory.tsx:48-59`) — the last of these already has an
+internal `reloadKey`/`setReloadKey` (`VolunteerDirectory.tsx:46`), but it's
+wired only to a manual "Retry" button on fetch error
+(`VolunteerDirectory.tsx:107`), not exposed to any parent. `AiCopilot.tsx`
+is mounted as a fixed sibling of whichever page is active (`App.tsx:1017`,
+inside `AdminPanel`, `App.tsx:896`) and is fully decoupled from it — it
+only receives `activePage` as a read-only prop, with no callback wired
+back the other way, and no Context/event-bus connects them. So today, if
+an organizer uses the AI panel to (for example) cancel an event, assign a
+task, or approve a volunteer signup while looking at the Dashboard or
+Events page behind it, the mutation succeeds (visible only as a
+`tool_result` status line or the `publish_event` suggestion-card) but the
+page underneath keeps showing stale data until the organizer manually
+reloads or navigates away and back. `AdminEventsPage`'s render in
+`AdminPanel` already has prior art for a parent-forced refetch — it's
+remounted via `key={`events-${openEventIndex ?? "list"}`}` (`App.tsx:1011`)
+— but nothing today changes that key (or an equivalent) in response to an
+AI-triggered change.
+
+### Scope
+
+- Lift a simple refresh signal (e.g. a `refreshKey` counter state) into
+  `AdminPanel` (`App.tsx:896`), incremented by a callback passed down to
+  `AiCopilot`.
+- `AiCopilot.tsx` calls that callback once a mutating tool's result comes
+  back successful — both from the chat-turn `tool_result` path
+  (`sendMessage`, `AiCopilot.tsx:130-150`) and the direct-invoke path
+  (`confirmDraft`'s `publish_event`, `AiCopilot.tsx:165-195`). Scope this
+  to the tools that actually write (`publish_event`, `update_event`,
+  `cancel_event`, `assign_event_task`, `update_task_status`,
+  `approve_event_signup`) — no need to trigger a refresh for any `list_*`/
+  `get_event`/`create_event_draft` read/preview-only result — the same
+  list TICKET-29 identifies as "mutating."
+- Wire that `refreshKey` into whichever mechanism gets the currently
+  active page to refetch. Two idioms already exist side by side in this
+  codebase to build on rather than inventing a third: fold `refreshKey`
+  into `AdminEventsPage`'s existing `key` prop
+  (`App.tsx:1009-1013`, extending the `EventsPage`/`openEventIndex`
+  precedent), and pass it down as a new prop into `VolunteerDirectory`
+  to fold into its existing internal `reloadKey` effect dependency
+  (`VolunteerDirectory.tsx:46-59`) rather than duplicating that state.
+  `DashboardPage` has no existing reload idiom of its own, so give it the
+  same `key`-remount treatment as `AdminEventsPage`. A page-wide
+  `window.location.reload()` (confirmed nowhere in `src/` today, so this
+  would be new, not prior art) is explicitly out of scope since it would
+  also blow away the AI panel's open conversation state
+  (`AiCopilot.tsx`'s `conversation`/`toolActivity` are local component
+  state with no persistence — TICKET-10 deliberately chose in-memory state
+  over `localStorage` for panel open/closed, same reasoning applies to not
+  wanting a full reload here).
+- A refresh should only affect the page currently mounted behind the
+  panel — no need to eagerly refetch pages the organizer isn't looking at.
+
+### Out of scope
+
+Building a real shared cache/query layer (react-query, SWR, or similar)
+across the whole admin app — out of proportion to what this ticket needs
+and a bigger architectural change than "make the AI panel's mutations
+visible without a manual reload."
+
+### Depends on / affects
+
+Complements TICKET-29 (visually distinguishing mutating tool activity) —
+that ticket's list of which tools count as "mutating" is the same list
+this one should trigger a refresh from.
+
+</details>

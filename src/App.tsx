@@ -893,6 +893,18 @@ function EventsPage({ initialEventIndex }: { initialEventIndex: number | null })
   const selectedEvent =
     selectedIndex === null ? null : events[selectedIndex];
 
+  useEffect(() => {
+    if (!selectedEvent) return;
+    const previousHtmlOverflow = document.documentElement.style.overflow;
+    const previousBodyOverflow = document.body.style.overflow;
+    document.documentElement.style.overflow = "hidden";
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.documentElement.style.overflow = previousHtmlOverflow;
+      document.body.style.overflow = previousBodyOverflow;
+    };
+  }, [selectedEvent]);
+
   if (isCollectionPrototype) {
     return <EventCollectionPrototype />;
   }

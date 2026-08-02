@@ -104,6 +104,7 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
   const [creating, setCreating] = useState(false)
   const [openEventId, setOpenEventId] = useState<number | null>(initialEventId)
   const [workspaceTab, setWorkspaceTab] = useState<"tasks" | "logistics">("tasks")
+  const [mobileTaskStatus, setMobileTaskStatus] = useState<"incomplete" | "ongoing" | "done">("incomplete")
   const [draggedTaskId, setDraggedTaskId] = useState<number | null>(null)
   const [dragOverStatus, setDragOverStatus] = useState<string | null>(null)
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
@@ -618,6 +619,23 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
                   <h3>Task workspace</h3>
                   {openEvent.status === "open" && <button type="button" onClick={() => openTaskEditor()}>Add Task</button>}
                 </div>
+                <div aria-label="Task status" className="event-operations-mobile-status-tabs" role="tablist">
+                  {(["incomplete", "ongoing", "done"] as const).map((status) => {
+                    const label = status === "incomplete" ? "To do" : status === "ongoing" ? "In progress" : "Done"
+                    const count = openEvent.tasks.filter((task) => task.status === status).length
+                    return <button
+                      aria-controls={`api-event-operations-column-${status}`}
+                      aria-selected={mobileTaskStatus === status}
+                      className={mobileTaskStatus === status ? "active" : ""}
+                      key={status}
+                      onClick={() => setMobileTaskStatus(status)}
+                      role="tab"
+                      type="button"
+                    >
+                      {label}<span>{count}</span>
+                    </button>
+                  })}
+                </div>
                 <div className="event-operations-kanban">
                   {(["incomplete", "ongoing", "done"] as const).map((status) => {
                     const tasks = openEvent.tasks.filter((task) => task.status === status)
@@ -625,7 +643,8 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
                     return (
                       <section
                     aria-label={`${label} Tasks`}
-                    className={`event-operations-kanban-column${dragOverStatus === status ? " drag-over" : ""}`}
+                    className={`event-operations-kanban-column${dragOverStatus === status ? " drag-over" : ""}${mobileTaskStatus === status ? " mobile-active" : ""}`}
+                    id={`api-event-operations-column-${status}`}
                     key={status}
                     onDragOver={(dragEvent) => {
                       if (openEvent.status !== "open") return

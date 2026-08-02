@@ -791,7 +791,7 @@ export function DashboardPage({
       <div className="dashboard-shell">
         <header className="dashboard-hero">
           <p>Dashboard</p>
-          <h1>Welcome back Sarah!</h1>
+          <h1>Welcome back Admin!</h1>
           <span>Here's what's happening across your events today.</span>
         </header>
 

@@ -4068,7 +4068,10 @@ button {
 .admin-login-submit { background: #183e28; color: #fff; font-weight: 800; margin-top: 4px; }
 .admin-login-home { background: transparent; color: #58705c; font-size: 13px; justify-self: center; padding: 5px 8px; text-decoration: underline; text-underline-offset: 3px; }
 .admin-login-error { color: #a33a32; font-size: 13px; margin: 0; }
-@media (max-width: 680px) { .admin-login-card { padding: 32px 24px; } }
+@media (max-width: 680px) {
+  .admin-login-card { padding: 32px 24px; }
+  .admin-login-form input { font-size: 16px; }
+}
 @media (max-width: 720px) {
   .landing-actions { grid-template-columns: 1fr; }
   .landing-role { min-height: 76px; }
@@ -5285,6 +5288,8 @@ button {
   .pts-signup-nav { gap: 12px; }
   .pts-signup-layout, .pts-account-main { flex-direction: column; }
   .pts-event-preview, .pts-account-side-copy, .pts-account-card { width: 100%; }
+  .pts-account-card .pts-field input,
+  .pts-account-card .pts-field select { font-size: 16px; }
   .pts-account-side-copy { max-width: none; padding-top: 0; }
   .pts-dashboard-top, .pts-locked-section { align-items: stretch; flex-direction: column; }
   .pts-dashboard-actions { justify-content: flex-start; }

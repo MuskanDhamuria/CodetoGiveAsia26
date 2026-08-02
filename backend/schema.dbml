@@ -76,6 +76,16 @@ Table template_roles {
   }
 }
 
+Table event_roles {
+  event_id integer [not null, ref: > events.id]
+  role_id integer [not null, ref: > roles.id]
+  created_at varchar [not null]
+
+  indexes {
+    (event_id, role_id) [pk]
+  }
+}
+
 Table template_tasks {
   id integer [pk]
   event_template_id integer [not null, ref: > event_templates.id]
@@ -124,6 +134,7 @@ Table events {
 Table event_tasks {
   id integer [pk]
   team_member_id integer [ref: > team_members.id]
+  volunteer_id integer [ref: > volunteers.id]
   event_id integer [not null, ref: > events.id]
   template_task_id integer [ref: > template_tasks.id]
   name varchar [not null]
@@ -138,16 +149,67 @@ Table event_tasks {
   }
 }
 
+Table event_task_assignees {
+  id integer [pk]
+  event_task_id integer [not null, ref: > event_tasks.id]
+  team_member_id integer [ref: > team_members.id]
+  volunteer_id integer [ref: > volunteers.id]
+  is_lead integer [not null, note: "0/1"]
+
+  indexes {
+    (event_task_id, team_member_id) [unique]
+    (event_task_id, volunteer_id) [unique]
+  }
+}
+
+Table event_organizers {
+  id integer [pk]
+  event_id integer [not null, ref: > events.id]
+  team_member_id integer [ref: > team_members.id]
+  volunteer_id integer [ref: > volunteers.id]
+  created_at varchar [not null]
+
+  indexes {
+    (event_id, team_member_id) [unique]
+    (event_id, volunteer_id) [unique]
+  }
+}
+
 Table event_subtasks {
   id integer [pk]
   event_task_id integer [not null, ref: > event_tasks.id]
   title varchar [not null]
   position integer [not null]
   completed integer [not null, note: "0/1"]
+  scheduled_start varchar
+  scheduled_end varchar
+  estimated_minutes integer
 
   indexes {
     (event_task_id, position) [unique]
   }
+}
+
+Table event_subtask_assignees {
+  id integer [pk]
+  event_subtask_id integer [not null, ref: > event_subtasks.id]
+  team_member_id integer [ref: > team_members.id]
+  volunteer_id integer [ref: > volunteers.id]
+
+  indexes {
+    (event_subtask_id, team_member_id) [unique]
+    (event_subtask_id, volunteer_id) [unique]
+  }
+}
+
+Table event_subtask_time_logs {
+  id integer [pk]
+  event_subtask_id integer [not null, ref: > event_subtasks.id]
+  team_member_id integer [ref: > team_members.id]
+  volunteer_id integer [ref: > volunteers.id]
+  minutes_spent integer [not null]
+  notes varchar [not null]
+  logged_at varchar [not null]
 }
 
 Table participations {

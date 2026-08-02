@@ -1,6 +1,7 @@
 """Event, task, and subtask request and response schemas."""
 
 from datetime import date, datetime, time
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -53,16 +54,46 @@ class EventUpdate(BaseModel):
     expected_attendance: int | None = Field(default=None, ge=0)
 
 
+class EventTaskAssigneeInput(BaseModel):
+    person_type: Literal["team_member", "volunteer"]
+    person_id: int
+    is_lead: bool = False
+
+
+class EventTaskAssigneeOut(EventTaskAssigneeInput):
+    name: str
+    email: str | None = None
+
+
+class EventSubtaskTimeLogCreate(BaseModel):
+    person_type: Literal["team_member", "volunteer"]
+    person_id: int
+    minutes_spent: int = Field(gt=0)
+    notes: str = ""
+
+
+class EventSubtaskTimeLogOut(EventSubtaskTimeLogCreate):
+    id: int
+    name: str
+    logged_at: str
+
+
 class EventSubtaskOut(BaseModel):
     id: int
     title: str
     position: int
     completed: bool
+    scheduled_start: str | None = None
+    scheduled_end: str | None = None
+    estimated_minutes: int | None = None
+    assignees: list[EventTaskAssigneeOut] = Field(default_factory=list)
+    time_logs: list[EventSubtaskTimeLogOut] = Field(default_factory=list)
 
 
 class EventTaskOut(BaseModel):
     id: int
     team_member_id: int | None
+    volunteer_id: int | None
     template_task_id: int | None
     name: str
     body: str
@@ -70,6 +101,7 @@ class EventTaskOut(BaseModel):
     category: TaskCategory
     status: TaskStatus
     position: int
+    assignees: list[EventTaskAssigneeOut] = Field(default_factory=list)
     subtasks: list[EventSubtaskOut]
 
 
@@ -89,11 +121,19 @@ class EventSubtaskUpdate(BaseModel):
     title: NonEmptyText | None = None
     completed: bool | None = None
     position: int | None = None
+    scheduled_start: datetime | None = None
+    scheduled_end: datetime | None = None
+    estimated_minutes: int | None = Field(default=None, ge=0)
+    assignees: list[EventTaskAssigneeInput] | None = None
 
 
 class EventSubtaskCreate(BaseModel):
     title: NonEmptyText
     position: int | None = None
+    scheduled_start: datetime | None = None
+    scheduled_end: datetime | None = None
+    estimated_minutes: int | None = Field(default=None, ge=0)
+    assignees: list[EventTaskAssigneeInput] = Field(default_factory=list)
 
 
 class SubtaskOrder(BaseModel):
@@ -107,6 +147,8 @@ class EventTaskUpdate(BaseModel):
     category: TaskCategory | None = None
     status: TaskStatus | None = None
     team_member_id: int | None = None
+    volunteer_id: int | None = None
+    assignees: list[EventTaskAssigneeInput] | None = None
     position: int | None = None
 
 
@@ -117,6 +159,8 @@ class EventTaskCreate(BaseModel):
     category: TaskCategory
     status: TaskStatus = "incomplete"
     team_member_id: int | None = None
+    volunteer_id: int | None = None
+    assignees: list[EventTaskAssigneeInput] = Field(default_factory=list)
     position: int | None = None
 
 

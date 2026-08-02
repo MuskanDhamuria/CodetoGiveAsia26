@@ -378,6 +378,9 @@ event-specific approval is stored separately on a volunteer signup.
 | `GET` | `/roles/{role_id}` | Path ID | Get a volunteer role. |
 | `PATCH` | `/roles/{role_id}` | Body: `name?`, `category?`, `is_required?` | Update a volunteer role. |
 | `DELETE` | `/roles/{role_id}` | Path ID | Delete an unused role; return `409` when referenced by a signup/template. |
+| `GET` | `/events/{event_id}/roles` | Path ID | List the event-specific role snapshot. |
+| `POST` | `/events/{event_id}/roles` | Body: `name` | Add a role to one event without changing its template. |
+| `DELETE` | `/events/{event_id}/roles/{role_id}` | Path IDs | Remove an unassigned role from one event; returns `409` until volunteers are reassigned. |
 | `GET` | `/volunteers/{volunteer_id}/interests` | None | List roles that interest the volunteer. |
 | `PUT` | `/volunteers/{volunteer_id}/interests` | Body: `{"interests":[{"role_id":2,"is_lead":true}]}` | Replace the volunteer's full role-interest list. |
 | `POST` | `/volunteers/{volunteer_id}/interests` | Body: `role_id`, `is_lead?` | Add one role interest. |

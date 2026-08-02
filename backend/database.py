@@ -124,6 +124,73 @@ def _repair_migration_seven_numbering_collision(connection: sqlite3.Connection) 
     connection.commit()
 
 
+def _repair_volunteer_migration_numbering_collisions(
+    connection: sqlite3.Connection,
+) -> None:
+    """Move previously applied volunteer migrations to their new versions.
+
+    The volunteer branch originally used versions 008 and 009 for phone-number
+    normalisation and event roles. The backend branch later used those same
+    versions for WhatsApp and inventory migrations. Preserve the volunteer
+    migrations as 012 and 013 so the backend migrations remain pending and can
+    be applied without rebuilding an existing database.
+    """
+
+    migrations_table = connection.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'schema_migrations'"
+    ).fetchone()
+    if migrations_table is None:
+        return
+
+    otp_at_old_version = connection.execute(
+        "SELECT 1 FROM schema_migrations WHERE version = 12 AND name = ?",
+        ("012_volunteer_otp.sql",),
+    ).fetchone()
+    if otp_at_old_version is not None:
+        otp_at_new_version = connection.execute(
+            "SELECT 1 FROM schema_migrations WHERE version = 18"
+        ).fetchone()
+        if otp_at_new_version is None:
+            connection.execute(
+                "UPDATE schema_migrations SET version = 18, name = ? WHERE version = 12 AND name = ?",
+                ("018_volunteer_otp.sql", "012_volunteer_otp.sql"),
+            )
+        else:
+            connection.execute(
+                "DELETE FROM schema_migrations WHERE version = 12 AND name = ?",
+                ("012_volunteer_otp.sql",),
+            )
+
+    renumberings = (
+        (8, "008_normalize_volunteer_phone_numbers.sql", 12, "012_normalize_volunteer_phone_numbers.sql"),
+        (9, "009_event_roles.sql", 13, "013_event_roles.sql"),
+    )
+    for old_version, old_name, new_version, new_name in renumberings:
+        legacy_row = connection.execute(
+            "SELECT 1 FROM schema_migrations WHERE version = ? AND name = ?",
+            (old_version, old_name),
+        ).fetchone()
+        if legacy_row is None:
+            continue
+
+        new_row = connection.execute(
+            "SELECT 1 FROM schema_migrations WHERE version = ?",
+            (new_version,),
+        ).fetchone()
+        if new_row is None:
+            connection.execute(
+                "UPDATE schema_migrations SET version = ?, name = ? WHERE version = ? AND name = ?",
+                (new_version, new_name, old_version, old_name),
+            )
+        else:
+            connection.execute(
+                "DELETE FROM schema_migrations WHERE version = ? AND name = ?",
+                (old_version, old_name),
+            )
+
+    connection.commit()
+
+
 def initialize_database(database_path: str | Path = DEFAULT_DATABASE_PATH) -> Path:
     """Create the database and apply pending SQL migrations in order."""
 
@@ -137,6 +204,8 @@ def initialize_database(database_path: str | Path = DEFAULT_DATABASE_PATH) -> Pa
             WHERE type = 'table' AND name = 'schema_migrations'
             """
         ).fetchone()
+        if has_migrations_table:
+            _repair_volunteer_migration_numbering_collisions(connection)
         applied_versions = (
             {
                 row[0]

@@ -1,12 +1,12 @@
 import { useMemo, useState } from "react"
+import {
+  formatLocalPhoneAsYouType,
+  isValidInternationalPhone,
+  PHONE_COUNTRIES,
+  toInternationalPhone,
+} from "./phone"
 import { registerVolunteer, resendVolunteerOtp, setVolunteerToken, verifyVolunteerOtp } from "./volunteer-api"
 import { useWhatsAppChatLink } from "./whatsapp-link"
-
-const countryCodes = [
-  ["+65", "SG +65"], ["+60", "MY +60"], ["+62", "ID +62"], ["+63", "PH +63"],
-  ["+91", "IN +91"], ["+880", "BD +880"], ["+95", "MM +95"], ["+86", "CN +86"],
-  ["+84", "VN +84"], ["+1", "US/CA +1"], ["+44", "UK +44"],
-]
 
 function passwordScore(password: string) {
   return [
@@ -36,9 +36,8 @@ export default function VolunteerRegister({
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault()
-    const localPhone = phone.replace(/\D/g, "")
     if (!name.trim()) return setError("Please enter your full name.")
-    if (localPhone.length < 6) return setError("Please enter a valid phone number.")
+    if (!isValidInternationalPhone(countryCode, phone)) return setError("Please enter a valid phone number.")
     if (password !== confirmPassword) return setError("Passwords do not match.")
     if (score < 4) return setError("Please meet all password requirements.")
     setSubmitting(true)
@@ -46,7 +45,7 @@ export default function VolunteerRegister({
     try {
       const result = await registerVolunteer({
         name: name.trim(),
-        contact_number: `${countryCode}${localPhone}`,
+        contact_number: toInternationalPhone(countryCode, phone),
         password,
       })
       setVolunteerToken(result.access_token)
@@ -88,10 +87,13 @@ export default function VolunteerRegister({
           <label className="pts-field">
             <span>Phone number</span>
             <div className="pts-phone-row">
-              <select aria-label="Country code" value={countryCode} onChange={(event) => setCountryCode(event.target.value)}>
-                {countryCodes.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              <select aria-label="Country code" value={countryCode} onChange={(event) => {
+                setCountryCode(event.target.value)
+                setPhone((current) => formatLocalPhoneAsYouType(event.target.value, current))
+              }}>
+                {PHONE_COUNTRIES.map((option) => <option key={option.code} value={option.code}>{option.label}</option>)}
               </select>
-              <input value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="8123 4567" inputMode="tel" />
+              <input value={phone} onChange={(event) => setPhone(formatLocalPhoneAsYouType(countryCode, event.target.value))} placeholder="8123 4567" inputMode="tel" type="tel" />
             </div>
           </label>
           <label className="pts-field pts-password-field">

@@ -1965,7 +1965,7 @@ function VolunteerAvailabilityCalendar() {
   );
 }
 
-function VolunteersPage() {
+function VolunteersPage({ onOpenEvent }: { onOpenEvent: (eventId: number) => void }) {
   return (
     <section className="volunteers-page">
       <div className="dashboard-shell">
@@ -1977,7 +1977,7 @@ function VolunteersPage() {
             taking part.
           </span>
         </header>
-        <VolunteerDirectory />
+        <VolunteerDirectory onOpenEvent={onOpenEvent} />
       </div>
     </section>
   );
@@ -2135,7 +2135,12 @@ function AdminPanel() {
               />
             )}
             {activePage === "inventory" && <InventoryPage />}
-            {activePage === "volunteers" && <VolunteersPage key={`volunteers-${refreshKey}`} />}
+            {activePage === "volunteers" && (
+              <VolunteersPage
+                key={`volunteers-${refreshKey}`}
+                onOpenEvent={openEventWorkspace}
+              />
+            )}
             {activePage === "reports" && <ReportsPage />}
             {activePage === "broadcasts" && <WhatsAppPanel />}
             {activePage === "scan-attendance" && <AttendanceScannerPage />}

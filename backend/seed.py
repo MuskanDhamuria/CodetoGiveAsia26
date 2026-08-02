@@ -566,14 +566,14 @@ def seed(db) -> None:
 
     volunteer_ids = {}
     for name, contact, email, status, skills in [
-        ("John Tan", "+65 8123 4567", "john.tan@example.com", "approved", ["First Aid", "Event Setup"]),
-        ("Priya Nair", "+65 8234 5678", "priya.nair@example.com", "approved", ["Photography", "Registration Desk"]),
-        ("Marcus Lee", "+65 8345 6789", "marcus.lee@example.com", "approved", ["Driving (Class 3)", "Event Setup"]),
-        ("Aisha Rahman", "+65 8456 7890", "aisha.rahman@example.com", "approved", ["Registration Desk", "Mandarin"]),
-        ("Devi Suresh", "+65 8567 8901", "devi.suresh@example.com", "approved", ["Yoga Instruction", "Tamil"]),
-        ("Wei Ming Koh", "+65 8678 9012", "weiming.koh@example.com", "approved", ["Driving (Class 3)"]),
-        ("Farah Hassan", "+65 8789 0123", "farah.hassan@example.com", "pending", ["Registration Desk"]),
-        ("Ben Ong", "+65 8890 1234", "ben.ong@example.com", "pending", ["Event Setup", "Photography"]),
+        ("John Tan", "+6581234567", "john.tan@example.com", "approved", ["First Aid", "Event Setup"]),
+        ("Priya Nair", "+6582345678", "priya.nair@example.com", "approved", ["Photography", "Registration Desk"]),
+        ("Marcus Lee", "+6583456789", "marcus.lee@example.com", "approved", ["Driving (Class 3)", "Event Setup"]),
+        ("Aisha Rahman", "+6584567890", "aisha.rahman@example.com", "approved", ["Registration Desk", "Mandarin"]),
+        ("Devi Suresh", "+6585678901", "devi.suresh@example.com", "approved", ["Yoga Instruction", "Tamil"]),
+        ("Wei Ming Koh", "+6586789012", "weiming.koh@example.com", "approved", ["Driving (Class 3)"]),
+        ("Farah Hassan", "+6587890123", "farah.hassan@example.com", "pending", ["Registration Desk"]),
+        ("Ben Ong", "+6588901234", "ben.ong@example.com", "pending", ["Event Setup", "Photography"]),
     ]:
         volunteer_id = db.execute(
             """
@@ -667,6 +667,13 @@ def seed(db) -> None:
             """,
             (template_id, name, venue, event_date.isoformat(), template_description, status, migrant_workers_id),
         ).fetchone()[0]
+        db.execute(
+            """
+            INSERT INTO event_roles (event_id, role_id)
+            SELECT ?, role_id FROM template_roles WHERE event_template_id = ?
+            """,
+            (event_id, template_id),
+        )
         task_ids = {}
         for position, (task_name, offset, category, _role_name) in enumerate(template_tasks):
             due_at = (event_date + timedelta(days=offset)).isoformat()
@@ -746,9 +753,9 @@ def seed(db) -> None:
     sign_up(distribution_id, "Farah Hassan", "Warehouse Liaison", "requested")
 
     for participant_name, contact, email in [
-        ("Kumar Selvam", "+65 9111 2222", "kumar.selvam@example.com"),
-        ("Rizal Abdullah", "+65 9222 3333", "rizal.abdullah@example.com"),
-        ("Htun Aung", "+65 9333 4444", "htun.aung@example.com"),
+        ("Kumar Selvam", "+6591112222", "kumar.selvam@example.com"),
+        ("Rizal Abdullah", "+6592223333", "rizal.abdullah@example.com"),
+        ("Htun Aung", "+6593334444", "htun.aung@example.com"),
     ]:
         participant_id = db.execute(
             "INSERT INTO participants (name, contact_number, email) VALUES (?, ?, ?) RETURNING id",

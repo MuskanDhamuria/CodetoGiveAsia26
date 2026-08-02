@@ -62,4 +62,3 @@ class StockTransfer(BaseModel):
     destination_location_id: int
     quantity: Quantity = Field(gt=0)
     reason: str = Field(min_length=1)
-

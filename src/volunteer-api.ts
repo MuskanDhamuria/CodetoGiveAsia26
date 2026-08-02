@@ -47,6 +47,41 @@ export type VolunteerListItem = {
   counts: VolunteerCounts
 }
 
+export type VolunteerSkill = {
+  id: number
+  name: string
+}
+
+export type VolunteerRoleInterest = {
+  role_id: number
+  name: string
+  is_lead: boolean
+}
+
+export type VolunteerDetail = {
+  id: number
+  name: string
+  contact_number: string | null
+  email: string | null
+  signup_status: string
+  skills: VolunteerSkill[]
+  interests: VolunteerRoleInterest[]
+  counts: VolunteerCounts
+}
+
+export type VolunteerEventHistory = {
+  signup_id: number
+  event_id: number
+  event_name: string
+  event_date: string
+  status: string
+  assigned_role_id: number | null
+  assigned_role_name: string | null
+  preferred_role_names: string[]
+  is_leader: boolean
+  attendance: boolean | null
+}
+
 export type Signup = {
   id: number
   event_id: number
@@ -55,6 +90,7 @@ export type Signup = {
   status: "requested" | "approved" | "rejected"
   assigned_role_id: number | null
   assigned_role_name: string | null
+  preferred_role_names: string[]
   is_leader: boolean
   attendance: boolean | null
 }
@@ -73,6 +109,26 @@ export type Role = {
   name: string
   category: string
   is_required: boolean
+}
+
+export type EventPersonOption = {
+  person_type: "team_member" | "volunteer"
+  person_id: number
+  name: string
+  email: string | null
+}
+
+export type EventOrganizer = EventPersonOption & {
+  id: number
+  event_id: number
+  team_member_id: number | null
+  volunteer_id: number | null
+  identity_label: "PTS staff" | "Volunteer organiser"
+}
+
+export type OrganizerCandidates = {
+  pts_staff: EventPersonOption[]
+  volunteers: EventPersonOption[]
 }
 
 export type VolunteerAccount = {
@@ -131,6 +187,11 @@ function postJson<T>(path: string, body?: unknown): Promise<T> {
     headers: body === undefined ? undefined : { "Content-Type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),
   }).then((response) => handle<T>(response))
+}
+
+async function deleteRequest(path: string): Promise<void> {
+  const response = await fetch(`${API_BASE}${path}`, { method: "DELETE" })
+  if (!response.ok) await handle<never>(response)
 }
 
 function authorizedHeaders() {
@@ -218,6 +279,20 @@ export function listVolunteers(): Promise<ListEnvelope<VolunteerListItem>> {
   return getJson("/volunteers")
 }
 
+export function getVolunteer(volunteerId: number): Promise<VolunteerDetail> {
+  return getJson(`/volunteers/${volunteerId}`)
+}
+
+export function listVolunteerEvents(
+  volunteerId: number,
+): Promise<ListEnvelope<VolunteerEventHistory>> {
+  return getJson(`/volunteers/${volunteerId}/events`)
+}
+
+export function deleteVolunteer(volunteerId: number): Promise<void> {
+  return deleteRequest(`/volunteers/${volunteerId}`)
+}
+
 export function listEventSignups(
   eventId: number,
   params: { status?: string } = {},
@@ -236,6 +311,33 @@ export function listEventRoles(eventId: number): Promise<Role[]> {
   return getJson(`/events/${eventId}/roles`)
 }
 
+export function addEventRole(eventId: number, name: string): Promise<Role> {
+  return postJson(`/events/${eventId}/roles`, { name })
+}
+
+export function deleteEventRole(eventId: number, roleId: number): Promise<void> {
+  return deleteRequest(`/events/${eventId}/roles/${roleId}`)
+}
+
+export function listEventOrganizers(eventId: number): Promise<EventOrganizer[]> {
+  return getJson(`/events/${eventId}/organizers`)
+}
+
+export function listOrganizerCandidates(eventId: number): Promise<OrganizerCandidates> {
+  return getJson(`/events/${eventId}/organizer-candidates`)
+}
+
+export function addEventOrganizer(
+  eventId: number,
+  person: Pick<EventPersonOption, "person_type" | "person_id">,
+): Promise<EventOrganizer> {
+  return postJson(`/events/${eventId}/organizers`, person)
+}
+
+export function deleteEventOrganizer(eventId: number, organizerId: number): Promise<void> {
+  return deleteRequest(`/events/${eventId}/organizers/${organizerId}`)
+}
+
 export function approveSignup(
   eventId: number,
   signupId: number,
@@ -246,6 +348,23 @@ export function approveSignup(
 
 export function rejectSignup(eventId: number, signupId: number): Promise<Signup> {
   return postJson(`/events/${eventId}/volunteer-signups/${signupId}/reject`)
+}
+
+export function updateSignup(
+  eventId: number,
+  signupId: number,
+  body: {
+    status?: Signup["status"]
+    assigned_role_id?: number | null
+    is_leader?: boolean
+    attendance?: boolean | null
+  },
+): Promise<Signup> {
+  return fetch(`${API_BASE}/events/${eventId}/volunteer-signups/${signupId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  }).then((response) => handle<Signup>(response))
 }
 
 export type PublicSignupResult = {

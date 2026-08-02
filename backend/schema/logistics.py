@@ -78,4 +78,3 @@ class AllocationReconcile(BaseModel):
 
 class ReconciliationFinalize(BaseModel):
     notes: str = ""
-

@@ -3,12 +3,17 @@ import {
   adminApi,
   type AdminApi,
   type EventDetail,
+  type EventSubtask,
+  type UpdateEventSubtaskInput,
   type EventTask,
+  type EventTaskAssigneeInput,
   type EventTemplate,
+  type TaskAssigneeGroups,
   type TaskCategory,
   type TeamMember,
 } from "./admin-api"
 import EventCollectionPrototype, { type EventCollectionItem } from "./EventCollectionPrototype"
+import EventVolunteerTab from "./EventVolunteerTab"
 import EventLogistics from "./EventLogistics"
 import "./EventOperationsMvp.css"
 
@@ -18,6 +23,9 @@ type Draft = {
   name: string
   event_date: string
   venue: string
+  description: string
+  start_time: string
+  end_time: string
   expected_attendance: string
 }
 
@@ -47,6 +55,9 @@ const emptyDraft: Draft = {
   name: "",
   event_date: "",
   venue: "",
+  description: "",
+  start_time: "",
+  end_time: "",
   expected_attendance: "",
 }
 
@@ -57,7 +68,27 @@ type TaskDraft = {
   body: string
   due_at: string
   category: TaskCategory
-  team_member_id: string
+  assignees: string[]
+}
+
+type SubtaskDraft = {
+  title: string
+  kind: "effort" | "scheduled"
+  scheduled_date: string
+  start_time: string
+  end_time: string
+  estimated_hours: string
+  assignees: string[]
+}
+
+const emptySubtaskDraft: SubtaskDraft = {
+  title: "",
+  kind: "effort",
+  scheduled_date: "",
+  start_time: "",
+  end_time: "",
+  estimated_hours: "",
+  assignees: [],
 }
 
 const emptyTaskDraft: TaskDraft = {
@@ -65,7 +96,23 @@ const emptyTaskDraft: TaskDraft = {
   body: "",
   due_at: "",
   category: "planning",
-  team_member_id: "",
+  assignees: [],
+}
+
+const emptyTaskAssignees: TaskAssigneeGroups = { organizers: [], volunteers: [] }
+
+function subtaskDraft(subtask: EventSubtask): SubtaskDraft {
+  const scheduledStart = subtask.scheduled_start?.replace(" ", "T") ?? ""
+  const scheduledEnd = subtask.scheduled_end?.replace(" ", "T") ?? ""
+  return {
+    title: subtask.title,
+    kind: scheduledStart ? "scheduled" : "effort",
+    scheduled_date: scheduledStart.slice(0, 10),
+    start_time: scheduledStart.slice(11, 16),
+    end_time: scheduledEnd.slice(11, 16),
+    estimated_hours: subtask.estimated_minutes == null ? "" : String(Math.round(subtask.estimated_minutes / 6) / 10),
+    assignees: (subtask.assignees ?? []).map((person) => `${person.person_type}:${person.person_id}`),
+  }
 }
 
 function formatDate(value: string) {
@@ -75,6 +122,21 @@ function formatDate(value: string) {
     year: "numeric",
     timeZone: "UTC",
   }).format(new Date(`${value}T00:00:00Z`))
+}
+
+function formatTime(value?: string | null) {
+  if (!value) return ""
+  const [hour, minute] = value.slice(0, 5).split(":").map(Number)
+  return new Intl.DateTimeFormat("en-SG", { hour: "numeric", minute: "2-digit" }).format(new Date(2000, 0, 1, hour, minute))
+}
+
+function eventTimeLabel(start?: string | null, end?: string | null) {
+  if (!start) return ""
+  return `${formatTime(start)}${end ? `–${formatTime(end)}` : ""}`
+}
+
+function validTimeRange(start: string, end: string) {
+  return (!start && !end) || (!!start && !!end && end > start)
 }
 
 function eventCompletion(event: EventDetail) {
@@ -103,18 +165,22 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
   const [reviewPage, setReviewPage] = useState(0)
   const [creating, setCreating] = useState(false)
   const [openEventId, setOpenEventId] = useState<number | null>(initialEventId)
-  const [workspaceTab, setWorkspaceTab] = useState<"tasks" | "logistics">("tasks")
+  const [workspaceTab, setWorkspaceTab] = useState<"tasks" | "volunteers" | "logistics">("tasks")
   const [mobileTaskStatus, setMobileTaskStatus] = useState<"incomplete" | "ongoing" | "done">("incomplete")
   const [draggedTaskId, setDraggedTaskId] = useState<number | null>(null)
   const [dragOverStatus, setDragOverStatus] = useState<string | null>(null)
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
+  const [eventTaskAssignees, setEventTaskAssignees] = useState<TaskAssigneeGroups>(emptyTaskAssignees)
   const [eventDialog, setEventDialog] = useState<EventDialog>(null)
-  const [eventForm, setEventForm] = useState({ name: "", venue: "", event_date: "", shift_task_deadlines: true, delete_name: "" })
+  const [eventForm, setEventForm] = useState({ name: "", venue: "", description: "", start_time: "", end_time: "", event_date: "", shift_task_deadlines: true, delete_name: "" })
   const [editingTaskId, setEditingTaskId] = useState<number | "new" | null>(null)
   const [taskEditorMode, setTaskEditorMode] = useState<TaskEditorMode>("edit")
   const [taskForm, setTaskForm] = useState<TaskDraft>(emptyTaskDraft)
   const [subtaskTitles, setSubtaskTitles] = useState<Record<number, string>>({})
   const [newSubtaskTitle, setNewSubtaskTitle] = useState("")
+  const [subtaskForms, setSubtaskForms] = useState<Record<number, SubtaskDraft>>({})
+  const [newSubtaskForm, setNewSubtaskForm] = useState<SubtaskDraft>(emptySubtaskDraft)
+  const [timeLogForms, setTimeLogForms] = useState<Record<number, { person: string; hours: string; notes: string }>>({})
   const [confirmDeleteTask, setConfirmDeleteTask] = useState(false)
   const [confirmDeleteSubtaskId, setConfirmDeleteSubtaskId] = useState<number | null>(null)
   const [saving, setSaving] = useState(false)
@@ -140,6 +206,44 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
     }
   }, [api])
 
+  async function refreshTaskAssignees(eventId: number) {
+    if (!api.listEventTaskAssignees) {
+      setEventTaskAssignees({
+        organizers: teamMembers.filter((member) => member.is_active).map((member) => ({
+          person_type: "team_member",
+          person_id: member.id,
+          name: member.name,
+          email: member.email,
+        })),
+        volunteers: [],
+      })
+      return
+    }
+    try {
+      setEventTaskAssignees(await api.listEventTaskAssignees(eventId))
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Unable to load task assignees.")
+    }
+  }
+
+  useEffect(() => {
+    if (openEventId === null) {
+      setEventTaskAssignees(emptyTaskAssignees)
+      return
+    }
+    void refreshTaskAssignees(openEventId)
+  }, [openEventId])
+
+  function taskPeople(task: EventTask) {
+    if (task.assignees?.length) return task.assignees
+    const legacyPerson = [...eventTaskAssignees.organizers, ...eventTaskAssignees.volunteers].find((person) =>
+      person.person_type === "team_member"
+        ? person.person_id === task.team_member_id
+        : person.person_id === task.volunteer_id,
+    )
+    return legacyPerson ? [{ ...legacyPerson, is_lead: false }] : []
+  }
+
   const selectedTemplate = useMemo(
     () => templates.find((template) => template.id === draft.event_template_id),
     [draft.event_template_id, templates],
@@ -161,7 +265,7 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
       return {
         id: String(event.id),
         name: event.name,
-        date: formatDate(event.event_date),
+        date: `${formatDate(event.event_date)}${event.start_time ? ` · ${eventTimeLabel(event.start_time, event.end_time)}` : ""}`,
         day: date.getUTCDate(),
         venue: event.venue,
         status,
@@ -252,6 +356,10 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
         setError("Enter an Event name, date, and venue.")
         return
       }
+      if (!validTimeRange(draft.start_time, draft.end_time)) {
+        setError("Enter both times and make sure the end time is after the start time.")
+        return
+      }
       setError("")
       setReviewPage(0)
       setCreationStep(3)
@@ -267,6 +375,9 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
         name: draft.name.trim(),
         venue: draft.venue.trim(),
         event_date: draft.event_date,
+        description: draft.description.trim(),
+        start_time: draft.start_time || null,
+        end_time: draft.end_time || null,
         ...(draft.expected_attendance ? { expected_attendance: Number(draft.expected_attendance) } : {}),
       })
       if (draft.event_template_id === null && scratchTasks.length) {
@@ -350,6 +461,9 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
     setEventForm({
       name: event.name,
       venue: event.venue,
+      description: event.description ?? "",
+      start_time: event.start_time?.slice(0, 5) ?? "",
+      end_time: event.end_time?.slice(0, 5) ?? "",
       event_date: event.event_date,
       shift_task_deadlines: true,
       delete_name: "",
@@ -362,10 +476,20 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
       setError("Enter an Event name and venue.")
       return
     }
+    if (!validTimeRange(eventForm.start_time, eventForm.end_time)) {
+      setError("Enter both times and make sure the end time is after the start time.")
+      return
+    }
     setSaving(true)
     setError("")
     try {
-      const updated = await api.updateEvent(event.id, { name: eventForm.name.trim(), venue: eventForm.venue.trim() })
+      const updated = await api.updateEvent(event.id, {
+        name: eventForm.name.trim(),
+        venue: eventForm.venue.trim(),
+        description: eventForm.description.trim(),
+        start_time: eventForm.start_time || null,
+        end_time: eventForm.end_time || null,
+      })
       replaceEvent(updated)
       setEventDialog(null)
       setMessage("Event details updated.")
@@ -450,10 +574,13 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
     setConfirmDeleteTask(false)
     setConfirmDeleteSubtaskId(null)
     setNewSubtaskTitle("")
+    setNewSubtaskForm(emptySubtaskDraft)
+    setTimeLogForms({})
     if (!task) {
       setEditingTaskId("new")
       setTaskForm(emptyTaskDraft)
       setSubtaskTitles({})
+      setSubtaskForms({})
       return
     }
     setEditingTaskId(task.id)
@@ -462,9 +589,10 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
       body: task.body,
       due_at: task.due_at.slice(0, 10),
       category: task.category,
-      team_member_id: task.team_member_id === null ? "" : String(task.team_member_id),
+      assignees: taskPeople(task).map((person) => `${person.person_type}:${person.person_id}`),
     })
     setSubtaskTitles(Object.fromEntries(task.subtasks.map((subtask) => [subtask.id, subtask.title])))
+    setSubtaskForms(Object.fromEntries(task.subtasks.map((subtask) => [subtask.id, subtaskDraft(subtask)])))
   }
 
   async function saveTask(event: EventDetail) {
@@ -472,12 +600,22 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
       setError("Enter a Task name and due date.")
       return
     }
+    const existingLeads = new Set((editingTask?.assignees ?? [])
+      .filter((person) => person.is_lead)
+      .map((person) => `${person.person_type}:${person.person_id}`))
     const input = {
       name: taskForm.name.trim(),
       body: taskForm.body,
       due_at: taskForm.due_at,
       category: taskForm.category,
-      team_member_id: taskForm.team_member_id ? Number(taskForm.team_member_id) : null,
+      assignees: taskForm.assignees.map((value) => {
+        const [person_type, personId] = value.split(":")
+        return {
+          person_type: person_type as "team_member" | "volunteer",
+          person_id: Number(personId),
+          is_lead: existingLeads.has(value),
+        }
+      }),
     }
     setSaving(true)
     setError("")
@@ -495,10 +633,34 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
         replaceTask(event.id, updated)
         setMessage("Task updated.")
       }
+      await refreshTaskAssignees(event.id)
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Unable to save Task.")
     } finally {
       setSaving(false)
+    }
+  }
+
+  async function updateTaskPeople(event: EventDetail, task: EventTask, people: EventTaskAssigneeInput[]) {
+    setError("")
+    try {
+      const updated = await api.updateEventTask(event.id, task.id, {
+        assignees: people,
+      })
+      replaceTask(event.id, updated)
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Unable to update task assignees.")
+    }
+  }
+
+  async function updateSubtaskPeople(event: EventDetail, task: EventTask, subtask: EventSubtask, people: EventTaskAssigneeInput[]) {
+    setError("")
+    try {
+      const updated = await api.updateEventSubtask(event.id, task.id, subtask.id, { assignees: people })
+      replaceTask(event.id, { ...task, subtasks: task.subtasks.map((item) => item.id === subtask.id ? updated : item) })
+      await refreshTaskAssignees(event.id)
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Unable to update subtask assignees.")
     }
   }
 
@@ -520,31 +682,118 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
   }
 
   async function addSubtask(event: EventDetail, task: EventTask) {
-    if (!newSubtaskTitle.trim()) return
+    const form = { ...newSubtaskForm, title: newSubtaskForm.title.trim() || newSubtaskTitle.trim() }
+    if (!form.title) return
+    if (form.kind === "scheduled" && (!form.scheduled_date || !form.start_time || !form.end_time)) {
+      setError("Enter the scheduled date, start time and end time.")
+      return
+    }
+    if (form.kind === "scheduled" && form.end_time <= form.start_time) {
+      setError("Subtask end time must be after its start time.")
+      return
+    }
     setSaving(true)
     setError("")
     try {
-      const created = await api.createEventSubtask(event.id, task.id, { title: newSubtaskTitle.trim() })
+      const created = await api.createEventSubtask(event.id, task.id, {
+        title: form.title,
+        scheduled_start: form.kind === "scheduled" ? `${form.scheduled_date}T${form.start_time}:00` : null,
+        scheduled_end: form.kind === "scheduled" ? `${form.scheduled_date}T${form.end_time}:00` : null,
+        estimated_minutes: form.kind === "effort" && form.estimated_hours ? Math.round(Number(form.estimated_hours) * 60) : null,
+        assignees: form.assignees.map(personInput),
+      })
       const updated = { ...task, subtasks: [...task.subtasks, created] }
       replaceTask(event.id, updated)
       setSubtaskTitles((current) => ({ ...current, [created.id]: created.title }))
+      setSubtaskForms((current) => ({ ...current, [created.id]: subtaskDraft(created) }))
       setNewSubtaskTitle("")
+      setNewSubtaskForm(emptySubtaskDraft)
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Unable to add checklist item.")
+      setError(reason instanceof Error ? reason.message : "Unable to add subtask.")
     } finally {
       setSaving(false)
     }
   }
 
-  async function updateSubtask(event: EventDetail, task: EventTask, subtaskId: number, changes: { title?: string; completed?: boolean }) {
+  function personInput(value: string): EventTaskAssigneeInput {
+    const [person_type, personId] = value.split(":")
+    return { person_type: person_type as "team_member" | "volunteer", person_id: Number(personId) }
+  }
+
+  async function updateSubtask(event: EventDetail, task: EventTask, subtaskId: number, changes: UpdateEventSubtaskInput) {
     setSaving(true)
     setError("")
     try {
       const updatedSubtask = await api.updateEventSubtask(event.id, task.id, subtaskId, changes)
       replaceTask(event.id, { ...task, subtasks: task.subtasks.map((subtask) => subtask.id === subtaskId ? updatedSubtask : subtask) })
       setSubtaskTitles((current) => ({ ...current, [subtaskId]: updatedSubtask.title }))
+      setSubtaskForms((current) => ({ ...current, [subtaskId]: subtaskDraft(updatedSubtask) }))
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Unable to update checklist item.")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function saveSubtask(event: EventDetail, task: EventTask, subtask: EventSubtask) {
+    const form = subtaskForms[subtask.id] ?? subtaskDraft(subtask)
+    if (!form.title.trim()) return
+    if (form.kind === "scheduled" && (!form.scheduled_date || !form.start_time || !form.end_time)) {
+      setError("Enter the scheduled date, start time and end time.")
+      return
+    }
+    if (form.kind === "scheduled" && form.end_time <= form.start_time) {
+      setError("Subtask end time must be after its start time.")
+      return
+    }
+    await updateSubtask(event, task, subtask.id, {
+      title: form.title.trim(),
+      scheduled_start: form.kind === "scheduled" ? `${form.scheduled_date}T${form.start_time}:00` : null,
+      scheduled_end: form.kind === "scheduled" ? `${form.scheduled_date}T${form.end_time}:00` : null,
+      estimated_minutes: form.kind === "effort" && form.estimated_hours ? Math.round(Number(form.estimated_hours) * 60) : null,
+      assignees: form.assignees.map(personInput),
+    })
+  }
+
+  async function duplicateScheduledSubtask(event: EventDetail, task: EventTask, subtask: EventSubtask) {
+    setSaving(true)
+    setError("")
+    try {
+      const created = await api.createEventSubtask(event.id, task.id, {
+        title: `${subtask.title} (another shift)`,
+        scheduled_start: subtask.scheduled_start,
+        scheduled_end: subtask.scheduled_end,
+        assignees: (subtask.assignees ?? []).map((person) => ({ person_type: person.person_type, person_id: person.person_id })),
+      })
+      replaceTask(event.id, { ...task, subtasks: [...task.subtasks, created] })
+      setSubtaskTitles((current) => ({ ...current, [created.id]: created.title }))
+      setSubtaskForms((current) => ({ ...current, [created.id]: subtaskDraft(created) }))
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Unable to duplicate shift.")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function logSubtaskTime(event: EventDetail, task: EventTask, subtask: EventSubtask) {
+    const form = timeLogForms[subtask.id]
+    if (!form?.person || !Number(form.hours)) {
+      setError("Choose an assignee and enter the hours spent.")
+      return
+    }
+    setSaving(true)
+    setError("")
+    try {
+      const log = await api.createEventSubtaskTimeLog(event.id, task.id, subtask.id, {
+        ...personInput(form.person),
+        minutes_spent: Math.round(Number(form.hours) * 60),
+        notes: form.notes.trim(),
+      })
+      const updated = { ...subtask, time_logs: [log, ...(subtask.time_logs ?? [])] }
+      replaceTask(event.id, { ...task, subtasks: task.subtasks.map((item) => item.id === subtask.id ? updated : item) })
+      setTimeLogForms((current) => ({ ...current, [subtask.id]: { person: "", hours: "", notes: "" } }))
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Unable to log hours.")
     } finally {
       setSaving(false)
     }
@@ -578,7 +827,7 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
           {message || error}
         </p>
         {openEvent ? (<>
-          <button aria-label="Back to Events" className="event-workspace-back api-event-workspace-back" type="button" onClick={() => setOpenEventId(null)}>← Back to Events</button>
+          <button aria-label="Back to Events" className="event-workspace-back api-event-workspace-back" type="button" onClick={() => { setWorkspaceTab("tasks"); setOpenEventId(null) }}>← Back to Events</button>
           <section aria-label={openEvent.name} className="event-operations-workspace api-event-workspace">
             <header className="api-event-workspace-header">
               <div>
@@ -598,7 +847,7 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
             </header>
             {(message || error) && <p aria-live="polite" className={`api-workspace-feedback${error ? " error" : ""}`}>{error || message}</p>}
             <dl aria-label="Event details" className="api-event-metadata">
-              <div><dt>Date</dt><dd>{formatDate(openEvent.event_date)}</dd></div>
+              <div><dt>Date &amp; time</dt><dd>{formatDate(openEvent.event_date)}{openEvent.start_time ? ` · ${eventTimeLabel(openEvent.start_time, openEvent.end_time)}` : " · Time not set"}</dd></div>
               <div><dt>Venue</dt><dd>{openEvent.venue}</dd></div>
               <div><dt>Tasks</dt><dd>{openEvent.tasks.length}</dd></div>
             </dl>
@@ -609,11 +858,41 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
                   : "Closed Events are read-only. The Task history is kept for reference."}
               </p>
             )}
-            <nav aria-label="Event workspace sections" className="api-event-workspace-tabs">
-              <button aria-current={workspaceTab === "tasks" ? "page" : undefined} type="button" onClick={() => setWorkspaceTab("tasks")}>Tasks</button>
-              <button aria-current={workspaceTab === "logistics" ? "page" : undefined} type="button" onClick={() => setWorkspaceTab("logistics")}>Logistics</button>
-            </nav>
-            {workspaceTab === "tasks" ? <div className="api-event-workspace-body">
+            <div className="api-event-workspace-tabs" role="tablist" aria-label="Event workspace sections">
+              <button
+                aria-controls="event-task-workspace"
+                aria-selected={workspaceTab === "tasks"}
+                className={workspaceTab === "tasks" ? "active" : ""}
+                id="event-tasks-tab"
+                role="tab"
+                type="button"
+                onClick={() => setWorkspaceTab("tasks")}
+              >Tasks</button>
+              <button
+                aria-controls="event-volunteer-workspace"
+                aria-selected={workspaceTab === "volunteers"}
+                className={workspaceTab === "volunteers" ? "active" : ""}
+                id="event-volunteers-tab"
+                role="tab"
+                type="button"
+                onClick={() => setWorkspaceTab("volunteers")}
+              >Volunteers</button>
+              <button
+                aria-controls="event-logistics-workspace"
+                aria-selected={workspaceTab === "logistics"}
+                className={workspaceTab === "logistics" ? "active" : ""}
+                id="event-logistics-tab"
+                role="tab"
+                type="button"
+                onClick={() => setWorkspaceTab("logistics")}
+              >Logistics</button>
+            </div>
+            {workspaceTab === "tasks" ? <div
+              aria-labelledby="event-tasks-tab"
+              className="api-event-workspace-body"
+              id="event-task-workspace"
+              role="tabpanel"
+            >
               <div className="api-event-workspace-main">
                 <div className="api-task-workspace-heading">
                   <h3>Task workspace</h3>
@@ -689,24 +968,29 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
                         }}
                         onClick={(clickEvent) => {
                           if ((clickEvent.target as HTMLElement).closest("button")) return
-                          openTaskEditor(task, "preview")
+                          openTaskEditor(task, openEvent.status === "open" ? "edit" : "preview")
                         }}
                         onKeyDown={(keyEvent) => {
                           if (keyEvent.key !== "Enter" && keyEvent.key !== " ") return
                           keyEvent.preventDefault()
-                          openTaskEditor(task, "preview")
+                          openTaskEditor(task, openEvent.status === "open" ? "edit" : "preview")
                         }}
-                        aria-label={`Preview ${task.name}`}
+                        aria-label={`Edit ${task.name}`}
                         role="group"
                         tabIndex={0}
-                        title={openEvent.status === "open" ? "Drag this Task to another status or click to preview" : "Click to preview this Task"}
+                        title={openEvent.status === "open" ? "Drag this Task to another status or click to edit" : "Click to view this Task"}
                       >
                         <div className="event-operations-card-heading">
                           <span className={`event-operations-phase event-operations-phase-${task.category.replace("_", "-")}`}>{task.category.replace("_", " ")}</span>
                           <span className="event-operations-task-date">{formatDate(task.due_at.slice(0, 10))}</span>
                         </div>
                         <strong className="event-operations-task-title">{task.name}</strong>
-                        <span className="api-task-assignee">{task.team_member_id === null ? "Unassigned" : teamMembers.find((member) => member.id === task.team_member_id)?.name ?? `Team member ${task.team_member_id}`}</span>
+                        <div className="api-task-assignees" aria-label={`Assignees for ${task.name}`}>
+                          {taskPeople(task).length
+                            ? taskPeople(task).slice(0, 3).map((person) => <span key={`${person.person_type}:${person.person_id}`}>{person.name}</span>)
+                            : <em>Unassigned</em>}
+                          {taskPeople(task).length > 3 && <span>+{taskPeople(task).length - 3}</span>}
+                        </div>
                         {task.subtasks.length > 0 && <div className="event-operations-progress api-subtask-progress">
                           <span>{completedSubtaskCount} of {task.subtasks.length} Subtasks complete</span>
                           <i aria-label={`${task.name} Subtask completion`} aria-valuemax={100} aria-valuemin={0} aria-valuenow={subtaskCompletionPercent} role="progressbar"><b style={{ width: `${subtaskCompletionPercent}%` }} /></i>
@@ -738,7 +1022,20 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
                 </dl>
                 {openEvent.status === "open" && <p className="api-event-progress-help">Use <strong>Edit</strong> on a Task to update its details and Subtasks.</p>}
               </aside>
-            </div> : <EventLogistics eventId={openEvent.id} eventStatus={openEvent.status} />}
+            </div> : workspaceTab === "volunteers" ? <div aria-labelledby="event-volunteers-tab" id="event-volunteer-workspace" role="tabpanel">
+              <EventVolunteerTab
+                eventId={openEvent.id}
+                event={openEvent}
+                taskPeople={eventTaskAssignees}
+                readOnly={openEvent.status === "closed"}
+                onPeopleChanged={() => void refreshTaskAssignees(openEvent.id)}
+                onUpdateTaskAssignees={(task, people) => updateTaskPeople(openEvent, task, people)}
+                onUpdateSubtaskAssignees={(task, subtask, people) => updateSubtaskPeople(openEvent, task, subtask, people)}
+                onOpenTask={(task) => { setWorkspaceTab("tasks"); openTaskEditor(task, openEvent.status === "open" ? "edit" : "preview") }}
+              />
+            </div> : <div aria-labelledby="event-logistics-tab" id="event-logistics-workspace" role="tabpanel">
+              <EventLogistics eventId={openEvent.id} eventStatus={openEvent.status} />
+            </div>}
           </section>
         </>
         ) : <>
@@ -785,7 +1082,10 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
                     <label>Event name<input value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} /></label>
                     <label>Event date<input type="date" value={draft.event_date} onChange={(event) => setDraft({ ...draft, event_date: event.target.value })} /></label>
                     <label>Venue<input value={draft.venue} onChange={(event) => setDraft({ ...draft, venue: event.target.value })} /></label>
+                    <label>Start time<input type="time" value={draft.start_time} onChange={(event) => setDraft({ ...draft, start_time: event.target.value })} /></label>
+                    <label>End time<input type="time" value={draft.end_time} onChange={(event) => setDraft({ ...draft, end_time: event.target.value })} /></label>
                     <label>Planned attendance<input min="0" type="number" value={draft.expected_attendance} onChange={(event) => setDraft({ ...draft, expected_attendance: event.target.value })} /></label>
+                    <label className="event-creation-description">Description<textarea rows={3} value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.target.value })} /></label>
                   </div>
                 </div>
               )}
@@ -831,6 +1131,9 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
                 {eventDialog === "edit" && <div className="event-creation-fields">
                   <label>Event name<input value={eventForm.name} onChange={(input) => setEventForm({ ...eventForm, name: input.target.value })} /></label>
                   <label>Venue<input value={eventForm.venue} onChange={(input) => setEventForm({ ...eventForm, venue: input.target.value })} /></label>
+                  <label>Start time<input type="time" value={eventForm.start_time} onChange={(input) => setEventForm({ ...eventForm, start_time: input.target.value })} /></label>
+                  <label>End time<input type="time" value={eventForm.end_time} onChange={(input) => setEventForm({ ...eventForm, end_time: input.target.value })} /></label>
+                  <label className="event-creation-description">Description<textarea rows={3} value={eventForm.description} onChange={(input) => setEventForm({ ...eventForm, description: input.target.value })} /></label>
                 </div>}
                 {eventDialog === "reschedule" && <div className="event-creation-fields">
                   <label>New Event date<input type="date" value={eventForm.event_date} onChange={(input) => setEventForm({ ...eventForm, event_date: input.target.value })} /></label>
@@ -868,19 +1171,68 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
                   <label>Task name<input readOnly={taskEditorMode === "preview"} value={taskForm.name} onChange={(input) => setTaskForm({ ...taskForm, name: input.target.value })} /></label>
                   <label>Due date<input readOnly={taskEditorMode === "preview"} type="date" value={taskForm.due_at} onChange={(input) => setTaskForm({ ...taskForm, due_at: input.target.value })} /></label>
                   <label>Category<select disabled={taskEditorMode === "preview"} value={taskForm.category} onChange={(input) => setTaskForm({ ...taskForm, category: input.target.value as TaskCategory })}><option value="planning">Planning</option><option value="execution">Execution</option><option value="post_execution">Post execution</option></select></label>
-                  <label>Assignee<select disabled={taskEditorMode === "preview"} value={taskForm.team_member_id} onChange={(input) => setTaskForm({ ...taskForm, team_member_id: input.target.value })}><option value="">Unassigned</option>{teamMembers.map((member) => <option disabled={!member.is_active && String(member.id) !== taskForm.team_member_id} key={member.id} value={member.id}>{member.name}{member.is_active ? "" : " (inactive)"}</option>)}</select></label>
+                  <fieldset className="api-task-assignee-picker">
+                    <legend>Assignees</legend>
+                    {([ ["Event organisers", eventTaskAssignees.organizers], ["Volunteer only", eventTaskAssignees.volunteers] ] as const).map(([label, people]) => <div key={label}>
+                      <strong>{label}</strong>
+                      {people.length ? people.map((person) => {
+                        const value = `${person.person_type}:${person.person_id}`
+                        return <label key={value}><input
+                          aria-label={`Assign ${person.name}`}
+                          checked={taskForm.assignees.includes(value)}
+                          disabled={taskEditorMode === "preview"}
+                          type="checkbox"
+                          onChange={(input) => setTaskForm({ ...taskForm, assignees: input.target.checked
+                            ? [...taskForm.assignees, value]
+                            : taskForm.assignees.filter((candidate) => candidate !== value) })}
+                        />{person.name}<small>{person.person_type === "team_member" ? "PTS staff" : label === "Event organisers" ? "Volunteer organiser" : "Volunteer"}</small></label>
+                      }) : <span>None</span>}
+                    </div>)}
+                  </fieldset>
                   <label className="api-task-body-field">Description<textarea readOnly={taskEditorMode === "preview"} rows={4} value={taskForm.body} onChange={(input) => setTaskForm({ ...taskForm, body: input.target.value })} /></label>
                 </div>
                 {editingTask && <section aria-labelledby="task-checklist-title" className="api-task-checklist">
-                  <h3 id="task-checklist-title">Checklist</h3>
-                  {editingTask.subtasks.map((subtask) => <div className="api-subtask-row" key={subtask.id}>
-                    <input aria-label={`Complete ${subtask.title}`} checked={subtask.completed} disabled={taskEditorMode === "preview"} type="checkbox" onChange={() => void updateSubtask(openEvent, editingTask, subtask.id, { completed: !subtask.completed })} />
-                    <input aria-label={`Checklist item ${subtask.id}`} readOnly={taskEditorMode === "preview"} value={subtaskTitles[subtask.id] ?? subtask.title} onChange={(input) => setSubtaskTitles({ ...subtaskTitles, [subtask.id]: input.target.value })} />
-                    {taskEditorMode === "edit" && <><button disabled={saving || !(subtaskTitles[subtask.id] ?? "").trim()} type="button" onClick={() => void updateSubtask(openEvent, editingTask, subtask.id, { title: subtaskTitles[subtask.id].trim() })}>Save</button>
-                    {confirmDeleteSubtaskId === subtask.id ? <><button className="api-danger-button" type="button" onClick={() => void deleteSubtask(openEvent, editingTask, subtask.id)}>Confirm delete</button><button type="button" onClick={() => setConfirmDeleteSubtaskId(null)}>Cancel</button></> : <button type="button" onClick={() => setConfirmDeleteSubtaskId(subtask.id)}>Delete</button>}</>}
-                  </div>)}
-                  {!editingTask.subtasks.length && <p>No checklist items yet.</p>}
-                  {taskEditorMode === "edit" && <div className="api-add-subtask"><input aria-label="New checklist item" placeholder="Add a checklist item" value={newSubtaskTitle} onChange={(input) => setNewSubtaskTitle(input.target.value)} /><button disabled={saving || !newSubtaskTitle.trim()} type="button" onClick={() => void addSubtask(openEvent, editingTask)}>Add item</button></div>}
+                  <header><div><h3 id="task-checklist-title">Subtasks</h3><p>Split this task into scheduled shifts or effort-based work.</p></div></header>
+                  <div className="api-subtask-editor-list">
+                    {editingTask.subtasks.map((subtask) => {
+                      const form = subtaskForms[subtask.id] ?? subtaskDraft(subtask)
+                      const logForm = timeLogForms[subtask.id] ?? { person: "", hours: "", notes: "" }
+                      return <article className="api-subtask-editor" key={subtask.id}>
+                        <header>
+                          <label><input aria-label={`Complete ${subtask.title}`} checked={subtask.completed} disabled={taskEditorMode === "preview"} type="checkbox" onChange={() => void updateSubtask(openEvent, editingTask, subtask.id, { completed: !subtask.completed })} /><span>{subtask.completed ? "Completed" : "Open"}</span></label>
+                          <strong>{form.kind === "scheduled" ? "Scheduled / shift" : "Effort-based"}</strong>
+                        </header>
+                        <div className="api-subtask-fields">
+                          <label>Subtask name<input aria-label={`Checklist item ${subtask.id}`} readOnly={taskEditorMode === "preview"} value={form.title} onChange={(input) => setSubtaskForms({ ...subtaskForms, [subtask.id]: { ...form, title: input.target.value } })} /></label>
+                          <label>Work type<select disabled={taskEditorMode === "preview"} value={form.kind} onChange={(input) => setSubtaskForms({ ...subtaskForms, [subtask.id]: { ...form, kind: input.target.value as SubtaskDraft["kind"] } })}><option value="effort">Effort / log hours</option><option value="scheduled">Scheduled / shift</option></select></label>
+                          {form.kind === "scheduled" ? <>
+                            <label>Date<input disabled={taskEditorMode === "preview"} type="date" value={form.scheduled_date} onChange={(input) => setSubtaskForms({ ...subtaskForms, [subtask.id]: { ...form, scheduled_date: input.target.value } })} /></label>
+                            <label>Start<input disabled={taskEditorMode === "preview"} type="time" value={form.start_time} onChange={(input) => setSubtaskForms({ ...subtaskForms, [subtask.id]: { ...form, start_time: input.target.value } })} /></label>
+                            <label>End<input disabled={taskEditorMode === "preview"} type="time" value={form.end_time} onChange={(input) => setSubtaskForms({ ...subtaskForms, [subtask.id]: { ...form, end_time: input.target.value } })} /></label>
+                          </> : <label>Estimated hours<input disabled={taskEditorMode === "preview"} min="0" step="0.25" type="number" value={form.estimated_hours} onChange={(input) => setSubtaskForms({ ...subtaskForms, [subtask.id]: { ...form, estimated_hours: input.target.value } })} /></label>}
+                        </div>
+                        <fieldset className="api-subtask-assignees"><legend>People assigned to this subtask</legend>
+                          {([["Event organisers", eventTaskAssignees.organizers], ["Volunteer only", eventTaskAssignees.volunteers]] as const).map(([label, people]) => <div key={label}><strong>{label}</strong>{people.map((person) => {
+                            const value = `${person.person_type}:${person.person_id}`
+                            return <label key={value}><input checked={form.assignees.includes(value)} disabled={taskEditorMode === "preview"} type="checkbox" onChange={(input) => setSubtaskForms({ ...subtaskForms, [subtask.id]: { ...form, assignees: input.target.checked ? [...form.assignees, value] : form.assignees.filter((item) => item !== value) } })} />{person.name}</label>
+                          })}</div>)}
+                        </fieldset>
+                        {form.kind === "effort" && <div className="api-subtask-time-logs">
+                          <strong>Hours logged: {Math.round((subtask.time_logs ?? []).reduce((sum, log) => sum + log.minutes_spent, 0) / 6) / 10}</strong>
+                          {(subtask.time_logs ?? []).map((log) => <small key={log.id}>{log.name} · {Math.round(log.minutes_spent / 6) / 10}h{log.notes ? ` · ${log.notes}` : ""}</small>)}
+                          {taskEditorMode === "edit" && <div><select aria-label={`Person logging time for ${subtask.title}`} value={logForm.person} onChange={(input) => setTimeLogForms({ ...timeLogForms, [subtask.id]: { ...logForm, person: input.target.value } })}><option value="">Choose assignee</option>{(subtask.assignees ?? []).map((person) => <option key={`${person.person_type}:${person.person_id}`} value={`${person.person_type}:${person.person_id}`}>{person.name}</option>)}</select><input aria-label={`Hours spent on ${subtask.title}`} min="0.1" placeholder="Hours" step="0.25" type="number" value={logForm.hours} onChange={(input) => setTimeLogForms({ ...timeLogForms, [subtask.id]: { ...logForm, hours: input.target.value } })} /><input aria-label={`Time log notes for ${subtask.title}`} placeholder="Notes (optional)" value={logForm.notes} onChange={(input) => setTimeLogForms({ ...timeLogForms, [subtask.id]: { ...logForm, notes: input.target.value } })} /><button disabled={saving || !logForm.person || !Number(logForm.hours)} type="button" onClick={() => void logSubtaskTime(openEvent, editingTask, subtask)}>Log hours</button></div>}
+                        </div>}
+                        {taskEditorMode === "edit" && <footer><button disabled={saving || !form.title.trim()} type="button" onClick={() => void saveSubtask(openEvent, editingTask, subtask)}>Save subtask</button>{form.kind === "scheduled" && <button disabled={saving} type="button" onClick={() => void duplicateScheduledSubtask(openEvent, editingTask, subtask)}>Duplicate shift</button>}{confirmDeleteSubtaskId === subtask.id ? <><button className="api-danger-button" type="button" onClick={() => void deleteSubtask(openEvent, editingTask, subtask.id)}>Confirm delete</button><button type="button" onClick={() => setConfirmDeleteSubtaskId(null)}>Cancel</button></> : <button type="button" onClick={() => setConfirmDeleteSubtaskId(subtask.id)}>Delete</button>}</footer>}
+                      </article>
+                    })}
+                  </div>
+                  {!editingTask.subtasks.length && <p>No subtasks yet.</p>}
+                  {taskEditorMode === "edit" && <div className="api-add-subtask">
+                    <h4>Add subtask</h4>
+                    <div className="api-subtask-fields"><label>Subtask name<input aria-label="New checklist item" placeholder="e.g. Morning collection shift" value={newSubtaskForm.title || newSubtaskTitle} onChange={(input) => { setNewSubtaskTitle(input.target.value); setNewSubtaskForm({ ...newSubtaskForm, title: input.target.value }) }} /></label><label>Work type<select value={newSubtaskForm.kind} onChange={(input) => setNewSubtaskForm({ ...newSubtaskForm, kind: input.target.value as SubtaskDraft["kind"] })}><option value="effort">Effort / log hours</option><option value="scheduled">Scheduled / shift</option></select></label>{newSubtaskForm.kind === "scheduled" ? <><label>Date<input type="date" value={newSubtaskForm.scheduled_date} onChange={(input) => setNewSubtaskForm({ ...newSubtaskForm, scheduled_date: input.target.value })} /></label><label>Start<input type="time" value={newSubtaskForm.start_time} onChange={(input) => setNewSubtaskForm({ ...newSubtaskForm, start_time: input.target.value })} /></label><label>End<input type="time" value={newSubtaskForm.end_time} onChange={(input) => setNewSubtaskForm({ ...newSubtaskForm, end_time: input.target.value })} /></label></> : <label>Estimated hours<input min="0" step="0.25" type="number" value={newSubtaskForm.estimated_hours} onChange={(input) => setNewSubtaskForm({ ...newSubtaskForm, estimated_hours: input.target.value })} /></label>}</div>
+                    <fieldset className="api-subtask-assignees"><legend>Assign people now (optional)</legend>{([["Event organisers", eventTaskAssignees.organizers], ["Volunteer only", eventTaskAssignees.volunteers]] as const).map(([label, people]) => <div key={label}><strong>{label}</strong>{people.map((person) => { const value = `${person.person_type}:${person.person_id}`; return <label key={value}><input checked={newSubtaskForm.assignees.includes(value)} type="checkbox" onChange={(input) => setNewSubtaskForm({ ...newSubtaskForm, assignees: input.target.checked ? [...newSubtaskForm.assignees, value] : newSubtaskForm.assignees.filter((item) => item !== value) })} />{person.name}</label> })}</div>)}</fieldset>
+                    <button disabled={saving || !(newSubtaskForm.title || newSubtaskTitle).trim()} type="button" onClick={() => void addSubtask(openEvent, editingTask)}>Add {newSubtaskForm.kind === "scheduled" ? "scheduled" : "effort"} subtask</button>
+                  </div>}
                 </section>}
                 {editingTaskId === "new" && <p className="api-editor-note">Save the Task first, then add checklist items here.</p>}
                 {error && <p className="event-creation-error" role="alert">{error}</p>}

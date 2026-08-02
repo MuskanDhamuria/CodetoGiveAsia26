@@ -10,14 +10,42 @@ from __future__ import annotations
 
 import os
 import sqlite3
+from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Request, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, StringConstraints
 
 from backend.database import connect
 from backend.phone import InvalidPhoneNumberError, normalize_phone_number
 
 router = APIRouter(prefix="/public", tags=["public"])
+
+# Stripped before the min_length check runs, not just before storage — a
+# name of " " (whitespace only) previously passed `min_length=1` and then
+# stored as "" once `.strip()` was applied at the call site. See
+# docs/tickets.md TICKET-47.
+NonBlankName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+
+
+class ParticipantNameMismatchError(Exception):
+    """Raised when a submitted name doesn't match the participant already
+    on file for the given contact number/email.
+
+    See docs/tickets.md TICKET-42: matching purely by contact_number/email
+    and silently returning whatever participant was found let anyone who
+    knew (or guessed) someone else's phone number get attached to that
+    person's existing record under a different name, with no error and no
+    warning — an account-takeover vector. Requiring the typed name to match
+    (case/whitespace-insensitively) before reusing a match, and erroring
+    otherwise, closes that off without requiring a full auth system.
+    """
+
+    def __init__(self, existing_name: str) -> None:
+        self.existing_name = existing_name
+        super().__init__(
+            "This contact number or email is already registered under a different "
+            "name. If this is you, sign in with that name instead."
+        )
 
 
 class WhatsAppConfigOut(BaseModel):
@@ -38,14 +66,14 @@ def whatsapp_config() -> WhatsAppConfigOut:
 
 
 class PublicRsvpIn(BaseModel):
-    name: str = Field(min_length=1)
+    name: NonBlankName
     contact_number: str | None = None
     email: str | None = None
     rsvp_status: bool = True
 
 
 class PublicSignupIn(BaseModel):
-    name: str = Field(min_length=1)
+    name: NonBlankName
     contact_number: str | None = None
     email: str | None = None
 
@@ -88,6 +116,8 @@ def _find_or_create_participant(
             "SELECT * FROM participants WHERE email = ? COLLATE NOCASE", (email,)
         ).fetchone()
     if row is not None:
+        if row["name"].strip().casefold() != name.strip().casefold():
+            raise ParticipantNameMismatchError(row["name"])
         return row
 
     try:
@@ -129,9 +159,12 @@ def public_signup(body: PublicSignupIn, request: Request) -> PublicSignupOut:
     connection = connect(request.app.state.database_path)
     try:
         with connection:
-            participant = _find_or_create_participant(
-                connection, body.name.strip(), contact_number, body.email
-            )
+            try:
+                participant = _find_or_create_participant(
+                    connection, body.name, contact_number, body.email
+                )
+            except ParticipantNameMismatchError as error:
+                raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
         return PublicSignupOut(
             participant_id=participant["id"],
             participant_name=participant["name"],
@@ -173,9 +206,12 @@ def public_rsvp(event_id: int, body: PublicRsvpIn, request: Request) -> PublicRs
             )
 
         with connection:
-            participant = _find_or_create_participant(
-                connection, body.name.strip(), contact_number, body.email
-            )
+            try:
+                participant = _find_or_create_participant(
+                    connection, body.name, contact_number, body.email
+                )
+            except ParticipantNameMismatchError as error:
+                raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
             existing = connection.execute(
                 "SELECT id FROM participations WHERE event_id = ? AND participant_id = ?",
                 (event_id, participant["id"]),

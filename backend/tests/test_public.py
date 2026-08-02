@@ -77,17 +77,15 @@ class PublicRsvpEndpointTest(unittest.TestCase):
         ).json()
         second = self.client.post(
             f"/api/v1/public/events/{second_event_id}/rsvp",
-            json={"name": "Alice again", "contact_number": "+6591234567"},
+            json={"name": "alice", "contact_number": "+6591234567"},
         ).json()
 
         self.assertEqual(first["participant_id"], second["participant_id"])
 
-    def test_rsvp_returns_the_matched_participants_canonical_name_not_the_submitted_one(
-        self,
-    ) -> None:
-        # TICKET-12: reusing an existing participant by contact number must
-        # not let a differently-typed name on the second RSVP silently
-        # relabel who the frontend thinks it's talking to.
+    def test_rsvp_rejects_a_different_name_for_an_existing_contact_number(self) -> None:
+        # TICKET-42: matching purely by contact_number and silently
+        # attaching a differently-typed name to the existing participant is
+        # an account-takeover vector — this must now error instead.
         first_event_id = self.insert_template_and_event(name="First event")
         second_event_id = self.insert_template_and_event(name="Second event")
 
@@ -95,12 +93,26 @@ class PublicRsvpEndpointTest(unittest.TestCase):
             f"/api/v1/public/events/{first_event_id}/rsvp",
             json={"name": "Alice", "contact_number": "+6591234567"},
         )
-        second = self.client.post(
+        response = self.client.post(
             f"/api/v1/public/events/{second_event_id}/rsvp",
             json={"name": "Someone Else Entirely", "contact_number": "+6591234567"},
-        ).json()
+        )
 
-        self.assertEqual(second["participant_name"], "Alice")
+        self.assertEqual(response.status_code, 409)
+        # The existing participant must not have been touched or exposed.
+        self.assertNotIn("Someone Else Entirely", response.text)
+
+    def test_signup_rejects_a_different_name_for_an_existing_email(self) -> None:
+        self.client.post(
+            "/api/v1/public/signup",
+            json={"name": "Alice", "email": "alice@example.com"},
+        )
+        response = self.client.post(
+            "/api/v1/public/signup",
+            json={"name": "Mallory", "email": "alice@example.com"},
+        )
+
+        self.assertEqual(response.status_code, 409)
 
     def test_rsvp_returns_canonical_contact_number_even_when_typed_differently(self) -> None:
         first_event_id = self.insert_template_and_event(name="First event")
@@ -112,7 +124,7 @@ class PublicRsvpEndpointTest(unittest.TestCase):
         )
         second = self.client.post(
             f"/api/v1/public/events/{second_event_id}/rsvp",
-            json={"name": "Alice again", "contact_number": "+65 9123-4567"},
+            json={"name": "Alice", "contact_number": "+65 9123-4567"},
         ).json()
 
         self.assertEqual(second["participant_contact_number"], "+6591234567")
@@ -127,7 +139,7 @@ class PublicRsvpEndpointTest(unittest.TestCase):
         ).json()
         second = self.client.post(
             f"/api/v1/public/events/{second_event_id}/rsvp",
-            json={"name": "Alice again", "contact_number": "+65 9123-4567"},
+            json={"name": "Alice", "contact_number": "+65 9123-4567"},
         ).json()
 
         self.assertEqual(first["participant_id"], second["participant_id"])
@@ -195,6 +207,37 @@ class PublicRsvpEndpointTest(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 404)
+
+    def test_rsvp_rejects_a_whitespace_only_name(self) -> None:
+        # TICKET-47: min_length=1 previously ran before `.strip()`, so a
+        # single-space name passed validation and was stored as "".
+        event_id = self.insert_template_and_event()
+
+        response = self.client.post(
+            f"/api/v1/public/events/{event_id}/rsvp",
+            json={"name": "   ", "contact_number": "+6591234567"},
+        )
+
+        self.assertEqual(response.status_code, 422)
+
+    def test_signup_rejects_a_whitespace_only_name(self) -> None:
+        response = self.client.post(
+            "/api/v1/public/signup",
+            json={"name": "  ", "contact_number": "+6591234567"},
+        )
+
+        self.assertEqual(response.status_code, 422)
+
+    def test_rsvp_strips_surrounding_whitespace_from_a_valid_name(self) -> None:
+        event_id = self.insert_template_and_event()
+
+        response = self.client.post(
+            f"/api/v1/public/events/{event_id}/rsvp",
+            json={"name": "  Alice  ", "contact_number": "+6591234567"},
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json()["participant_name"], "Alice")
 
 
 if __name__ == "__main__":

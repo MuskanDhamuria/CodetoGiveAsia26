@@ -4053,6 +4053,22 @@ button {
 .landing-role-primary { background: var(--button-bg); border-color: var(--button-bg); color: white; }
 .landing-role-primary:hover { background: #252525; border-color: #252525; color: white; }
 .landing-role-primary small { color: rgba(255, 255, 255, 0.7); }
+.admin-login-page { align-items: center; display: flex; justify-content: center; min-height: 100vh; overflow: hidden; padding: 24px; position: relative; }
+.admin-login-page button { cursor: pointer; font: inherit; }
+.admin-login-page { background: #f1f3ef; color: #172019; font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
+.admin-login-card { background: #fff; border: 1px solid #dfe5dd; border-radius: 24px; box-shadow: 0 24px 80px rgba(24, 49, 31, .12); display: grid; gap: 22px; max-width: 430px; padding: 46px; width: 100%; }
+.admin-login-heading { text-align: center; }
+.admin-login-heading p { color: #316343; font-size: 12px; font-weight: 800; letter-spacing: .16em; margin: 0 0 18px; text-transform: uppercase; }
+.admin-login-heading h1 { color: inherit; font-size: clamp(27px, 4vw, 36px); font-weight: 650; letter-spacing: -.05em; line-height: 1.05; margin: 0; }
+.admin-login-form { display: grid; gap: 16px; }
+.admin-login-form label { display: grid; gap: 7px; font-size: 13px; font-weight: 750; }
+.admin-login-form input { background: #fbfcfa; border: 1px solid #cad5cb; border-radius: 10px; color: inherit; font: inherit; padding: 13px 14px; outline: none; }
+.admin-login-form input:focus { border-color: #316343; box-shadow: 0 0 0 3px rgba(49, 99, 67, .14); }
+.admin-login-submit, .admin-login-home { border: 0; border-radius: 10px; padding: 13px 14px; }
+.admin-login-submit { background: #183e28; color: #fff; font-weight: 800; margin-top: 4px; }
+.admin-login-home { background: transparent; color: #58705c; font-size: 13px; justify-self: center; padding: 5px 8px; text-decoration: underline; text-underline-offset: 3px; }
+.admin-login-error { color: #a33a32; font-size: 13px; margin: 0; }
+@media (max-width: 680px) { .admin-login-card { padding: 32px 24px; } }
 @media (max-width: 720px) {
   .landing-actions { grid-template-columns: 1fr; }
   .landing-role { min-height: 76px; }

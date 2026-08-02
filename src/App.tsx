@@ -17,6 +17,7 @@ import PublicEventsPortal from "./PublicEventsPortal";
 import VolunteerRegister from "./VolunteerRegister";
 import VolunteerLogin from "./VolunteerLogin";
 import VolunteerDashboard from "./VolunteerDashboard";
+import { isAdminAuthenticated, loginAdmin, logoutAdmin } from "./admin-auth";
 
 export type Page =
   | "home"
@@ -464,9 +465,11 @@ const copilotSuggestions: Record<
 function Navbar({
   activePage,
   onNavigate,
+  onSignOut,
 }: {
   activePage: Page;
   onNavigate: (page: Page) => void;
+  onSignOut: () => void;
 }) {
   return (
     <nav className="navbar" aria-label="Primary navigation">
@@ -490,6 +493,7 @@ function Navbar({
               {link.label}
             </button>
           ))}
+          <button type="button" onClick={onSignOut}>Sign out</button>
         </div>
       </div>
     </nav>
@@ -545,7 +549,7 @@ const landingRoles = [
   {
     label: "Admin",
     description: "Plan events, coordinate teams and measure impact.",
-    route: "/admin",
+    route: "/admin/login",
   },
   {
     label: "Participants",
@@ -2048,6 +2052,11 @@ function AdminPanel() {
     if (page !== "volunteers") setOpenVolunteerIndex(null);
   }
 
+  function signOut() {
+    logoutAdmin();
+    routerNavigate("/", { replace: true });
+  }
+
   function navigateToSignup(eventId?: number) {
     const search = new URLSearchParams();
     if (eventId !== undefined) search.set("event", String(eventId));
@@ -2116,6 +2125,7 @@ function AdminPanel() {
       <Navbar
         activePage={activePage}
         onNavigate={navigate}
+        onSignOut={signOut}
       />
       {activePage === "home" && <LandingPage />}
       {activePage !== "home" && (
@@ -2156,13 +2166,86 @@ function AdminPanel() {
   );
 }
 
+function AdminLoginFields({
+  username,
+  password,
+  error,
+  setUsername,
+  setPassword,
+  onSubmit,
+}: {
+  username: string;
+  password: string;
+  error: string;
+  setUsername: (value: string) => void;
+  setPassword: (value: string) => void;
+  onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
+}) {
+  return (
+    <form className="admin-login-form" onSubmit={onSubmit}>
+      <label>
+        Username
+        <input autoComplete="username" value={username} onChange={(event) => setUsername(event.target.value)} required />
+      </label>
+      <label>
+        Password
+        <input autoComplete="current-password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} required />
+      </label>
+      {error && <p className="admin-login-error" role="alert">{error}</p>}
+      <button className="admin-login-submit" type="submit">Sign in</button>
+    </form>
+  );
+}
+
+function AdminLoginPage() {
+  const routerNavigate = useNavigate();
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+
+  if (isAdminAuthenticated()) {
+    return <Navigate to="/admin" replace />;
+  }
+
+  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (loginAdmin(username, password)) {
+      routerNavigate("/admin", { replace: true });
+      return;
+    }
+    setError("Invalid username or password.");
+  }
+
+  return (
+    <main className="admin-login-page">
+      <section className="admin-login-card">
+        <header className="admin-login-heading">
+          <p>Passion to Serve</p>
+          <h1>Welcome back admin!</h1>
+        </header>
+        <AdminLoginFields username={username} password={password} error={error} setUsername={setUsername} setPassword={setPassword} onSubmit={handleSubmit} />
+        <button className="admin-login-home" type="button" onClick={() => routerNavigate("/")}>Back to home</button>
+      </section>
+    </main>
+  );
+}
+
+function RequireAdminAuth() {
+  if (!isAdminAuthenticated()) {
+    return <Navigate to="/" replace />;
+  }
+
+  return <AdminPanel />;
+}
+
 export default function App() {
   return (
     <Routes>
       <Route path="/participant/*" element={<ParticipantApp />} />
       <Route path="/" element={<LandingPage />} />
-      <Route path="/admin" element={<AdminPanel />} />
-      <Route path="/admin/*" element={<AdminPanel />} />
+      <Route path="/admin/login" element={<AdminLoginPage />} />
+      <Route path="/admin" element={<RequireAdminAuth />} />
+      <Route path="/admin/*" element={<RequireAdminAuth />} />
       <Route path="/community" element={<AdminPanel />} />
       <Route path="/signup" element={<AdminPanel />} />
       <Route path="/volunteer-register" element={<AdminPanel />} />

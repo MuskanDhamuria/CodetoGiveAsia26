@@ -11,7 +11,7 @@ from __future__ import annotations
 import sqlite3
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 
 from backend.api.routes._common import (
     Connection,
@@ -19,7 +19,9 @@ from backend.api.routes._common import (
     as_bool,
     list_envelope,
 )
+from backend.phone import InvalidPhoneNumberError, normalize_phone_number
 from backend.schema.volunteers import (
+    EventRoleCreate,
     PublicSignupInput,
     PublicSignupResult,
     RoleInterestOut,
@@ -76,7 +78,17 @@ def signup_row(db: sqlite3.Connection, event_id: int, signup_id: int) -> sqlite3
     return row
 
 
-def signup_to_model(row: sqlite3.Row) -> SignupOut:
+def signup_to_model(db: sqlite3.Connection, row: sqlite3.Row) -> SignupOut:
+    preferred_roles = db.execute(
+        """
+        SELECT r.name
+        FROM volunteer_signup_role_preferences preference
+        JOIN roles r ON r.id = preference.role_id
+        WHERE preference.signup_id = ?
+        ORDER BY COALESCE(preference.priority, 2147483647), r.name
+        """,
+        (row["id"],),
+    ).fetchall()
     return SignupOut(
         id=row["id"],
         event_id=row["event_id"],
@@ -85,6 +97,7 @@ def signup_to_model(row: sqlite3.Row) -> SignupOut:
         status=row["status"],
         assigned_role_id=row["assigned_role_id"],
         assigned_role_name=row["assigned_role_name"],
+        preferred_role_names=[role["name"] for role in preferred_roles],
         is_leader=bool(row["is_leader"]),
         attendance=as_bool(row["attendance"]),
     )
@@ -218,6 +231,18 @@ def get_volunteer(volunteer_id: int, db: Connection) -> VolunteerDetail:
     )
 
 
+@router.delete(
+    "/volunteers/{volunteer_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Permanently remove a volunteer and their related records",
+)
+def delete_volunteer(volunteer_id: int, db: Connection) -> Response:
+    require_volunteer(db, volunteer_id)
+    db.execute("DELETE FROM volunteers WHERE id = ?", (volunteer_id,))
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.get(
     "/volunteers/{volunteer_id}/events",
     summary="Get a volunteer's signup, role, and attendance history",
@@ -266,6 +291,19 @@ def get_volunteer_events(
             status=row["status"],
             assigned_role_id=row["assigned_role_id"],
             assigned_role_name=row["assigned_role_name"],
+            preferred_role_names=[
+                preference["name"]
+                for preference in db.execute(
+                    """
+                    SELECT roles.name
+                    FROM volunteer_signup_role_preferences AS preferences
+                    JOIN roles ON roles.id = preferences.role_id
+                    WHERE preferences.signup_id = ?
+                    ORDER BY COALESCE(preferences.priority, 2147483647), roles.name
+                    """,
+                    (row["signup_id"],),
+                ).fetchall()
+            ],
             is_leader=bool(row["is_leader"]),
             attendance=as_bool(row["attendance"]),
         )
@@ -287,10 +325,9 @@ def list_event_roles(event_id: int, db: Connection) -> list[RoleOut]:
     rows = db.execute(
         """
         SELECT r.id, r.name, r.category, r.is_required
-        FROM template_roles tr
-        JOIN events e ON e.event_template_id = tr.event_template_id
-        JOIN roles r ON r.id = tr.role_id
-        WHERE e.id = ?
+        FROM event_roles er
+        JOIN roles r ON r.id = er.role_id
+        WHERE er.event_id = ?
         ORDER BY r.name
         """,
         (event_id,),
@@ -304,6 +341,103 @@ def list_event_roles(event_id: int, db: Connection) -> list[RoleOut]:
         )
         for row in rows
     ]
+
+
+@router.post(
+    "/events/{event_id}/roles",
+    response_model=RoleOut,
+    status_code=status.HTTP_201_CREATED,
+    summary="Add a volunteer role to one event",
+)
+def create_event_role(
+    event_id: int, payload: EventRoleCreate, db: Connection
+) -> RoleOut:
+    require_event(db, event_id)
+    role_name = payload.name.strip()
+    if not role_name:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Role name cannot be blank",
+        )
+    with db:
+        db.execute(
+            """
+            INSERT OR IGNORE INTO roles (name, category, is_required)
+            VALUES (?, 'volunteer', 0)
+            """,
+            (role_name,),
+        )
+        role = db.execute(
+            """
+            SELECT id, name, category, is_required FROM roles
+            WHERE name = ? COLLATE NOCASE AND category = 'volunteer'
+            """,
+            (role_name,),
+        ).fetchone()
+        exists = db.execute(
+            "SELECT 1 FROM event_roles WHERE event_id = ? AND role_id = ?",
+            (event_id, role["id"]),
+        ).fetchone()
+        if exists is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"{role['name']} is already available for this event",
+            )
+        db.execute(
+            "INSERT INTO event_roles (event_id, role_id) VALUES (?, ?)",
+            (event_id, role["id"]),
+        )
+    return RoleOut(
+        id=role["id"],
+        name=role["name"],
+        category=role["category"],
+        is_required=bool(role["is_required"]),
+    )
+
+
+@router.delete(
+    "/events/{event_id}/roles/{role_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Remove a volunteer role from one event",
+)
+def delete_event_role(
+    event_id: int, role_id: int, db: Connection
+) -> Response:
+    require_event(db, event_id)
+    role = db.execute(
+        """
+        SELECT r.name FROM event_roles er
+        JOIN roles r ON r.id = er.role_id
+        WHERE er.event_id = ? AND er.role_id = ?
+        """,
+        (event_id, role_id),
+    ).fetchone()
+    if role is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Role {role_id} is not available for event {event_id}",
+        )
+    assigned_count = db.execute(
+        """
+        SELECT COUNT(*) FROM volunteer_signups
+        WHERE event_id = ? AND assigned_role_id = ? AND status != 'rejected'
+        """,
+        (event_id, role_id),
+    ).fetchone()[0]
+    if assigned_count:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"Reassign {assigned_count} volunteer"
+                f"{'s' if assigned_count != 1 else ''} before removing {role['name']}"
+            ),
+        )
+    with db:
+        db.execute(
+            "DELETE FROM event_roles WHERE event_id = ? AND role_id = ?",
+            (event_id, role_id),
+        )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get(
@@ -358,7 +492,7 @@ def list_event_signups(
         """,
         [*params, pagination.limit, pagination.offset],
     ).fetchall()
-    items = [signup_to_model(row) for row in rows]
+    items = [signup_to_model(db, row) for row in rows]
     return list_envelope(items, total, pagination)
 
 
@@ -442,7 +576,7 @@ def list_signups_across_events(
     summary="Get one volunteer signup",
 )
 def get_event_signup(event_id: int, signup_id: int, db: Connection) -> SignupOut:
-    return signup_to_model(signup_row(db, event_id, signup_id))
+    return signup_to_model(db, signup_row(db, event_id, signup_id))
 
 
 @router.patch(
@@ -459,23 +593,24 @@ def update_event_signup(
     if payload.status is not None:
         updates.append("status = ?")
         params.append(payload.status)
-    if payload.assigned_role_id is not None:
-        _require_role_for_event(db, event_id, payload.assigned_role_id)
+    if "assigned_role_id" in payload.model_fields_set:
+        if payload.assigned_role_id is not None:
+            _require_role_for_event(db, event_id, payload.assigned_role_id)
         updates.append("assigned_role_id = ?")
         params.append(payload.assigned_role_id)
     if payload.is_leader is not None:
         updates.append("is_leader = ?")
         params.append(1 if payload.is_leader else 0)
-    if payload.attendance is not None:
+    if "attendance" in payload.model_fields_set:
         updates.append("attendance = ?")
-        params.append(1 if payload.attendance else 0)
+        params.append(None if payload.attendance is None else (1 if payload.attendance else 0))
     if updates:
         params.append(signup_id)
         db.execute(
             f"UPDATE volunteer_signups SET {', '.join(updates)} WHERE id = ?", params
         )
         db.commit()
-    return signup_to_model(signup_row(db, event_id, signup_id))
+    return signup_to_model(db, signup_row(db, event_id, signup_id))
 
 
 @router.post(
@@ -497,7 +632,7 @@ def approve_event_signup(
         (payload.assigned_role_id, 1 if payload.is_leader else 0, signup_id),
     )
     db.commit()
-    return signup_to_model(signup_row(db, event_id, signup_id))
+    return signup_to_model(db, signup_row(db, event_id, signup_id))
 
 
 @router.post(
@@ -516,7 +651,7 @@ def reject_event_signup(event_id: int, signup_id: int, db: Connection) -> Signup
         (signup_id,),
     )
     db.commit()
-    return signup_to_model(signup_row(db, event_id, signup_id))
+    return signup_to_model(db, signup_row(db, event_id, signup_id))
 
 
 def _require_role_for_event(
@@ -524,9 +659,8 @@ def _require_role_for_event(
 ) -> None:
     row = db.execute(
         """
-        SELECT 1 FROM template_roles tr
-        JOIN events e ON e.event_template_id = tr.event_template_id
-        WHERE e.id = ? AND tr.role_id = ?
+        SELECT 1 FROM event_roles
+        WHERE event_id = ? AND role_id = ?
         """,
         (event_id, role_id),
     ).fetchone()
@@ -551,12 +685,16 @@ def public_signup(
     require_event(db, event_id)
 
     name = payload.name.strip()
-    phone = payload.contact_number.strip()
+    try:
+        phone = normalize_phone_number(payload.contact_number)
+    except InvalidPhoneNumberError as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Enter a valid phone number.",
+        ) from error
     email = payload.email.strip() if payload.email else None
     if not name:
         raise HTTPException(status_code=400, detail="Enter your name.")
-    if not phone:
-        raise HTTPException(status_code=400, detail="Enter your phone number.")
 
     # Validate chosen roles belong to the event before mutating anything.
     for role_id in payload.role_ids:
@@ -615,6 +753,6 @@ def public_signup(
     db.commit()
 
     return PublicSignupResult(
-        signup=signup_to_model(signup_row(db, event_id, signup_id)),
+        signup=signup_to_model(db, signup_row(db, event_id, signup_id)),
         volunteer_created=volunteer_created,
     )

@@ -19,6 +19,7 @@ from backend.api.routes._common import Connection
 from backend.attendance_qr import VOLUNTEER_KIND, generate_token
 from backend.bot.commands import get_or_create_contact
 from backend.integrations.whatsapp_client import get_client
+from backend.phone import InvalidPhoneNumberError, normalize_phone_number
 from backend.schema.volunteer_auth import (
     VolunteerAccountOut,
     VolunteerDashboardEvent,
@@ -84,6 +85,7 @@ def issue_and_send_otp(db: sqlite3.Connection, account_id: int, phone: str) -> N
             language_code=os.environ.get("WHATSAPP_OTP_TEMPLATE_LANG", "en_US"),
             body_params=[code],
             button_param=code,
+            button_sub_type=os.environ.get("WHATSAPP_OTP_TEMPLATE_BUTTON_TYPE", "url"),
         )
     except Exception:
         # Registration/resend already succeeded and committed above; a failed
@@ -91,8 +93,14 @@ def issue_and_send_otp(db: sqlite3.Connection, account_id: int, phone: str) -> N
         logger.exception("Failed to send OTP WhatsApp template to %s", phone)
 
 
-def normalise_phone(value: str) -> str:
-    return "+" + "".join(character for character in value if character.isdigit())
+def normalized_phone(value: str) -> str:
+    try:
+        return normalize_phone_number(value)
+    except InvalidPhoneNumberError as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Enter a valid phone number",
+        ) from error
 
 
 def validate_password(password: str) -> None:
@@ -204,9 +212,7 @@ def current_account(
 @router.post("/register", response_model=VolunteerAuthResult, status_code=201)
 def register(payload: VolunteerRegister, db: Connection) -> VolunteerAuthResult:
     validate_password(payload.password)
-    phone = normalise_phone(payload.contact_number)
-    if len(phone) < 7:
-        raise HTTPException(status_code=422, detail="Enter a valid phone number")
+    phone = normalized_phone(payload.contact_number)
 
     existing_account = find_account_by_phone(db, phone)
     if existing_account is not None:
@@ -264,7 +270,7 @@ def register(payload: VolunteerRegister, db: Connection) -> VolunteerAuthResult:
 
 @router.post("/login", response_model=VolunteerAuthResult)
 def login(payload: VolunteerLogin, db: Connection) -> VolunteerAuthResult:
-    phone = normalise_phone(payload.contact_number)
+    phone = normalized_phone(payload.contact_number)
     account = find_account_by_phone(db, phone)
     if account is None or not verify_password(payload.password, account["password_hash"]):
         raise HTTPException(status_code=401, detail="Phone number or password is incorrect")

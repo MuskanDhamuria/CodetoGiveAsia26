@@ -12,6 +12,6 @@ ALTER TABLE volunteer_accounts ADD COLUMN otp_expires_at TEXT;
 ALTER TABLE volunteer_accounts ADD COLUMN otp_attempts INTEGER NOT NULL DEFAULT 0;
 
 INSERT OR IGNORE INTO schema_migrations (version, name)
-VALUES (12, '012_volunteer_otp.sql');
+VALUES (18, '018_volunteer_otp.sql');
 
 COMMIT;

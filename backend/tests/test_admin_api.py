@@ -101,6 +101,72 @@ class AdminApiTest(unittest.TestCase):
         self.assertEqual(closed.status_code, 200)
         self.assertEqual(closed.json()["status"], "closed")
 
+    def test_organizer_schedules_and_assigns_subtasks_and_logs_effort(self) -> None:
+        event = self.create_event()
+        event_id = event["id"]
+        task_id = event["tasks"][0]["id"]
+        member = self.client.post(
+            "/api/v1/team-members",
+            json={"name": "Aisha Rahman", "email": "aisha@example.org"},
+        ).json()
+
+        scheduled = self.client.post(
+            f"/api/v1/events/{event_id}/tasks/{task_id}/subtasks",
+            json={
+                "title": "Morning collection shift",
+                "scheduled_start": "2026-08-09T09:00:00",
+                "scheduled_end": "2026-08-09T11:00:00",
+                "assignees": [
+                    {"person_type": "team_member", "person_id": member["id"]}
+                ],
+            },
+        )
+        self.assertEqual(scheduled.status_code, 201)
+        self.assertEqual(scheduled.json()["assignees"][0]["name"], "Aisha Rahman")
+        self.assertEqual(scheduled.json()["scheduled_end"], "2026-08-09T11:00:00")
+
+        effort = self.client.post(
+            f"/api/v1/events/{event_id}/tasks/{task_id}/subtasks",
+            json={
+                "title": "Contact food vendors",
+                "estimated_minutes": 180,
+                "assignees": [
+                    {"person_type": "team_member", "person_id": member["id"]}
+                ],
+            },
+        ).json()
+        logged = self.client.post(
+            f"/api/v1/events/{event_id}/tasks/{task_id}/subtasks/{effort['id']}/time-logs",
+            json={
+                "person_type": "team_member",
+                "person_id": member["id"],
+                "minutes_spent": 75,
+                "notes": "Called three vendors",
+            },
+        )
+        self.assertEqual(logged.status_code, 201)
+        self.assertEqual(logged.json()["minutes_spent"], 75)
+
+        detail = self.client.get(f"/api/v1/events/{event_id}").json()
+        saved_effort = next(
+            item for item in detail["tasks"][0]["subtasks"] if item["id"] == effort["id"]
+        )
+        self.assertEqual(saved_effort["estimated_minutes"], 180)
+        self.assertEqual(saved_effort["time_logs"][0]["notes"], "Called three vendors")
+
+    def test_scheduled_subtask_rejects_an_invalid_time_range(self) -> None:
+        event = self.create_event()
+        response = self.client.post(
+            f"/api/v1/events/{event['id']}/tasks/{event['tasks'][0]['id']}/subtasks",
+            json={
+                "title": "Invalid shift",
+                "scheduled_start": "2026-08-09T11:00:00",
+                "scheduled_end": "2026-08-09T09:00:00",
+            },
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("after", response.json()["detail"])
+
     def test_organizer_cancels_an_event_distinctly_from_closing_it(self) -> None:
         event = self.create_event()
         event_id = event["id"]

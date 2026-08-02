@@ -96,6 +96,7 @@ class WhatsAppClient:
         language_code: str,
         body_params: list[str] | None = None,
         button_param: str | None = None,
+        button_sub_type: str = "url",
     ) -> SentMessage:
         """Send an approved Meta template message (e.g. an OTP code).
 
@@ -104,9 +105,14 @@ class WhatsAppClient:
         used for OTP delivery right after someone registers on the website
         (they haven't necessarily messaged the bot first).
 
-        ``button_param`` fills a "copy code" button component at index 0,
-        which is how Meta's authentication-category templates are normally
-        set up. Pass ``None`` if the template has no button component.
+        ``button_param`` fills a button component at index 0. Pass ``None``
+        if the template has no button component. ``button_sub_type`` must
+        match how the button was actually configured in Meta's template
+        editor — despite the editor showing it as a "Copy code" button, the
+        Cloud API has been observed to reject anything but ``"url"`` for
+        some authentication templates (error 132018, "Button at index 0 must
+        be of type Url"); Meta's UI label doesn't reliably predict which sub
+        type the API expects, so this is configurable rather than hardcoded.
         """
 
         try:
@@ -129,7 +135,7 @@ class WhatsAppClient:
             components.append(
                 {
                     "type": "button",
-                    "sub_type": "copy_code",
+                    "sub_type": button_sub_type,
                     "index": "0",
                     "parameters": [{"type": "text", "text": button_param}],
                 }
@@ -196,8 +202,12 @@ class LoggingWhatsAppClient:
         language_code: str,
         body_params: list[str] | None = None,
         button_param: str | None = None,
+        button_sub_type: str = "url",
     ) -> SentMessage:
-        body = f"[template:{template_name}:{language_code}] params={body_params} button={button_param}"
+        body = (
+            f"[template:{template_name}:{language_code}] params={body_params} "
+            f"button={button_param} button_sub_type={button_sub_type}"
+        )
         logger.info("WhatsApp (not configured, not sent) -> %s: %s", to, body)
         message = SentMessage(to=to, body=body, wa_message_id=None)
         self.sent.append(message)

@@ -110,6 +110,13 @@ class WhatsAppBotTest(unittest.TestCase):
             "INSERT INTO template_roles (event_template_id, role_id) VALUES (?, ?)",
             (event_template_id, role_id),
         )
+        connection.execute(
+            """
+            INSERT INTO event_roles (event_id, role_id)
+            SELECT id, ? FROM events WHERE event_template_id = ?
+            """,
+            (role_id, event_template_id),
+        )
         connection.commit()
         connection.close()
         return role_id
@@ -399,7 +406,7 @@ class WhatsAppBotTest(unittest.TestCase):
     def test_volunteer_signup_and_confirm_after_admin_approval(self) -> None:
         event = self.create_event()
         role_id = self.add_role_to_event_template(event["event_template_id"])
-        volunteer_phone = "6580000005"
+        volunteer_phone = "6581230005"
         admin_phone = "6580000006"
         self.make_team_member_contact(admin_phone)
         self.register_volunteer(volunteer_phone, "Jamie Tan")
@@ -451,7 +458,7 @@ class WhatsAppBotTest(unittest.TestCase):
     def test_returning_volunteer_signs_up_immediately(self) -> None:
         first_event = self.create_event()
         second_event = self.create_event()
-        phone = "6580000032"
+        phone = "6581230032"
         self.register_volunteer(phone, "Noor")
 
         first_response = self.send_message(phone, f"VOLUNTEER SIGNUP {first_event['id']}")
@@ -469,7 +476,7 @@ class WhatsAppBotTest(unittest.TestCase):
         # ids back to the admin.
         event = self.create_event()
         role_id = self.add_role_to_event_template(event["event_template_id"])
-        volunteer_phone = "6580000020"
+        volunteer_phone = "6581230020"
         admin_phone = "6580000021"
         self.make_team_member_contact(admin_phone)
         self.register_volunteer(volunteer_phone, "Farah Hassan")
@@ -552,14 +559,14 @@ class WhatsAppBotTest(unittest.TestCase):
             "/api/v1/volunteer-auth/register",
             json={
                 "name": "Wei Ling Tan",
-                "contact_number": "+65 8000 0038",
+                "contact_number": "+65 8123 0038",
                 "password": "Str0ngPass!",
             },
         )
         self.assertEqual(register_response.status_code, 201)
 
         event = self.create_event()
-        response = self.send_message("6580000038", f"VOLUNTEER SIGNUP {event['id']}")
+        response = self.send_message("6581230038", f"VOLUNTEER SIGNUP {event['id']}")
         self.assertEqual(response.status_code, 200)
         # Already linked, so this should confirm immediately rather than
         # asking "What name should we register...".
@@ -568,7 +575,7 @@ class WhatsAppBotTest(unittest.TestCase):
     def test_reminder_endpoint_notifies_approved_volunteers(self) -> None:
         event = self.create_event()
         role_id = self.add_role_to_event_template(event["event_template_id"])
-        volunteer_phone = "6580000011"
+        volunteer_phone = "6581230011"
         admin_phone = "6580000012"
         self.make_team_member_contact(admin_phone)
         self.register_volunteer(volunteer_phone, "Test Volunteer")

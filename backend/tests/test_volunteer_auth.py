@@ -29,7 +29,9 @@ class FakeWhatsAppClient:
         self.texts.append((to, body))
         return FakeSentMessage(to, body)
 
-    def send_template(self, to, template_name, language_code, body_params=None, button_param=None):
+    def send_template(
+        self, to, template_name, language_code, body_params=None, button_param=None, button_sub_type="url"
+    ):
         self.templates.append(
             {
                 "to": to,
@@ -37,6 +39,7 @@ class FakeWhatsAppClient:
                 "language_code": language_code,
                 "body_params": body_params or [],
                 "button_param": button_param,
+                "button_sub_type": button_sub_type,
             }
         )
         return FakeSentMessage(to, f"[template:{template_name}]")
@@ -63,7 +66,7 @@ class VolunteerOtpTest(unittest.TestCase):
     # ----------------------------------------------------------------- #
     # Helpers
     # ----------------------------------------------------------------- #
-    def register(self, phone: str = "+6580009001", name: str = "Priya Kumar") -> dict:
+    def register(self, phone: str = "+6581239001", name: str = "Priya Kumar") -> dict:
         response = self.client.post(
             "/api/v1/volunteer-auth/register",
             json={"name": name, "contact_number": phone, "password": "Str0ngPass!"},
@@ -120,7 +123,7 @@ class VolunteerOtpTest(unittest.TestCase):
 
         self.assertEqual(len(self.fake_whatsapp.texts), 1)
         to, body = self.fake_whatsapp.texts[0]
-        self.assertEqual(to, "+6580009001")
+        self.assertEqual(to, "+6581239001")
         self.assertIn("Welcome", body)
 
     def test_verify_otp_is_idempotent_once_already_verified(self) -> None:
@@ -228,7 +231,7 @@ class VolunteerOtpTest(unittest.TestCase):
 
         login_response = self.client.post(
             "/api/v1/volunteer-auth/login",
-            json={"contact_number": "+6580009001", "password": "Str0ngPass!"},
+            json={"contact_number": "+6581239001", "password": "Str0ngPass!"},
         )
         self.assertEqual(login_response.status_code, 200)
         self.assertTrue(login_response.json()["volunteer"]["phone_verified"])

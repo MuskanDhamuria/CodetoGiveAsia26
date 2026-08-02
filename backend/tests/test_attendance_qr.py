@@ -59,7 +59,7 @@ class AttendanceQrEndpointTest(unittest.TestCase):
             },
         ).json()
 
-    def register_and_login_volunteer(self, event_id: int, phone: str = "+6580005002") -> tuple[str, int]:
+    def register_and_login_volunteer(self, event_id: int, phone: str = "+6581235002") -> tuple[str, int]:
         register = self.client.post(
             "/api/v1/volunteer-auth/register",
             json={"name": "Jamie", "contact_number": phone, "password": "Str0ngPass!"},

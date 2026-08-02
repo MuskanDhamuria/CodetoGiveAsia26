@@ -71,8 +71,16 @@ in development without a Meta Business account. To send real messages, set:
   `http://localhost:5173`).
 - `WHATSAPP_OTP_TEMPLATE_NAME` / `WHATSAPP_OTP_TEMPLATE_LANG` — the approved
   Meta template (and language code) used to deliver the phone-verification
-  code after someone registers on the website (default `otp` / `en_US`). See
-  `backend/api/routes/volunteer_auth.py` (`issue_and_send_otp`).
+  code after someone registers on the website (default `otp` / `en_US`). The
+  language code must match exactly what Meta shows on the template — plain
+  "English" is `en`, not `en_US` ("English (US)"); check your template's
+  language column in Meta Business Manager.
+- `WHATSAPP_OTP_TEMPLATE_BUTTON_TYPE` — the button component's `sub_type` in
+  the Cloud API request (default `url`). Meta's template editor may label
+  the button "Copy code" but still expect `url` here — if a send fails with
+  error 132018 ("Button at index 0 must be..."), the message tells you which
+  sub type to set. See `backend/api/routes/volunteer_auth.py`
+  (`issue_and_send_otp`).
 
 Webhook URL to register with Meta: `POST /api/v1/integrations/whatsapp/webhook`
 (and `GET` on the same path for the verification handshake).

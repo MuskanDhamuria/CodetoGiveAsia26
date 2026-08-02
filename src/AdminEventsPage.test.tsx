@@ -116,7 +116,7 @@ describe("API-backed organizer events", () => {
     expect(screen.getByLabelText("Checklist item 31")).toBeTruthy()
   })
 
-  it("opens a read-only Task preview when its card is clicked", async () => {
+  it("opens a Task directly in edit mode when its card is clicked", async () => {
     const event: EventDetail = {
       id: 4, event_template_id: null, name: "Wellness session", venue: "Hall",
       event_date: "2027-09-01", status: "open", is_cancelled: false, created_at: "", updated_at: "",
@@ -138,14 +138,11 @@ describe("API-backed organizer events", () => {
     await user.click(await screen.findByRole("button", { name: /Open event workspace/ }))
     await user.click(screen.getByText("Prepare room"))
 
-    expect(screen.getByText("Task preview")).toBeTruthy()
-    expect((screen.getByLabelText("Task name") as HTMLInputElement).readOnly).toBe(true)
-    expect((screen.getByLabelText("Complete Count chairs") as HTMLInputElement).disabled).toBe(true)
-    expect(screen.queryByRole("button", { name: "Save Task" })).toBeNull()
-    await user.click(screen.getByRole("button", { name: "Edit Task" }))
+    expect(screen.getByText("Task editor")).toBeTruthy()
     expect((screen.getByLabelText("Task name") as HTMLInputElement).readOnly).toBe(false)
     expect((screen.getByLabelText("Complete Count chairs") as HTMLInputElement).disabled).toBe(false)
     expect(screen.getByRole("button", { name: "Save Task" })).toBeTruthy()
+    expect(screen.queryByRole("button", { name: /assign people/i })).toBeNull()
   })
 
   it("edits Event details through the API", async () => {
@@ -172,7 +169,7 @@ describe("API-backed organizer events", () => {
     await user.type(venue, "Tampines Hub")
     await user.click(screen.getByRole("button", { name: "Save changes" }))
 
-    expect(updateEvent).toHaveBeenCalledWith(4, { name: "Community Wellness", venue: "Tampines Hub" })
+    expect(updateEvent).toHaveBeenCalledWith(4, { name: "Community Wellness", venue: "Tampines Hub", description: "", start_time: null, end_time: null })
     expect(await screen.findByRole("heading", { name: "Community Wellness" })).toBeTruthy()
   })
 
@@ -261,7 +258,7 @@ describe("API-backed organizer events", () => {
 
   it("creates, assigns, edits, checks, and deletes a Task", async () => {
     const event: EventDetail = { id: 4, event_template_id: null, name: "Wellness session", venue: "Hall", event_date: "2027-09-01", status: "open", is_cancelled: false, created_at: "", updated_at: "", tasks: [] }
-    const createdTask: EventDetail["tasks"][number] = { id: 20, team_member_id: 3, template_task_id: null, name: "Prepare room", body: "Set out chairs", due_at: "2027-08-30", category: "planning", status: "incomplete", position: 0, subtasks: [] }
+    const createdTask: EventDetail["tasks"][number] = { id: 20, team_member_id: 3, volunteer_id: null, template_task_id: null, name: "Prepare room", body: "Set out chairs", due_at: "2027-08-30", category: "planning", status: "incomplete", position: 0, subtasks: [] }
     const checklist = { id: 31, title: "Count chairs", position: 0, completed: false }
     const createEventTask = vi.fn().mockResolvedValue(createdTask)
     const updateEventTask = vi.fn().mockImplementation((_eventId, _taskId, changes) => Promise.resolve({ ...createdTask, ...changes }))
@@ -282,21 +279,21 @@ describe("API-backed organizer events", () => {
     await user.type(screen.getByLabelText("Task name"), "Prepare room")
     await user.type(screen.getByLabelText("Description"), "Set out chairs")
     fireEvent.change(screen.getByLabelText("Due date"), { target: { value: "2027-08-30" } })
-    await user.selectOptions(screen.getByLabelText("Assignee"), "3")
+    await user.click(screen.getByLabelText("Assign Aisha"))
     await user.click(screen.getByRole("button", { name: "Create Task" }))
-    expect(createEventTask).toHaveBeenCalledWith(4, { name: "Prepare room", body: "Set out chairs", due_at: "2027-08-30", category: "planning", team_member_id: 3 })
+    expect(createEventTask).toHaveBeenCalledWith(4, { name: "Prepare room", body: "Set out chairs", due_at: "2027-08-30", category: "planning", assignees: [{ person_type: "team_member", person_id: 3, is_lead: false }] })
 
     await user.type(await screen.findByLabelText("New checklist item"), "Count chairs")
-    await user.click(screen.getByRole("button", { name: "Add item" }))
-    expect(createEventSubtask).toHaveBeenCalledWith(4, 20, { title: "Count chairs" })
+    await user.click(screen.getByRole("button", { name: "Add effort subtask" }))
+    expect(createEventSubtask).toHaveBeenCalledWith(4, 20, { title: "Count chairs", scheduled_start: null, scheduled_end: null, estimated_minutes: null, assignees: [] })
     await user.click(await screen.findByLabelText("Complete Count chairs"))
     expect(updateEventSubtask).toHaveBeenCalledWith(4, 20, 31, { completed: true })
     const item = screen.getByLabelText("Checklist item 31")
     await user.clear(item)
     await user.type(item, "Count tables")
-    const itemRow = item.closest("div")!
-    await user.click(within(itemRow).getByRole("button", { name: "Save" }))
-    expect(updateEventSubtask).toHaveBeenCalledWith(4, 20, 31, { title: "Count tables" })
+    const itemRow = item.closest("article")!
+    await user.click(within(itemRow).getByRole("button", { name: "Save subtask" }))
+    expect(updateEventSubtask).toHaveBeenCalledWith(4, 20, 31, expect.objectContaining({ title: "Count tables", scheduled_start: null, scheduled_end: null, assignees: [] }))
     await user.click(within(itemRow).getByRole("button", { name: "Delete" }))
     await user.click(within(itemRow).getByRole("button", { name: "Confirm delete" }))
     expect(deleteEventSubtask).toHaveBeenCalledWith(4, 20, 31)
@@ -347,6 +344,9 @@ describe("API-backed organizer events", () => {
       name: "Scratch event",
       venue: "Community Hall",
       event_date: "2027-09-01",
+      description: "",
+      start_time: null,
+      end_time: null,
     })
     expect(await screen.findByRole("heading", { name: "Scratch event" })).toBeTruthy()
   })

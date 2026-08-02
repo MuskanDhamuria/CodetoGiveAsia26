@@ -128,7 +128,7 @@ def list_team_member_tasks(
     due_before: Annotated[str | None, Query()] = None,
 ) -> dict:
     require_member(db, member_id)
-    where = ["t.team_member_id = ?"]
+    where = ["EXISTS (SELECT 1 FROM event_task_assignees eta WHERE eta.event_task_id = t.id AND eta.team_member_id = ?)"]
     params: list[object] = [member_id]
     if task_status is not None:
         where.append("t.status = ?")

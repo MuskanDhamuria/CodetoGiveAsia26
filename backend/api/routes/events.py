@@ -4,12 +4,16 @@ from __future__ import annotations
 
 import math
 import sqlite3
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 
 from backend.api.routes._common import Connection, Pagination, list_envelope
+from backend.api.routes.event_organizers import (
+    ensure_team_member_event_organizer,
+    require_approved_event_volunteer,
+)
 from backend.attendance_qr import PARTICIPANT_KIND, VOLUNTEER_KIND, parse_token
 from backend.schema.events import (
     EventCreate,
@@ -17,9 +21,13 @@ from backend.schema.events import (
     EventReschedule,
     EventSubtaskCreate,
     EventSubtaskOut,
+    EventSubtaskTimeLogCreate,
+    EventSubtaskTimeLogOut,
     EventSubtaskUpdate,
     EventSummary,
     EventTaskCreate,
+    EventTaskAssigneeInput,
+    EventTaskAssigneeOut,
     EventTaskOut,
     EventTaskUpdate,
     EventUpdate,
@@ -30,17 +38,91 @@ from backend.schema.events import (
 router = APIRouter(tags=["events"])
 
 
+def subtask_model(db, subtask) -> EventSubtaskOut:
+    assignee_rows = db.execute(
+        """
+        SELECT assignees.team_member_id, assignees.volunteer_id,
+               COALESCE(team_members.name, volunteers.name) AS name,
+               COALESCE(team_members.email, volunteers.email) AS email
+        FROM event_subtask_assignees AS assignees
+        LEFT JOIN team_members ON team_members.id = assignees.team_member_id
+        LEFT JOIN volunteers ON volunteers.id = assignees.volunteer_id
+        WHERE assignees.event_subtask_id = ?
+        ORDER BY name
+        """,
+        (subtask["id"],),
+    ).fetchall()
+    time_log_rows = db.execute(
+        """
+        SELECT logs.id, logs.team_member_id, logs.volunteer_id,
+               logs.minutes_spent, logs.notes, logs.logged_at,
+               COALESCE(team_members.name, volunteers.name) AS name
+        FROM event_subtask_time_logs AS logs
+        LEFT JOIN team_members ON team_members.id = logs.team_member_id
+        LEFT JOIN volunteers ON volunteers.id = logs.volunteer_id
+        WHERE logs.event_subtask_id = ?
+        ORDER BY logs.logged_at DESC, logs.id DESC
+        """,
+        (subtask["id"],),
+    ).fetchall()
+    return EventSubtaskOut(
+        id=subtask["id"],
+        title=subtask["title"],
+        position=subtask["position"],
+        completed=bool(subtask["completed"]),
+        scheduled_start=subtask["scheduled_start"],
+        scheduled_end=subtask["scheduled_end"],
+        estimated_minutes=subtask["estimated_minutes"],
+        assignees=[
+            EventTaskAssigneeOut(
+                person_type="team_member" if row["team_member_id"] is not None else "volunteer",
+                person_id=row["team_member_id"] if row["team_member_id"] is not None else row["volunteer_id"],
+                name=row["name"],
+                email=row["email"],
+                is_lead=False,
+            )
+            for row in assignee_rows
+        ],
+        time_logs=[
+            EventSubtaskTimeLogOut(
+                id=row["id"],
+                person_type="team_member" if row["team_member_id"] is not None else "volunteer",
+                person_id=row["team_member_id"] if row["team_member_id"] is not None else row["volunteer_id"],
+                name=row["name"],
+                minutes_spent=row["minutes_spent"],
+                notes=row["notes"],
+                logged_at=row["logged_at"],
+            )
+            for row in time_log_rows
+        ],
+    )
+
+
 def task_model(db, task) -> EventTaskOut:
     subtasks = db.execute(
         """
-        SELECT id, title, position, completed FROM event_subtasks
+        SELECT * FROM event_subtasks
         WHERE event_task_id = ? ORDER BY position
+        """,
+        (task["id"],),
+    ).fetchall()
+    assignee_rows = db.execute(
+        """
+        SELECT assignees.team_member_id, assignees.volunteer_id, assignees.is_lead,
+               COALESCE(team_members.name, volunteers.name) AS name,
+               COALESCE(team_members.email, volunteers.email) AS email
+        FROM event_task_assignees AS assignees
+        LEFT JOIN team_members ON team_members.id = assignees.team_member_id
+        LEFT JOIN volunteers ON volunteers.id = assignees.volunteer_id
+        WHERE assignees.event_task_id = ?
+        ORDER BY assignees.is_lead DESC, name
         """,
         (task["id"],),
     ).fetchall()
     return EventTaskOut(
         id=task["id"],
         team_member_id=task["team_member_id"],
+        volunteer_id=task["volunteer_id"],
         template_task_id=task["template_task_id"],
         name=task["name"],
         body=task["body"],
@@ -48,15 +130,17 @@ def task_model(db, task) -> EventTaskOut:
         category=task["category"],
         status=task["status"],
         position=task["position"],
-        subtasks=[
-            EventSubtaskOut(
-                id=row["id"],
-                title=row["title"],
-                position=row["position"],
-                completed=bool(row["completed"]),
+        assignees=[
+            EventTaskAssigneeOut(
+                person_type="team_member" if row["team_member_id"] is not None else "volunteer",
+                person_id=row["team_member_id"] if row["team_member_id"] is not None else row["volunteer_id"],
+                name=row["name"],
+                email=row["email"],
+                is_lead=bool(row["is_lead"]),
             )
-            for row in subtasks
+            for row in assignee_rows
         ],
+        subtasks=[subtask_model(db, row) for row in subtasks],
     )
 
 
@@ -68,6 +152,115 @@ def require_event_task(db, event_id: int, task_id: int):
     if task is None:
         raise HTTPException(404, f"Event task {task_id} was not found")
     return task
+
+
+def require_event_subtask(db, event_id: int, task_id: int, subtask_id: int):
+    require_event_task(db, event_id, task_id)
+    subtask = db.execute(
+        "SELECT * FROM event_subtasks WHERE id = ? AND event_task_id = ?",
+        (subtask_id, task_id),
+    ).fetchone()
+    if subtask is None:
+        raise HTTPException(404, f"Event subtask {subtask_id} was not found")
+    return subtask
+
+
+def validate_task_assignee(
+    db: sqlite3.Connection,
+    event_id: int,
+    team_member_id: int | None,
+    volunteer_id: int | None,
+) -> None:
+    if team_member_id is not None and volunteer_id is not None:
+        raise HTTPException(400, "A task can have only one assignee")
+    if team_member_id is not None:
+        ensure_team_member_event_organizer(db, event_id, team_member_id)
+    if volunteer_id is not None:
+        require_approved_event_volunteer(db, event_id, volunteer_id)
+
+
+def replace_task_assignees(db, event_id: int, task_id: int, assignees) -> None:
+    seen: set[tuple[str, int]] = set()
+    for assignee in assignees:
+        key = (assignee.person_type, assignee.person_id)
+        if key in seen:
+            raise HTTPException(400, "A person can be assigned to a task only once")
+        seen.add(key)
+        if assignee.person_type == "team_member":
+            ensure_team_member_event_organizer(db, event_id, assignee.person_id)
+        else:
+            require_approved_event_volunteer(db, event_id, assignee.person_id)
+
+    db.execute("DELETE FROM event_task_assignees WHERE event_task_id = ?", (task_id,))
+    for assignee in assignees:
+        db.execute(
+            """
+            INSERT INTO event_task_assignees
+                (event_task_id, team_member_id, volunteer_id, is_lead)
+            VALUES (?, ?, ?, ?)
+            """,
+            (
+                task_id,
+                assignee.person_id if assignee.person_type == "team_member" else None,
+                assignee.person_id if assignee.person_type == "volunteer" else None,
+                1 if assignee.is_lead else 0,
+            ),
+        )
+
+    first = assignees[0] if assignees else None
+    db.execute(
+        "UPDATE event_tasks SET team_member_id = ?, volunteer_id = ? WHERE id = ?",
+        (
+            first.person_id if first and first.person_type == "team_member" else None,
+            first.person_id if first and first.person_type == "volunteer" else None,
+            task_id,
+        ),
+    )
+
+
+def replace_subtask_assignees(db, event_id: int, subtask_id: int, assignees) -> None:
+    seen: set[tuple[str, int]] = set()
+    for assignee in assignees:
+        key = (assignee.person_type, assignee.person_id)
+        if key in seen:
+            raise HTTPException(400, "A person can be assigned to a subtask only once")
+        seen.add(key)
+        if assignee.person_type == "team_member":
+            ensure_team_member_event_organizer(db, event_id, assignee.person_id)
+        else:
+            require_approved_event_volunteer(db, event_id, assignee.person_id)
+
+    db.execute(
+        "DELETE FROM event_subtask_assignees WHERE event_subtask_id = ?",
+        (subtask_id,),
+    )
+    for assignee in assignees:
+        db.execute(
+            """
+            INSERT INTO event_subtask_assignees
+                (event_subtask_id, team_member_id, volunteer_id)
+            VALUES (?, ?, ?)
+            """,
+            (
+                subtask_id,
+                assignee.person_id if assignee.person_type == "team_member" else None,
+                assignee.person_id if assignee.person_type == "volunteer" else None,
+            ),
+        )
+
+
+def validate_subtask_work_fields(
+    scheduled_start: str | None,
+    scheduled_end: str | None,
+    estimated_minutes: int | None,
+) -> None:
+    if (scheduled_start is None) != (scheduled_end is None):
+        raise HTTPException(400, "Scheduled subtasks require both a start and end time")
+    if scheduled_start is not None and scheduled_end is not None:
+        if datetime.fromisoformat(scheduled_end) <= datetime.fromisoformat(scheduled_start):
+            raise HTTPException(400, "Subtask end time must be after its start time")
+        if estimated_minutes is not None:
+            raise HTTPException(400, "A subtask cannot be both scheduled and effort-based")
 
 
 def event_detail(db, event_id: int) -> EventDetail:
@@ -168,6 +361,15 @@ def create_event(payload: EventCreate, db: Connection) -> EventDetail:
             if payload.event_template_id is not None
             else []
         )
+        if payload.event_template_id is not None:
+            db.execute(
+                """
+                INSERT INTO event_roles (event_id, role_id)
+                SELECT ?, role_id FROM template_roles
+                WHERE event_template_id = ?
+                """,
+                (event["id"], payload.event_template_id),
+            )
         for template_task in template_tasks:
             due_at = (
                 payload.event_date + timedelta(days=template_task["relative_due_days"])
@@ -338,6 +540,7 @@ def list_event_tasks(
     category: Annotated[str | None, Query()] = None,
     task_status: Annotated[str | None, Query(alias="status")] = None,
     team_member_id: Annotated[int | None, Query()] = None,
+    volunteer_id: Annotated[int | None, Query()] = None,
     due_before: Annotated[str | None, Query()] = None,
     due_after: Annotated[str | None, Query()] = None,
 ) -> dict:
@@ -348,11 +551,20 @@ def list_event_tasks(
     for field, value in (
         ("category", category),
         ("status", task_status),
-        ("team_member_id", team_member_id),
     ):
         if value is not None:
             where.append(f"{field} = ?")
             params.append(value)
+    if team_member_id is not None:
+        where.append(
+            "EXISTS (SELECT 1 FROM event_task_assignees WHERE event_task_id = event_tasks.id AND team_member_id = ?)"
+        )
+        params.append(team_member_id)
+    if volunteer_id is not None:
+        where.append(
+            "EXISTS (SELECT 1 FROM event_task_assignees WHERE event_task_id = event_tasks.id AND volunteer_id = ?)"
+        )
+        params.append(volunteer_id)
     if due_before is not None:
         where.append("due_at <= ?")
         params.append(due_before)
@@ -383,14 +595,13 @@ def create_event_task(
 ) -> EventTaskOut:
     if db.execute("SELECT 1 FROM events WHERE id = ?", (event_id,)).fetchone() is None:
         raise HTTPException(404, f"Event {event_id} was not found")
-    if payload.team_member_id is not None:
-        member = db.execute(
-            "SELECT is_active FROM team_members WHERE id = ?", (payload.team_member_id,)
-        ).fetchone()
-        if member is None:
-            raise HTTPException(404, f"Team member {payload.team_member_id} was not found")
-        if not member["is_active"]:
-            raise HTTPException(409, "Inactive team members cannot be assigned tasks")
+    requested_assignees = payload.assignees
+    if not requested_assignees and (payload.team_member_id is not None or payload.volunteer_id is not None):
+        requested_assignees = [EventTaskAssigneeInput(
+            person_type="team_member" if payload.team_member_id is not None else "volunteer",
+            person_id=payload.team_member_id if payload.team_member_id is not None else payload.volunteer_id,
+        )]
+    first_assignee = requested_assignees[0] if requested_assignees else None
     position = payload.position
     if position is None:
         position = db.execute(
@@ -401,13 +612,14 @@ def create_event_task(
         row = db.execute(
             """
             INSERT INTO event_tasks
-                (event_id, team_member_id, name, body, due_at,
+                (event_id, team_member_id, volunteer_id, name, body, due_at,
                  category, status, position)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING *
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *
             """,
             (
                 event_id,
-                payload.team_member_id,
+                first_assignee.person_id if first_assignee and first_assignee.person_type == "team_member" else None,
+                first_assignee.person_id if first_assignee and first_assignee.person_type == "volunteer" else None,
                 payload.name,
                 payload.body,
                 payload.due_at.isoformat(),
@@ -416,6 +628,7 @@ def create_event_task(
                 position,
             ),
         ).fetchone()
+        replace_task_assignees(db, event_id, row["id"], requested_assignees)
         db.commit()
     except sqlite3.IntegrityError as error:
         db.rollback()
@@ -481,25 +694,43 @@ def update_event_task(
 ) -> EventTaskOut:
     current = require_event_task(db, event_id, task_id)
     values = payload.model_dump(exclude_unset=True)
-    if not values:
+    assignees_changed = "assignees" in payload.model_fields_set
+    requested_assignees = payload.assignees if assignees_changed else None
+    values.pop("assignees", None)
+    if not values and not assignees_changed:
         return task_model(db, current)
-    if "team_member_id" in values and values["team_member_id"] is not None:
-        member = db.execute(
-            "SELECT is_active FROM team_members WHERE id = ?",
-            (values["team_member_id"],),
-        ).fetchone()
-        if member is None:
-            raise HTTPException(404, f"Team member {values['team_member_id']} was not found")
-        if not member["is_active"]:
-            raise HTTPException(409, "Inactive team members cannot be assigned tasks")
+    assignee_changed = "team_member_id" in values or "volunteer_id" in values
+    if assignee_changed:
+        if "team_member_id" not in values:
+            values["team_member_id"] = None
+        if "volunteer_id" not in values:
+            values["volunteer_id"] = None
+        validate_task_assignee(
+            db, event_id, values["team_member_id"], values["volunteer_id"]
+        )
     if "due_at" in values and values["due_at"] is not None:
         values["due_at"] = values["due_at"].isoformat()
-    assignments = ", ".join(f"{field} = ?" for field in values)
     try:
-        row = db.execute(
-            f"UPDATE event_tasks SET {assignments} WHERE id = ? RETURNING *",
-            [*values.values(), task_id],
-        ).fetchone()
+        if values:
+            assignments = ", ".join(f"{field} = ?" for field in values)
+            row = db.execute(
+                f"UPDATE event_tasks SET {assignments} WHERE id = ? RETURNING *",
+                [*values.values(), task_id],
+            ).fetchone()
+        else:
+            row = current
+        if assignees_changed:
+            replace_task_assignees(db, event_id, task_id, requested_assignees or [])
+            row = require_event_task(db, event_id, task_id)
+        elif assignee_changed:
+            legacy_assignees = []
+            if values["team_member_id"] is not None or values["volunteer_id"] is not None:
+                legacy_assignees = [EventTaskAssigneeInput(
+                    person_type="team_member" if values["team_member_id"] is not None else "volunteer",
+                    person_id=values["team_member_id"] if values["team_member_id"] is not None else values["volunteer_id"],
+                )]
+            replace_task_assignees(db, event_id, task_id, legacy_assignees)
+            row = require_event_task(db, event_id, task_id)
         db.commit()
     except sqlite3.IntegrityError as error:
         db.rollback()
@@ -526,6 +757,18 @@ def reschedule_event(
             db.execute(
                 "UPDATE event_tasks SET due_at = date(due_at, ?) WHERE event_id = ?",
                 (modifier, event_id),
+            )
+            db.execute(
+                """
+                UPDATE event_subtasks
+                SET scheduled_start = datetime(scheduled_start, ?),
+                    scheduled_end = datetime(scheduled_end, ?)
+                WHERE scheduled_start IS NOT NULL
+                  AND event_task_id IN (
+                      SELECT id FROM event_tasks WHERE event_id = ?
+                  )
+                """,
+                (modifier, modifier, event_id),
             )
             db.execute(
                 "UPDATE event_logistics_requirements SET needed_by = datetime(needed_by, ?) WHERE event_id = ?",
@@ -575,6 +818,9 @@ def create_event_subtask(
     db: Connection,
 ) -> EventSubtaskOut:
     require_event_task(db, event_id, task_id)
+    scheduled_start = payload.scheduled_start.isoformat() if payload.scheduled_start else None
+    scheduled_end = payload.scheduled_end.isoformat() if payload.scheduled_end else None
+    validate_subtask_work_fields(scheduled_start, scheduled_end, payload.estimated_minutes)
     position = payload.position
     if position is None:
         position = db.execute(
@@ -587,21 +833,26 @@ def create_event_subtask(
     try:
         row = db.execute(
             """
-            INSERT INTO event_subtasks (event_task_id, title, position)
-            VALUES (?, ?, ?) RETURNING *
+            INSERT INTO event_subtasks
+                (event_task_id, title, position, scheduled_start, scheduled_end,
+                 estimated_minutes)
+            VALUES (?, ?, ?, ?, ?, ?) RETURNING *
             """,
-            (task_id, payload.title, position),
+            (
+                task_id,
+                payload.title,
+                position,
+                scheduled_start,
+                scheduled_end,
+                payload.estimated_minutes,
+            ),
         ).fetchone()
+        replace_subtask_assignees(db, event_id, row["id"], payload.assignees)
         db.commit()
     except sqlite3.IntegrityError as error:
         db.rollback()
         raise HTTPException(409, "Subtask position is already in use") from error
-    return EventSubtaskOut(
-        id=row["id"],
-        title=row["title"],
-        position=row["position"],
-        completed=bool(row["completed"]),
-    )
+    return subtask_model(db, row)
 
 
 @router.patch(
@@ -615,40 +866,89 @@ def update_event_subtask(
     payload: EventSubtaskUpdate,
     db: Connection,
 ) -> EventSubtaskOut:
-    require_event_task(db, event_id, task_id)
-    current = db.execute(
-        """
-        SELECT * FROM event_subtasks
-        WHERE id = ? AND event_task_id = ?
-        """,
-        (subtask_id, task_id),
-    ).fetchone()
-    if current is None:
-        raise HTTPException(404, f"Event subtask {subtask_id} was not found")
+    current = require_event_subtask(db, event_id, task_id, subtask_id)
     values = payload.model_dump(exclude_unset=True)
-    if not values:
-        return EventSubtaskOut(
-            id=current["id"],
-            title=current["title"],
-            position=current["position"],
-            completed=bool(current["completed"]),
-        )
+    assignees_changed = "assignees" in payload.model_fields_set
+    requested_assignees = payload.assignees if assignees_changed else None
+    values.pop("assignees", None)
+    if not values and not assignees_changed:
+        return subtask_model(db, current)
+    for field in ("scheduled_start", "scheduled_end"):
+        if field in values and values[field] is not None:
+            values[field] = values[field].isoformat()
+    work_values = {
+        "scheduled_start": values.get("scheduled_start", current["scheduled_start"]),
+        "scheduled_end": values.get("scheduled_end", current["scheduled_end"]),
+        "estimated_minutes": values.get("estimated_minutes", current["estimated_minutes"]),
+    }
+    validate_subtask_work_fields(**work_values)
     assignments = ", ".join(f"{field} = ?" for field in values)
     params = [int(value) if isinstance(value, bool) else value for value in values.values()]
     try:
-        row = db.execute(
-            f"UPDATE event_subtasks SET {assignments} WHERE id = ? RETURNING *",
-            [*params, subtask_id],
-        ).fetchone()
+        row = current
+        if values:
+            row = db.execute(
+                f"UPDATE event_subtasks SET {assignments} WHERE id = ? RETURNING *",
+                [*params, subtask_id],
+            ).fetchone()
+        if assignees_changed:
+            replace_subtask_assignees(db, event_id, subtask_id, requested_assignees or [])
         db.commit()
     except sqlite3.IntegrityError as error:
         db.rollback()
         raise HTTPException(409, "Subtask position is already in use") from error
-    return EventSubtaskOut(
+    return subtask_model(db, row)
+
+
+@router.post(
+    "/events/{event_id}/tasks/{task_id}/subtasks/{subtask_id}/time-logs",
+    response_model=EventSubtaskTimeLogOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_event_subtask_time_log(
+    event_id: int,
+    task_id: int,
+    subtask_id: int,
+    payload: EventSubtaskTimeLogCreate,
+    db: Connection,
+) -> EventSubtaskTimeLogOut:
+    subtask = require_event_subtask(db, event_id, task_id, subtask_id)
+    if subtask["scheduled_start"] is not None:
+        raise HTTPException(400, "Hours can only be logged against effort-based subtasks")
+    id_column = "team_member_id" if payload.person_type == "team_member" else "volunteer_id"
+    assigned = db.execute(
+        f"SELECT 1 FROM event_subtask_assignees WHERE event_subtask_id = ? AND {id_column} = ?",
+        (subtask_id, payload.person_id),
+    ).fetchone()
+    if assigned is None:
+        raise HTTPException(400, "Only an assigned person can log time against this subtask")
+    row = db.execute(
+        """
+        INSERT INTO event_subtask_time_logs
+            (event_subtask_id, team_member_id, volunteer_id, minutes_spent, notes)
+        VALUES (?, ?, ?, ?, ?) RETURNING *
+        """,
+        (
+            subtask_id,
+            payload.person_id if payload.person_type == "team_member" else None,
+            payload.person_id if payload.person_type == "volunteer" else None,
+            payload.minutes_spent,
+            payload.notes,
+        ),
+    ).fetchone()
+    db.commit()
+    person_table = "team_members" if payload.person_type == "team_member" else "volunteers"
+    name = db.execute(
+        f"SELECT name FROM {person_table} WHERE id = ?", (payload.person_id,)
+    ).fetchone()["name"]
+    return EventSubtaskTimeLogOut(
         id=row["id"],
-        title=row["title"],
-        position=row["position"],
-        completed=bool(row["completed"]),
+        person_type=payload.person_type,
+        person_id=payload.person_id,
+        name=name,
+        minutes_spent=row["minutes_spent"],
+        notes=row["notes"],
+        logged_at=row["logged_at"],
     )
 
 
@@ -716,12 +1016,7 @@ def reorder_event_subtasks(
         (task_id,),
     ).fetchall()
     return [
-        EventSubtaskOut(
-            id=row["id"],
-            title=row["title"],
-            position=row["position"],
-            completed=bool(row["completed"]),
-        )
+        subtask_model(db, row)
         for row in ordered_rows
     ]
 

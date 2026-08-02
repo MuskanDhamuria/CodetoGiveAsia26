@@ -1,5 +1,12 @@
 import { useEffect, useMemo, useState } from "react"
 import {
+  formatLocalPhoneAsYouType,
+  isValidInternationalPhone,
+  PHONE_COUNTRIES,
+  splitInternationalPhone,
+  toInternationalPhone,
+} from "./phone"
+import {
   listEventRoles,
   listEvents,
   publicSignup,
@@ -68,14 +75,9 @@ export default function VolunteerSignup() {
       .then((volunteer) => {
         setName(volunteer.name)
         setEmail(volunteer.email ?? "")
-        const knownCodes = ["+880", "+65", "+60", "+62", "+63", "+91", "+95", "+86", "+84", "+1", "+44"]
-        const matchedCode = knownCodes.find((code) => volunteer.contact_number?.startsWith(code))
-        if (matchedCode) {
-          setCountryCode(matchedCode)
-          setPhone((volunteer.contact_number ?? "").slice(matchedCode.length))
-        } else {
-          setPhone(volunteer.contact_number ?? "")
-        }
+        const savedPhone = splitInternationalPhone(volunteer.contact_number)
+        setCountryCode(savedPhone.countryCode)
+        setPhone(savedPhone.localPhone)
       })
       .catch(() => undefined)
   }, [])
@@ -106,15 +108,14 @@ export default function VolunteerSignup() {
     formEvent.preventDefault()
     if (eventId === null || !selectedEvent) return
     if (!name.trim()) return setError("Please enter your name.")
-    const localPhone = phone.replace(/\D/g, "")
-    if (!localPhone) return setError("Please enter your phone number.")
-    if (localPhone.length < 6) return setError("Please enter a valid phone number.")
+    if (!phone.trim()) return setError("Please enter your phone number.")
+    if (!isValidInternationalPhone(countryCode, phone)) return setError("Please enter a valid phone number.")
     setSubmitting(true)
     setError(null)
     try {
       const result = await publicSignup(eventId, {
         name: name.trim(),
-        contact_number: `${countryCode}${localPhone}`,
+        contact_number: toInternationalPhone(countryCode, phone),
         email: email.trim() || undefined,
         role_ids: [...selectedRoles],
       })
@@ -216,25 +217,19 @@ export default function VolunteerSignup() {
                 <select
                   aria-label="Country code"
                   value={countryCode}
-                  onChange={(input) => setCountryCode(input.target.value)}
+                  onChange={(input) => {
+                    setCountryCode(input.target.value)
+                    setPhone((current) => formatLocalPhoneAsYouType(input.target.value, current))
+                  }}
                 >
-                  <option value="+65">SG +65</option>
-                  <option value="+60">MY +60</option>
-                  <option value="+62">ID +62</option>
-                  <option value="+63">PH +63</option>
-                  <option value="+91">IN +91</option>
-                  <option value="+880">BD +880</option>
-                  <option value="+95">MM +95</option>
-                  <option value="+86">CN +86</option>
-                  <option value="+84">VN +84</option>
-                  <option value="+1">US/CA +1</option>
-                  <option value="+44">UK +44</option>
+                  {PHONE_COUNTRIES.map((option) => <option key={option.code} value={option.code}>{option.label}</option>)}
                 </select>
                 <input
                   value={phone}
-                  onChange={(input) => setPhone(input.target.value)}
+                  onChange={(input) => setPhone(formatLocalPhoneAsYouType(countryCode, input.target.value))}
                   placeholder="8123 4567"
                   inputMode="tel"
+                  type="tel"
                 />
               </div>
             </label>

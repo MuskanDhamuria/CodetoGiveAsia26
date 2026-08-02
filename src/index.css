@@ -5827,6 +5827,13 @@ button {
   border-radius: 12px;
   overflow: hidden;
   width: 100%;
+  min-height: 280px;
+  background: #111;
+}
+
+.attendance-scanner-viewport video {
+  width: 100%;
+  border-radius: 12px;
 }
 
 .attendance-scan-feedback {

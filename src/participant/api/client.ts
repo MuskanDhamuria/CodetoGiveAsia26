@@ -50,6 +50,17 @@ export type PublicSignupResult = {
   participant_name: string;
   participant_contact_number: string | null;
   participant_email: string | null;
+  // False whenever a phone number was given and hasn't been verified yet.
+  // verify_token is the opaque, one-time credential the verify/resend-otp
+  // calls need — participants have no login session, so this stands in for
+  // one. See backend/api/routes/public.py.
+  phone_verified: boolean;
+  verify_token: string | null;
+};
+
+export type PublicOtpResult = {
+  phone_verified: boolean;
+  verify_token: string | null;
 };
 
 export type PublicRsvpResult = {
@@ -111,6 +122,27 @@ export function publicSignup(input: PublicSignupInput): Promise<PublicSignupResu
   return request(`/public/signup`, {
     method: "POST",
     body: JSON.stringify(input),
+  });
+}
+
+export function verifyParticipantOtp(
+  participantId: number,
+  verifyToken: string,
+  code: string,
+): Promise<PublicOtpResult> {
+  return request(`/public/participants/${participantId}/verify-otp`, {
+    method: "POST",
+    body: JSON.stringify({ verify_token: verifyToken, code }),
+  });
+}
+
+export function resendParticipantOtp(
+  participantId: number,
+  verifyToken: string,
+): Promise<PublicOtpResult> {
+  return request(`/public/participants/${participantId}/resend-otp`, {
+    method: "POST",
+    body: JSON.stringify({ verify_token: verifyToken }),
   });
 }
 

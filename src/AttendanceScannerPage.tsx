@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import { Html5QrcodeScanner } from "html5-qrcode"
+import { Html5Qrcode } from "html5-qrcode"
 import { adminApi, type AdminApi, type AttendanceScanResult, type EventDetail } from "./admin-api"
 
 type ScanFeedback = { kind: "success" | "already" | "error"; message: string }
@@ -18,6 +18,7 @@ export default function AttendanceScannerPage({ api = adminApi }: { api?: AdminA
 
   const selectedEventIdRef = useRef<number | null>(null)
   const lastScanRef = useRef<{ token: string; time: number } | null>(null)
+  const scannerRef = useRef<Html5Qrcode | null>(null)
 
   useEffect(() => {
     setLoading(true)
@@ -37,8 +38,18 @@ export default function AttendanceScannerPage({ api = adminApi }: { api?: AdminA
 
   useEffect(() => {
     if (!scanning) return
+    let cancelled = false
 
-    const scanner = new Html5QrcodeScanner(SCANNER_ELEMENT_ID, { fps: 10, qrbox: 250 }, false)
+    // Using the low-level Html5Qrcode API (start the camera ourselves)
+    // rather than Html5QrcodeScanner (which renders its own "Request Camera
+    // Permissions" UI and manages permission state internally) — that
+    // higher-level component has a known flaky permission-detection path
+    // that can get stuck showing the button with no way forward, even when
+    // the browser's camera access itself works fine. Calling start()
+    // directly triggers getUserMedia the same way a plain camera request
+    // would, with nothing else in the way.
+    const scanner = new Html5Qrcode(SCANNER_ELEMENT_ID)
+    scannerRef.current = scanner
 
     function handleDecoded(decodedText: string) {
       const eventId = selectedEventIdRef.current
@@ -75,10 +86,28 @@ export default function AttendanceScannerPage({ api = adminApi }: { api?: AdminA
       // no-op
     }
 
-    scanner.render(handleDecoded, handleDecodeFailure)
+    const scanConfig = { fps: 10, qrbox: 250 }
+    scanner
+      .start({ facingMode: "environment" }, scanConfig, handleDecoded, handleDecodeFailure)
+      .catch(() => {
+        // Most desktop webcams don't support facingMode "environment" (no
+        // rear camera) — fall back to whatever default camera is available.
+        if (cancelled) return Promise.reject(new Error("cancelled"))
+        return scanner.start({ facingMode: "user" }, scanConfig, handleDecoded, handleDecodeFailure)
+      })
+      .catch((reason) => {
+        if (cancelled) return
+        const message = reason instanceof Error ? reason.message : String(reason)
+        setFeedback({ kind: "error", message: `Couldn't access the camera: ${message}` })
+      })
 
     return () => {
-      scanner.clear().catch(() => undefined)
+      cancelled = true
+      scannerRef.current = null
+      scanner
+        .stop()
+        .then(() => scanner.clear())
+        .catch(() => undefined)
     }
   }, [scanning, api])
 

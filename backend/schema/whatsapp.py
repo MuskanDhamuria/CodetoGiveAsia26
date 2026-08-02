@@ -47,6 +47,32 @@ class CertificateOut(BaseModel):
     link: str
 
 
+class CertificateCandidateOut(BaseModel):
+    """Someone registered for an event, for the manual certificate picker.
+
+    Deliberately not filtered by attendance — the admin panel shows
+    ``attended`` as a hint (and can pre-check attendees as a starting point),
+    but any registrant can be picked regardless of whether they were marked
+    present. See POST /events/{event_id}/certificates/send.
+    """
+
+    type: Literal["participant", "volunteer"]
+    id: int
+    name: str
+    attended: bool
+    already_issued: bool
+    already_delivered: bool
+
+
+class CertificateRecipient(BaseModel):
+    type: Literal["participant", "volunteer"]
+    id: int
+
+
+class CertificateSendIn(BaseModel):
+    recipients: list[CertificateRecipient]
+
+
 class NotificationSubscriptionCreate(BaseModel):
     phone_number: NonEmptyText
     display_name: str | None = None

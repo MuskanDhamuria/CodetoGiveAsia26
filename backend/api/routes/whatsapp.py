@@ -28,7 +28,9 @@ from backend.integrations.whatsapp_client import (
 from backend.schema.whatsapp import (
     AnnouncementCreate,
     AnnouncementOut,
+    CertificateCandidateOut,
     CertificateOut,
+    CertificateSendIn,
     NotificationSubscriptionCreate,
     NotificationSubscriptionOut,
     ReminderCreate,
@@ -394,6 +396,147 @@ def generate_certificates(event_id: int, db: Connection) -> list[CertificateOut]
             db.execute("SELECT * FROM certificates WHERE id = ?", (certificate["id"],)).fetchone()
         )
         for certificate in certificates
+    ]
+
+
+@router.get(
+    "/events/{event_id}/certificate-candidates",
+    response_model=list[CertificateCandidateOut],
+    summary="List everyone registered for an event, for the manual certificate picker",
+)
+def certificate_candidates(event_id: int, db: Connection) -> list[CertificateCandidateOut]:
+    _require_event(db, event_id)
+    candidates: list[CertificateCandidateOut] = []
+
+    for row in db.execute(
+        """
+        SELECT p.id, p.name, pt.attendance,
+               c.id AS certificate_id, c.delivered_at
+        FROM participations pt
+        JOIN participants p ON p.id = pt.participant_id
+        LEFT JOIN certificates c ON c.event_id = ? AND c.participant_id = p.id
+        WHERE pt.event_id = ?
+        ORDER BY p.name
+        """,
+        (event_id, event_id),
+    ).fetchall():
+        candidates.append(
+            CertificateCandidateOut(
+                type="participant",
+                id=row["id"],
+                name=row["name"],
+                attended=bool(row["attendance"]),
+                already_issued=row["certificate_id"] is not None,
+                already_delivered=row["delivered_at"] is not None,
+            )
+        )
+
+    for row in db.execute(
+        """
+        SELECT v.id, v.name, vs.attendance,
+               c.id AS certificate_id, c.delivered_at
+        FROM volunteer_signups vs
+        JOIN volunteers v ON v.id = vs.volunteer_id
+        LEFT JOIN certificates c ON c.event_id = ? AND c.volunteer_id = v.id
+        WHERE vs.event_id = ?
+        ORDER BY v.name
+        """,
+        (event_id, event_id),
+    ).fetchall():
+        candidates.append(
+            CertificateCandidateOut(
+                type="volunteer",
+                id=row["id"],
+                name=row["name"],
+                attended=bool(row["attendance"]),
+                already_issued=row["certificate_id"] is not None,
+                already_delivered=row["delivered_at"] is not None,
+            )
+        )
+
+    return candidates
+
+
+@router.post(
+    "/events/{event_id}/certificates/send",
+    response_model=list[CertificateOut],
+    summary="Generate (if needed) and send certificates to specifically chosen registrants",
+)
+def send_certificates(
+    event_id: int, payload: CertificateSendIn, db: Connection
+) -> list[CertificateOut]:
+    """Manual counterpart to POST .../certificates/generate.
+
+    That endpoint only ever considers people with recorded attendance;
+    admins asked for a way to pick recipients themselves — e.g. someone
+    whose attendance wasn't scanned in time, or excluding a no-show who was
+    still marked present by mistake. Always (re)sends to whoever is listed,
+    regardless of prior delivery, since picking someone here is an explicit
+    request to message them.
+    """
+
+    _require_event(db, event_id)
+    if not payload.recipients:
+        raise HTTPException(status_code=400, detail="Select at least one recipient")
+    from backend.integrations.whatsapp_client import get_client
+
+    client = get_client()
+    certificate_ids: list[int] = []
+
+    for recipient in payload.recipients:
+        if recipient.type == "participant":
+            registered = db.execute(
+                "SELECT 1 FROM participations WHERE event_id = ? AND participant_id = ?",
+                (event_id, recipient.id),
+            ).fetchone()
+            if registered is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Participant #{recipient.id} isn't registered for this event",
+                )
+            certificate = ensure_certificate(db, event_id, participant_id=recipient.id)
+            contact = db.execute(
+                "SELECT phone_number FROM whatsapp_contacts WHERE participant_id = ?",
+                (recipient.id,),
+            ).fetchone()
+            message = f"Thanks for attending! Here's your certificate: {certificate_link(certificate['download_token'])}"
+        else:
+            registered = db.execute(
+                "SELECT 1 FROM volunteer_signups WHERE event_id = ? AND volunteer_id = ?",
+                (event_id, recipient.id),
+            ).fetchone()
+            if registered is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Volunteer #{recipient.id} isn't signed up for this event",
+                )
+            certificate = ensure_certificate(db, event_id, volunteer_id=recipient.id)
+            contact = db.execute(
+                "SELECT phone_number FROM whatsapp_contacts WHERE volunteer_id = ?",
+                (recipient.id,),
+            ).fetchone()
+            message = f"Thanks for volunteering! Here's your certificate: {certificate_link(certificate['download_token'])}"
+
+        certificate_ids.append(certificate["id"])
+        if contact is not None:
+            try:
+                client.send_text(contact["phone_number"], message)
+            except Exception:
+                logger.exception(
+                    "Failed to deliver certificate %s to %s %s",
+                    certificate["id"],
+                    recipient.type,
+                    recipient.id,
+                )
+            else:
+                db.execute(
+                    "UPDATE certificates SET delivered_at = CURRENT_TIMESTAMP WHERE id = ?",
+                    (certificate["id"],),
+                )
+    db.commit()
+    return [
+        _certificate_model(db.execute("SELECT * FROM certificates WHERE id = ?", (cid,)).fetchone())
+        for cid in certificate_ids
     ]
 
 

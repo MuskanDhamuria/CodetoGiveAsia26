@@ -174,7 +174,7 @@ function VariantB({ events, month, showClosed, onMonth, onNewEvent, onOpen, onSh
   );
 }
 
-function VariantC({ events, view, month, showClosed, selected, onMonth, onNewEvent, onOpen, onSelect, onShowClosed, onView, openOnSelect }: VariantProps) {
+function VariantC({ events, view, month, showClosed, selected, onMonth, onNewEvent, onOpen, onSelect, onShowClosed, onView, openOnSelect, onCloseSelected, selectedDialogOpen }: VariantProps & { onCloseSelected: () => void; selectedDialogOpen: boolean }) {
   return (
     <div className="collection-variant collection-variant-c">
       <header className="portfolio-header">
@@ -204,6 +204,21 @@ function VariantC({ events, view, month, showClosed, selected, onMonth, onNewEve
           </aside>
         </div>
       )}
+      {view === "list" && selectedDialogOpen && !openOnSelect && (
+        <div className="portfolio-preview-overlay" onClick={(event) => { if (event.target === event.currentTarget) onCloseSelected(); }} role="presentation">
+          <section aria-labelledby="selected-event-dialog-title" aria-modal="true" className="portfolio-preview portfolio-preview-dialog" role="dialog">
+            <header>
+              <p>Selected event</p>
+              <EventStatus status={selected.status} />
+              <button aria-label="Close selected Event" type="button" onClick={onCloseSelected}>×</button>
+            </header>
+            <h2 id="selected-event-dialog-title">{selected.name}</h2><span>{selected.date} · {selected.venue}</span>
+            <div className="portfolio-score"><strong>{selected.progress}%</strong><span>plan complete</span><i><b style={{ width: `${selected.progress}%` }} /></i></div>
+            <dl><div><dt>Tasks done</dt><dd>{selected.tasksDone}</dd></div><div><dt>Tasks remaining</dt><dd>{selected.tasksTotal - selected.tasksDone}</dd></div></dl>
+            <button type="button" onClick={() => onOpen(selected)}>Open event workspace <span>→</span></button>
+          </section>
+        </div>
+      )}
     </div>
   );
 }
@@ -226,6 +241,7 @@ export default function EventCollectionPrototype({
   const variant: Variant = initialVariant === "A" || initialVariant === "B" || initialVariant === "C" ? initialVariant : "C";
   const [view, setView] = useState<View>(variant === "B" ? "calendar" : "list");
   const [showClosed, setShowClosed] = useState(initialShowClosed);
+  const [selectedDialogOpen, setSelectedDialogOpen] = useState(false);
   const [month, setMonth] = useState(8);
   const sourceEvents = liveEvents ?? prototypeEvents;
   const [selected, setSelected] = useState(sourceEvents[0]);
@@ -268,17 +284,18 @@ export default function EventCollectionPrototype({
     onMonth: (direction) => setMonth((value) => Math.min(9, Math.max(7, value + direction))),
     onNewEvent: onNewEvent ?? (() => setNotice("New Event flow would open here.")),
     onOpen: onOpen ?? ((event) => setNotice(`Opening ${event.name} workspace…`)),
-    onSelect: setSelected,
+    onSelect: (event) => { setSelected(event); setSelectedDialogOpen(true); },
     onShowClosed: () => setShowClosed((value) => !value),
     onView: setView,
     openOnSelect,
+    onCloseSelected: () => setSelectedDialogOpen(false),
   };
 
   return (
     <>
       {variant === "A" && <VariantA {...props} />}
       {variant === "B" && <VariantB {...props} />}
-      {variant === "C" && <VariantC {...props} />}
+      {variant === "C" && <VariantC {...props} selectedDialogOpen={selectedDialogOpen} />}
       {notice && <button className="collection-notice" type="button" onClick={() => setNotice("")}>{notice}<span>Dismiss</span></button>}
     </>
   );

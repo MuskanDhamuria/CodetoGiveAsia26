@@ -9,6 +9,7 @@ not a hand-rolled parallel schema that could drift from them.
 from __future__ import annotations
 
 from datetime import date
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -171,6 +172,130 @@ class ListPendingSignupsArgs(BaseModel):
     offset: int = Field(default=0, ge=0)
 
 
+class ListInventoryItemsArgs(BaseModel):
+    """TICKET-39."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    limit: int = Field(default=DEFAULT_LIMIT, ge=1, le=MAX_LIMIT)
+    offset: int = Field(default=0, ge=0)
+
+
+class ListInventoryLocationsArgs(BaseModel):
+    """TICKET-39."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    limit: int = Field(default=DEFAULT_LIMIT, ge=1, le=MAX_LIMIT)
+    offset: int = Field(default=0, ge=0)
+
+
+class GetStockLevelsArgs(BaseModel):
+    """TICKET-39: no filters — mirrors GET /inventory/stock, which returns
+
+    every item/location combination with on-hand stock in one unfiltered
+    response.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class ListInventoryMovementsArgs(BaseModel):
+    """TICKET-39."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    limit: int = Field(default=DEFAULT_LIMIT, ge=1, le=MAX_LIMIT)
+    offset: int = Field(default=0, ge=0)
+
+
+class PreviewAnnouncementArgs(BaseModel):
+    """TICKET-40: no DB write — lets the organizer see the drafted message
+
+    and recipient count before send_announcement actually dispatches it.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    event_id: int
+    title: str = Field(min_length=1)
+    body: str = Field(min_length=1)
+    audience: Literal["all", "participants", "volunteers"] = "all"
+
+
+class SendAnnouncementArgs(BaseModel):
+    """TICKET-40: only call after the organizer has explicitly confirmed a
+
+    preview_announcement result — see SYSTEM_PROMPT in ai_assistant.py.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    event_id: int
+    title: str = Field(min_length=1)
+    body: str = Field(min_length=1)
+    audience: Literal["all", "participants", "volunteers"] = "all"
+
+
+class PreviewShiftReminderArgs(BaseModel):
+    """TICKET-40."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    event_id: int
+    body: str | None = None
+
+
+class SendShiftReminderArgs(BaseModel):
+    """TICKET-40: only call after the organizer has explicitly confirmed a
+
+    preview_shift_reminder result — see SYSTEM_PROMPT in ai_assistant.py.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    event_id: int
+    body: str | None = None
+
+
+class ListCompletedEventReportsArgs(BaseModel):
+    """TICKET-41."""
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class ListEventCertificatesArgs(BaseModel):
+    """TICKET-41."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    event_id: int
+
+
+class PreviewCertificateGenerationArgs(BaseModel):
+    """TICKET-41: no DB write — counts how many attendees/volunteers are
+
+    eligible and how many already have a delivered certificate, before
+    generate_event_certificates actually creates and messages them.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    event_id: int
+
+
+class GenerateEventCertificatesArgs(BaseModel):
+    """TICKET-41: only call after the organizer has explicitly confirmed a
+
+    preview_certificate_generation result — this messages real participants
+    and volunteers on WhatsApp, see SYSTEM_PROMPT in ai_assistant.py.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    event_id: int
+
+
 class ApproveEventSignupArgs(BaseModel):
     """TICKET-19: only reached after the organizer explicitly confirms a
 
@@ -202,4 +327,16 @@ TOOL_ARG_MODELS: dict[str, type[BaseModel]] = {
     "list_event_signups": ListEventSignupsArgs,
     "list_pending_signups": ListPendingSignupsArgs,
     "approve_event_signup": ApproveEventSignupArgs,
+    "list_inventory_items": ListInventoryItemsArgs,
+    "list_inventory_locations": ListInventoryLocationsArgs,
+    "get_stock_levels": GetStockLevelsArgs,
+    "list_inventory_movements": ListInventoryMovementsArgs,
+    "preview_announcement": PreviewAnnouncementArgs,
+    "send_announcement": SendAnnouncementArgs,
+    "preview_shift_reminder": PreviewShiftReminderArgs,
+    "send_shift_reminder": SendShiftReminderArgs,
+    "list_completed_event_reports": ListCompletedEventReportsArgs,
+    "list_event_certificates": ListEventCertificatesArgs,
+    "preview_certificate_generation": PreviewCertificateGenerationArgs,
+    "generate_event_certificates": GenerateEventCertificatesArgs,
 }

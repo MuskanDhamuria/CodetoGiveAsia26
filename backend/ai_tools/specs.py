@@ -85,6 +85,52 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
         "and role — never approve a signup on your own recommendation "
         "alone."
     ),
+    "list_inventory_items": "List inventory catalogue items (name, SKU, unit, type, reorder level).",
+    "list_inventory_locations": "List inventory storage locations.",
+    "get_stock_levels": (
+        "Get current on-hand/reserved/available stock for every item at "
+        "every location, including which combinations are at or below "
+        "their reorder level."
+    ),
+    "list_inventory_movements": "List the stock movement ledger (adjustments and transfers), most recent first.",
+    "preview_announcement": (
+        "Draft an announcement for an event's audience and see the "
+        "recipient count — does not send anything. Always call this "
+        "before send_announcement."
+    ),
+    "send_announcement": (
+        "Send a real WhatsApp announcement to an event's audience. This "
+        "cannot be undone — only call after the organizer has explicitly "
+        "confirmed the exact draft from preview_announcement."
+    ),
+    "preview_shift_reminder": (
+        "Draft a shift reminder for an event's approved volunteers and see "
+        "the recipient count — does not send anything. Always call this "
+        "before send_shift_reminder."
+    ),
+    "send_shift_reminder": (
+        "Send a real WhatsApp shift reminder to an event's approved "
+        "volunteers. This cannot be undone — only call after the "
+        "organizer has explicitly confirmed the exact draft from "
+        "preview_shift_reminder."
+    ),
+    "list_completed_event_reports": (
+        "List completed (closed) events with post-event report status, "
+        "attendee/volunteer counts, and partner names."
+    ),
+    "list_event_certificates": "List certificates already issued for an event.",
+    "preview_certificate_generation": (
+        "Count how many attendees/volunteers are eligible for a "
+        "certificate and how many already have one delivered — does not "
+        "create or send anything. Always call this before "
+        "generate_event_certificates."
+    ),
+    "generate_event_certificates": (
+        "Generate certificates for everyone with recorded attendance at an "
+        "event and message the download links to them on WhatsApp. This "
+        "cannot be undone — only call after the organizer has explicitly "
+        "confirmed based on preview_certificate_generation."
+    ),
 }
 
 

@@ -57,7 +57,14 @@ SYSTEM_PROMPT = (
     "results (grouped by event is fine), then ask the organizer whether "
     "they'd like to narrow down to a specific event — that's needed "
     "before you can take any follow-up action like approving a signup or "
-    "reassigning a task, since those tools require a single event_id."
+    "reassigning a task, since those tools require a single event_id. "
+    "send_announcement, send_shift_reminder, and generate_event_certificates "
+    "message real people on WhatsApp and cannot be undone. Always call the "
+    "matching preview tool first (preview_announcement, "
+    "preview_shift_reminder, preview_certificate_generation), show the "
+    "organizer the exact draft and recipient count, and only call the send/"
+    "generate tool after they explicitly confirm — never send on your own "
+    "initiative."
 )
 
 

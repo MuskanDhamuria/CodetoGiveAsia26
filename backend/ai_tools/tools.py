@@ -13,28 +13,45 @@ import sqlite3
 from backend.api.routes import dashboard as dashboard_routes
 from backend.api.routes import event_templates as event_templates_routes
 from backend.api.routes import events as events_routes
+from backend.api.routes import inventory as inventory_routes
+from backend.api.routes import reports as reports_routes
 from backend.api.routes import volunteers as volunteers_routes
+from backend.api.routes import whatsapp as whatsapp_routes
 from backend.api.routes._common import Pagination
+from backend.bot.commands import audience_contacts
 from backend.ai_tools.schemas import (
     ApproveEventSignupArgs,
     AssignEventTaskArgs,
     CancelEventArgs,
     CreateEventDraftArgs,
+    GenerateEventCertificatesArgs,
     GetEventArgs,
+    GetStockLevelsArgs,
+    ListCompletedEventReportsArgs,
+    ListEventCertificatesArgs,
     ListEventRolesArgs,
     ListEventSignupsArgs,
     ListEventsArgs,
     ListEventTasksArgs,
     ListEventTemplatesArgs,
+    ListInventoryItemsArgs,
+    ListInventoryLocationsArgs,
+    ListInventoryMovementsArgs,
     ListPendingSignupsArgs,
     ListUpcomingDeadlinesArgs,
     ListVolunteersArgs,
+    PreviewAnnouncementArgs,
+    PreviewCertificateGenerationArgs,
+    PreviewShiftReminderArgs,
     PublishEventArgs,
+    SendAnnouncementArgs,
+    SendShiftReminderArgs,
     UpdateEventArgs,
     UpdateTaskStatusArgs,
 )
 from backend.schema.events import EventCreate, EventTaskUpdate, EventUpdate
 from backend.schema.volunteers import SignupApprove
+from backend.schema.whatsapp import AnnouncementCreate, ReminderCreate
 
 _TASK_STATUS_HANDLERS = {
     "ongoing": events_routes.start_task,
@@ -219,6 +236,133 @@ def approve_event_signup(db: sqlite3.Connection, args: ApproveEventSignupArgs) -
     return detail.model_dump(mode="json")
 
 
+def list_inventory_items(db: sqlite3.Connection, args: ListInventoryItemsArgs) -> dict:
+    """TICKET-39: read-only. Write tools (adjustments/transfers) are
+
+    deliberately not wired up yet — see the ticket for why.
+    """
+
+    pagination = Pagination(limit=args.limit, offset=args.offset)
+    return inventory_routes.list_items(db, pagination)
+
+
+def list_inventory_locations(db: sqlite3.Connection, args: ListInventoryLocationsArgs) -> dict:
+    """TICKET-39."""
+
+    pagination = Pagination(limit=args.limit, offset=args.offset)
+    return inventory_routes.list_locations(db, pagination)
+
+
+def get_stock_levels(db: sqlite3.Connection, args: GetStockLevelsArgs) -> dict:
+    """TICKET-39."""
+
+    return inventory_routes.list_stock(db)
+
+
+def list_inventory_movements(db: sqlite3.Connection, args: ListInventoryMovementsArgs) -> dict:
+    """TICKET-39."""
+
+    pagination = Pagination(limit=args.limit, offset=args.offset)
+    return inventory_routes.list_movements(db, pagination)
+
+
+def preview_announcement(db: sqlite3.Connection, args: PreviewAnnouncementArgs) -> dict:
+    """TICKET-40: no DB write. get_event's own 404 check doubles as the
+
+    "does this event exist" business validation, same reuse pattern as the
+    rest of this module.
+    """
+
+    events_routes.get_event(args.event_id, db)
+    contacts = audience_contacts(db, args.event_id, args.audience)
+    return {
+        "event_id": args.event_id,
+        "title": args.title,
+        "body": args.body,
+        "audience": args.audience,
+        "recipient_count": len(contacts),
+    }
+
+
+def send_announcement(db: sqlite3.Connection, args: SendAnnouncementArgs) -> dict:
+    """TICKET-40: only reached after the organizer explicitly confirms a
+
+    preview_announcement result (SYSTEM_PROMPT guidance) — this sends real
+    WhatsApp messages with no undo.
+    """
+
+    payload = AnnouncementCreate(title=args.title, body=args.body, audience=args.audience)
+    detail = whatsapp_routes.create_announcement(args.event_id, payload, db)
+    return detail.model_dump(mode="json")
+
+
+def preview_shift_reminder(db: sqlite3.Connection, args: PreviewShiftReminderArgs) -> dict:
+    """TICKET-40: no DB write. Shift reminders always target the
+
+    'volunteers' audience, matching create_reminder's hardcoded value.
+    """
+
+    detail = events_routes.get_event(args.event_id, db)
+    body = args.body or whatsapp_routes.default_reminder_body(detail.model_dump(mode="json"))
+    contacts = audience_contacts(db, args.event_id, "volunteers")
+    return {
+        "event_id": args.event_id,
+        "body": body,
+        "audience": "volunteers",
+        "recipient_count": len(contacts),
+    }
+
+
+def send_shift_reminder(db: sqlite3.Connection, args: SendShiftReminderArgs) -> dict:
+    """TICKET-40: only reached after the organizer explicitly confirms a
+
+    preview_shift_reminder result (SYSTEM_PROMPT guidance).
+    """
+
+    payload = ReminderCreate(body=args.body)
+    detail = whatsapp_routes.create_reminder(args.event_id, payload, db)
+    return detail.model_dump(mode="json")
+
+
+def list_completed_event_reports(db: sqlite3.Connection, args: ListCompletedEventReportsArgs) -> dict:
+    """TICKET-41."""
+
+    reports = reports_routes.completed_event_reports(db)
+    return {"items": [report.model_dump(mode="json") for report in reports]}
+
+
+def list_event_certificates(db: sqlite3.Connection, args: ListEventCertificatesArgs) -> dict:
+    """TICKET-41."""
+
+    certificates = whatsapp_routes.list_certificates(args.event_id, db)
+    return {"items": [certificate.model_dump(mode="json") for certificate in certificates]}
+
+
+def preview_certificate_generation(
+    db: sqlite3.Connection, args: PreviewCertificateGenerationArgs
+) -> dict:
+    """TICKET-41: no DB write — counts eligible attendees/volunteers and
+
+    how many already have a delivered certificate.
+    """
+
+    events_routes.get_event(args.event_id, db)
+    return whatsapp_routes.certificate_recipient_counts(db, args.event_id)
+
+
+def generate_event_certificates(
+    db: sqlite3.Connection, args: GenerateEventCertificatesArgs
+) -> dict:
+    """TICKET-41: only reached after the organizer explicitly confirms a
+
+    preview_certificate_generation result (SYSTEM_PROMPT guidance) — this
+    messages real participants and volunteers on WhatsApp with no undo.
+    """
+
+    certificates = whatsapp_routes.generate_certificates(args.event_id, db)
+    return {"items": [certificate.model_dump(mode="json") for certificate in certificates]}
+
+
 TOOL_EXECUTORS = {
     "create_event_draft": create_event_draft,
     "publish_event": publish_event,
@@ -236,4 +380,16 @@ TOOL_EXECUTORS = {
     "list_event_signups": list_event_signups,
     "list_pending_signups": list_pending_signups,
     "approve_event_signup": approve_event_signup,
+    "list_inventory_items": list_inventory_items,
+    "list_inventory_locations": list_inventory_locations,
+    "get_stock_levels": get_stock_levels,
+    "list_inventory_movements": list_inventory_movements,
+    "preview_announcement": preview_announcement,
+    "send_announcement": send_announcement,
+    "preview_shift_reminder": preview_shift_reminder,
+    "send_shift_reminder": send_shift_reminder,
+    "list_completed_event_reports": list_completed_event_reports,
+    "list_event_certificates": list_event_certificates,
+    "preview_certificate_generation": preview_certificate_generation,
+    "generate_event_certificates": generate_event_certificates,
 }

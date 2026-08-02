@@ -1016,9 +1016,48 @@ function PublicityPack({
     "#VolunteerSG",
     ...hashtagSource.map((tag) => `#${tag}`),
   ];
-  const caption =
-    event.generatedCaption ||
-    `${event.name} welcomed ${event.attendees} attendees with the support of ${event.volunteers} volunteers and partners ${event.partners.join(", ")}. Thank you to everyone who helped create a meaningful day of service and community connection. ${hashtags.join(" ")}`;
+  const shareUrl = window.location.href;
+  const linkedInCopy = `${event.name} brought together ${event.attendees} attendees, ${event.volunteers} volunteers and partners ${event.partners.join(", ")} at ${event.venue}. The event is a reminder that sustained community impact is built through thoughtful collaboration and people showing up with purpose.\n\n${hashtags.join(" ")}`;
+  const facebookCopy = `Thank you to everyone who made ${event.name} possible. With ${event.attendees} attendees and ${event.volunteers} volunteers, the day was filled with service, connection and community care. Special thanks to ${event.partners.join(", ")} for supporting the effort.\n\n${hashtags.join(" ")}`;
+  const instagramCopy = `${event.name} moments worth remembering.\n\n${event.attendees} attendees. ${event.volunteers} volunteers. A community brought together by service and heart.\n\n${hashtags.join(" ")}`;
+  const twitterCopy = `${event.name} wrapped with ${event.attendees} attendees, ${event.volunteers} volunteers and support from ${event.partners.join(", ")}. Grateful for everyone who helped make this community effort happen. ${hashtags.join(" ")}`;
+  const instagramLogoSrc =
+    "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 160 160'%3E%3Cdefs%3E%3CradialGradient id='a' cx='30%25' cy='107%25' r='120%25'%3E%3Cstop offset='0' stop-color='%23fdf497'/%3E%3Cstop offset='.2' stop-color='%23fdf497'/%3E%3Cstop offset='.42' stop-color='%23fd5949'/%3E%3Cstop offset='.6' stop-color='%23d6249f'/%3E%3Cstop offset='.9' stop-color='%23285AEB'/%3E%3C/radialGradient%3E%3C/defs%3E%3Crect width='160' height='160' rx='36' fill='url(%23a)'/%3E%3Cpath d='M52 28h56c15 0 24 9 24 24v56c0 15-9 24-24 24H52c-15 0-24-9-24-24V52c0-15 9-24 24-24Z' fill='none' stroke='white' stroke-width='12'/%3E%3Ccircle cx='80' cy='80' r='27' fill='none' stroke='white' stroke-width='12'/%3E%3Ccircle cx='112' cy='48' r='8' fill='white'/%3E%3C/svg%3E";
+  const platformCaptions = [
+    {
+      platform: "LinkedIn",
+      logo: "in",
+      logoClass: "linkedin",
+      postUrl: `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(shareUrl)}&summary=${encodeURIComponent(linkedInCopy)}`,
+      copy: linkedInCopy,
+      supportsPrefill: true,
+    },
+    {
+      platform: "Facebook",
+      logo: "f",
+      logoClass: "facebook",
+      postUrl: `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}&quote=${encodeURIComponent(facebookCopy)}`,
+      copy: facebookCopy,
+      supportsPrefill: true,
+    },
+    {
+      platform: "Instagram",
+      logo: "◎",
+      logoClass: "instagram",
+      logoSrc: instagramLogoSrc,
+      postUrl: "https://www.instagram.com/",
+      copy: instagramCopy,
+      supportsPrefill: false,
+    },
+    {
+      platform: "Twitter/X",
+      logo: "X",
+      logoClass: "twitter",
+      postUrl: `https://twitter.com/intent/tweet?text=${encodeURIComponent(twitterCopy)}`,
+      copy: twitterCopy,
+      supportsPrefill: true,
+    },
+  ];
   const selectedPhoto =
     uploadedPhotos.find((photo) => photo.id === selectedPhotoId) ??
     uploadedPhotos[0] ??
@@ -1048,12 +1087,12 @@ function PublicityPack({
 
     Promise.all(
       files.map(
-        (file) =>
+        (file, index) =>
           new Promise<UploadedPhoto>((resolve) => {
             const reader = new FileReader();
             reader.onload = () =>
               resolve({
-                id: `${file.name}-${file.lastModified}-${file.size}`,
+                id: `${file.name}-${file.lastModified}-${file.size}-${Date.now()}-${index}`,
                 name: file.name,
                 mimeType: file.type || "image/jpeg",
                 src: String(reader.result),
@@ -1185,18 +1224,54 @@ function PublicityPack({
         </div>
       </section>
 
-      <article className="caption-card">
-        <div>
-          <h3>Generated Caption</h3>
-          <p>{caption}</p>
-        </div>
-        <button
-          type="button"
-          onClick={() => void copyContent("Generated Caption", caption)}
-        >
-          {copiedLabel === "Generated Caption" ? "Copied" : "Copy"}
-        </button>
-      </article>
+      <section className="platform-caption-grid" aria-label="Platform captions">
+        {platformCaptions.map((platformCaption) => (
+          <article className="caption-card" key={platformCaption.platform}>
+            <div>
+              <div className="platform-caption-heading">
+                {"logoSrc" in platformCaption ? (
+                  <img
+                    className="platform-logo-image"
+                    src={platformCaption.logoSrc}
+                    alt=""
+                    aria-hidden="true"
+                  />
+                ) : (
+                  <span
+                    className={`platform-logo ${platformCaption.logoClass}`}
+                    aria-hidden="true"
+                  >
+                    {platformCaption.logo}
+                  </span>
+                )}
+                <h3>{platformCaption.platform}</h3>
+              </div>
+              <p>{platformCaption.copy}</p>
+            </div>
+            <div className="caption-actions">
+              <button
+                type="button"
+                onClick={() =>
+                  void copyContent(platformCaption.platform, platformCaption.copy)
+                }
+              >
+                {copiedLabel === platformCaption.platform ? "Copied" : "Copy"}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!platformCaption.supportsPrefill) {
+                    void copyContent(platformCaption.platform, platformCaption.copy);
+                  }
+                  window.open(platformCaption.postUrl, "_blank", "noopener,noreferrer");
+                }}
+              >
+                Post
+              </button>
+            </div>
+          </article>
+        ))}
+      </section>
 
       <section className="photo-assistant">
         <div className="photo-assistant-header">

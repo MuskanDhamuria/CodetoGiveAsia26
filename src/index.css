@@ -2118,7 +2118,93 @@ button {
   align-items: start;
   display: grid;
   gap: 18px;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.platform-caption-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.platform-caption-heading {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+}
+
+.platform-logo {
+  align-items: center;
+  border-radius: 7px;
+  color: #ffffff;
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-size: 14px;
+  font-weight: 900;
+  height: 30px;
+  justify-content: center;
+  letter-spacing: 0;
+  line-height: 1;
+  width: 30px;
+}
+
+.platform-logo-image {
+  border-radius: 7px;
+  display: block;
+  flex: 0 0 auto;
+  height: 30px;
+  object-fit: cover;
+  width: 30px;
+}
+
+.platform-logo.linkedin {
+  background: #0a66c2;
+}
+
+.platform-logo.facebook {
+  background: #1877f2;
+  font-family: Arial, sans-serif;
+  font-size: 20px;
+}
+
+.platform-logo.instagram {
+  background:
+    radial-gradient(circle at 28% 105%, #ffd86f 0 23%, transparent 24%),
+    radial-gradient(circle at 18% 10%, #4f6fdc 0 20%, transparent 42%),
+    linear-gradient(135deg, #5b45d8 0%, #b632bd 38%, #e12f83 66%, #ff7a28 100%);
+  font-size: 0;
+  overflow: hidden;
+  position: relative;
+}
+
+.platform-logo.instagram::before {
+  border: 3px solid #ffffff;
+  border-radius: 8px;
+  content: "";
+  height: 18px;
+  position: absolute;
+  width: 18px;
+}
+
+.platform-logo.instagram::after {
+  background:
+    radial-gradient(circle at 72% 28%, #ffffff 0 2px, transparent 2.2px),
+    radial-gradient(circle at 50% 56%, transparent 0 4px, #ffffff 4.2px 6.4px, transparent 6.6px);
+  content: "";
+  height: 22px;
+  position: absolute;
+  width: 22px;
+}
+
+.platform-logo.twitter {
+  background: #0a0a0a;
+}
+
+.caption-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .caption-card p,
@@ -3977,6 +4063,7 @@ button {
   .certificate-stats,
   .impact-summary-grid,
   .content-pack-grid,
+  .platform-caption-grid,
   .caption-card,
   .photo-selection-grid,
   .photo-output-grid,

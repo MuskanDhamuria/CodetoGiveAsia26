@@ -204,7 +204,11 @@ class WhatsAppBotTest(unittest.TestCase):
         events_response = self.send_message(phone, "EVENTS")
         self.assertEqual(events_response.status_code, 200)
 
-        signup_response = self.send_message(phone, f"SIGNUP {event['id']}", name="Priya")
+        prompt_response = self.send_message(phone, f"SIGNUP {event['id']}", name="Priya")
+        self.assertEqual(prompt_response.status_code, 200)
+        self.assertIn("What name", self.fake_whatsapp.sent[-1][1])
+
+        signup_response = self.send_message(phone, "Priya Kumar")
         self.assertEqual(signup_response.status_code, 200)
         self.assertIn("signed up", self.fake_whatsapp.sent[-1][1])
 
@@ -213,12 +217,38 @@ class WhatsAppBotTest(unittest.TestCase):
         ).json()["items"]
         self.assertEqual(len(participants), 1)
         self.assertEqual(participants[0]["contact_number"], phone)
+        self.assertEqual(participants[0]["name"], "Priya Kumar")
         self.assertTrue(participants[0]["rsvp_status"])
+
+    def test_signup_name_prompt_can_be_cancelled(self) -> None:
+        event = self.create_event()
+        phone = "6580000028"
+        self.send_message(phone, f"SIGNUP {event['id']}")
+        response = self.send_message(phone, "STOP")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("cancelled", self.fake_whatsapp.sent[-1][1].lower())
+
+        participants = self.client.get(
+            f"/api/v1/events/{event['id']}/participants"
+        ).json()["items"]
+        self.assertEqual(len(participants), 0)
+
+    def test_returning_participant_signs_up_without_being_asked_for_a_name_again(self) -> None:
+        first_event = self.create_event()
+        second_event = self.create_event()
+        phone = "6580000029"
+        self.send_message(phone, f"SIGNUP {first_event['id']}")
+        self.send_message(phone, "Devi")
+
+        response = self.send_message(phone, f"SIGNUP {second_event['id']}")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("signed up", self.fake_whatsapp.sent[-1][1])
 
     def test_myevents_reports_registration(self) -> None:
         event = self.create_event()
         phone = "6580000003"
         self.send_message(phone, f"SIGNUP {event['id']}")
+        self.send_message(phone, "Test Participant")
         response = self.send_message(phone, "MYEVENTS")
         self.assertEqual(response.status_code, 200)
         self.assertIn(event["name"], self.fake_whatsapp.sent[-1][1])
@@ -227,6 +257,7 @@ class WhatsAppBotTest(unittest.TestCase):
         event = self.create_event()
         phone = "6580000004"
         self.send_message(phone, f"SIGNUP {event['id']}")
+        self.send_message(phone, "Test Participant")
         response = self.send_message(phone, f"CERT {event['id']}")
         self.assertEqual(response.status_code, 200)
         self.assertIn("don't see attendance", self.fake_whatsapp.sent[-1][1])
@@ -238,6 +269,7 @@ class WhatsAppBotTest(unittest.TestCase):
         event = self.create_event()
         phone = "6580000023"
         self.send_message(phone, f"SIGNUP {event['id']}", name="Wei Ling")
+        self.send_message(phone, "Wei Ling")
         admin_phone = "6580000024"
         self.make_team_member_contact(admin_phone)
         self.send_message(admin_phone, f"ATTEND {event['id']} {phone}")
@@ -253,6 +285,7 @@ class WhatsAppBotTest(unittest.TestCase):
         admin_phone = "6580000026"
         self.make_team_member_contact(admin_phone)
         self.send_message(phone, f"SIGNUP {first_event['id']}", name="Ravi")
+        self.send_message(phone, "Ravi")
         self.send_message(phone, f"SIGNUP {second_event['id']}")
         self.send_message(admin_phone, f"ATTEND {first_event['id']} {phone}")
         self.send_message(admin_phone, f"ATTEND {second_event['id']} {phone}")
@@ -273,6 +306,7 @@ class WhatsAppBotTest(unittest.TestCase):
         event = self.create_event()
         phone = "6580000027"
         self.send_message(phone, f"SIGNUP {event['id']}")
+        self.send_message(phone, "Test Participant")
         response = self.send_message(phone, "CERT")
         self.assertEqual(response.status_code, 200)
         self.assertIn("don't see attendance", self.fake_whatsapp.sent[-1][1])
@@ -351,6 +385,7 @@ class WhatsAppBotTest(unittest.TestCase):
         admin_phone = "6580000008"
         self.make_team_member_contact(admin_phone)
         self.send_message(participant_phone, f"SIGNUP {event['id']}")
+        self.send_message(participant_phone, "Test Participant")
         self.fake_whatsapp.sent.clear()
 
         bot_broadcast = self.send_message(admin_phone, f"BROADCAST {event['id']} Bring water bottles")
@@ -375,6 +410,7 @@ class WhatsAppBotTest(unittest.TestCase):
         admin_phone = "6580000010"
         self.make_team_member_contact(admin_phone)
         self.send_message(participant_phone, f"SIGNUP {event['id']}", name="Sam")
+        self.send_message(participant_phone, "Sam")
 
         attend_response = self.send_message(admin_phone, f"ATTEND {event['id']} {participant_phone}")
         self.assertEqual(attend_response.status_code, 200)

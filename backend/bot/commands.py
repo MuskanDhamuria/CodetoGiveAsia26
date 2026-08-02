@@ -119,6 +119,11 @@ def menu_for(contact: sqlite3.Row) -> str:
 # --------------------------------------------------------------------------- #
 def dispatch(db: sqlite3.Connection, contact: sqlite3.Row, text: str) -> list[str]:
     stripped = text.strip()
+
+    pending_event_id = _pending_signup_event_id(contact)
+    if pending_event_id is not None:
+        return complete_signup_with_name(db, contact, pending_event_id, stripped)
+
     if not stripped:
         return [greeting(contact)]
 
@@ -259,14 +264,19 @@ def _find_or_create_participant(
     return participant_id
 
 
-def signup_for_event(db: sqlite3.Connection, contact: sqlite3.Row, raw_id: str) -> list[str]:
-    event_id = _parse_int(raw_id)
-    if event_id is None:
-        return ["Reply SIGNUP <event id>, for example SIGNUP 12."]
-    event = db.execute("SELECT id, name FROM events WHERE id = ?", (event_id,)).fetchone()
-    if event is None:
-        return [f"I couldn't find event #{event_id}."]
-    participant_id = _find_or_create_participant(db, contact, None)
+_SIGNUP_NAME_STATE_PREFIX = "SIGNUP_NAME:"
+
+
+def _pending_signup_event_id(contact: sqlite3.Row) -> int | None:
+    """The event id waiting on a name reply, if this contact is mid-signup."""
+
+    state = contact["conversation_state"]
+    if not state or not state.startswith(_SIGNUP_NAME_STATE_PREFIX):
+        return None
+    return _parse_int(state[len(_SIGNUP_NAME_STATE_PREFIX) :])
+
+
+def _register_participation(db: sqlite3.Connection, event_id: int, participant_id: int) -> None:
     existing = db.execute(
         "SELECT rsvp_status FROM participations WHERE event_id = ? AND participant_id = ?",
         (event_id, participant_id),
@@ -282,7 +292,45 @@ def signup_for_event(db: sqlite3.Connection, contact: sqlite3.Row, raw_id: str) 
             (event_id, participant_id),
         )
     db.commit()
-    return [f"You're signed up for {event['name']}! We'll message you if anything changes."]
+
+
+def signup_for_event(db: sqlite3.Connection, contact: sqlite3.Row, raw_id: str) -> list[str]:
+    event_id = _parse_int(raw_id)
+    if event_id is None:
+        return ["Reply SIGNUP <event id>, for example SIGNUP 12."]
+    event = db.execute("SELECT id, name FROM events WHERE id = ?", (event_id,)).fetchone()
+    if event is None:
+        return [f"I couldn't find event #{event_id}."]
+
+    if contact["participant_id"] is not None:
+        _register_participation(db, event_id, contact["participant_id"])
+        return [f"You're signed up for {event['name']}! We'll message you if anything changes."]
+
+    # First-time signup: ask for a name instead of guessing from the WhatsApp
+    # profile name, which is often a nickname or missing entirely. The reply
+    # to this message is picked up by dispatch()'s pending-signup check.
+    _touch_contact(db, contact["id"], conversation_state=f"{_SIGNUP_NAME_STATE_PREFIX}{event_id}")
+    return [f"Great! What name should we register for {event['name']}?"]
+
+
+def complete_signup_with_name(
+    db: sqlite3.Connection, contact: sqlite3.Row, event_id: int, name: str
+) -> list[str]:
+    name = name.strip()
+    if not name:
+        return ["Please reply with a name to finish signing up (or reply STOP to cancel)."]
+    if name.upper() == "STOP":
+        _touch_contact(db, contact["id"], conversation_state=None)
+        return ["Signup cancelled. Reply SIGNUP <event id> if you change your mind."]
+
+    event = db.execute("SELECT id, name FROM events WHERE id = ?", (event_id,)).fetchone()
+    _touch_contact(db, contact["id"], conversation_state=None)
+    if event is None:
+        return ["That event isn't available anymore. Reply EVENTS to see what's on."]
+
+    participant_id = _find_or_create_participant(db, contact, name)
+    _register_participation(db, event_id, participant_id)
+    return [f"Thanks, {name}! You're signed up for {event['name']}. We'll message you if anything changes."]
 
 
 def my_events(db: sqlite3.Connection, contact: sqlite3.Row) -> str:

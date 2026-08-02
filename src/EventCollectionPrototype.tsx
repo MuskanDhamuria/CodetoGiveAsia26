@@ -250,6 +250,39 @@ export default function EventCollectionPrototype({
   const sourceEvents = liveEvents ?? prototypeEvents;
   const [selected, setSelected] = useState(sourceEvents[0]);
   const [notice, setNotice] = useState("");
+
+  useEffect(() => {
+    if (!selectedDialogOpen || view !== "list" || openOnSelect || window.innerWidth > 760) return;
+
+    const scrollY = window.scrollY;
+    const html = document.documentElement;
+    const body = document.body;
+    const previousHtmlOverflow = html.style.overflow;
+    const previousBodyOverflow = body.style.overflow;
+    const previousBodyPosition = body.style.position;
+    const previousBodyTop = body.style.top;
+    const previousBodyWidth = body.style.width;
+
+    html.style.overflow = "hidden";
+    body.style.overflow = "hidden";
+    body.style.position = "fixed";
+    body.style.top = `-${scrollY}px`;
+    body.style.width = "100%";
+
+    return () => {
+      html.style.overflow = previousHtmlOverflow;
+      body.style.overflow = previousBodyOverflow;
+      body.style.position = previousBodyPosition;
+      body.style.top = previousBodyTop;
+      body.style.width = previousBodyWidth;
+      try {
+        window.scrollTo(0, scrollY);
+      } catch {
+        // Some test DOMs do not implement scroll restoration.
+      }
+    };
+  }, [openOnSelect, selectedDialogOpen, view]);
+
   const visibleEvents = useMemo(
     () =>
       sourceEvents

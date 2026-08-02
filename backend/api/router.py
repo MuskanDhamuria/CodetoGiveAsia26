@@ -3,6 +3,7 @@
 from fastapi import APIRouter
 
 from backend.api.routes import (
+    ai_assistant,
     beneficiaries,
     event_templates,
     events,
@@ -39,6 +40,7 @@ api_router.include_router(participants.router)
 api_router.include_router(public.router)
 api_router.include_router(reports.router)
 api_router.include_router(whatsapp.router)
+api_router.include_router(ai_assistant.router)
 
 # Add future feature routers here, for example:
 # from backend.api.routes import event_templates

@@ -172,6 +172,7 @@ export default function EventDetailCard() {
       <header>
         <p>Event</p>
         <h1>{event.name}</h1>
+        {event.is_cancelled && <span className="event-status status-cancelled">Cancelled</span>}
       </header>
       <dl className="event-detail-meta">
         <div>
@@ -193,6 +194,15 @@ export default function EventDetailCard() {
           <p className="event-detail-error">
             Couldn't check your registration status. Refresh the page to try again.
           </p>
+        ) : event.is_cancelled ? (
+          <>
+            <p className="event-detail-closed">This event has been cancelled by the organizer.</p>
+            {isSignedUp && (
+              <button type="button" onClick={handleCancel} disabled={actionPending}>
+                Remove from my events
+              </button>
+            )}
+          </>
         ) : isSignedUp ? (
           <>
             <p className="event-detail-confirmed">You're signed up for this event.</p>

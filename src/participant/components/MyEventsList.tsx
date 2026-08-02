@@ -77,6 +77,7 @@ export default function MyEventsList() {
                     {formatEventDate(event.event_date)}
                     {time && <> · {time}</>}
                   </span>
+                  {event.is_cancelled && <span className="event-status status-cancelled">Cancelled</span>}
                 </div>
               </Link>
             </li>

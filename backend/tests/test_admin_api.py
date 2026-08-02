@@ -101,6 +101,37 @@ class AdminApiTest(unittest.TestCase):
         self.assertEqual(closed.status_code, 200)
         self.assertEqual(closed.json()["status"], "closed")
 
+    def test_organizer_cancels_an_event_distinctly_from_closing_it(self) -> None:
+        event = self.create_event()
+        event_id = event["id"]
+        self.assertFalse(event["is_cancelled"])
+
+        cancelled = self.client.post(f"/api/v1/events/{event_id}/cancel")
+        self.assertEqual(cancelled.status_code, 200)
+        self.assertEqual(cancelled.json()["status"], "closed")
+        self.assertTrue(cancelled.json()["is_cancelled"])
+
+        detail = self.client.get(f"/api/v1/events/{event_id}").json()
+        self.assertTrue(detail["is_cancelled"])
+
+        listed = self.client.get("/api/v1/events?limit=100").json()
+        item = next(row for row in listed["items"] if row["id"] == event_id)
+        self.assertTrue(item["is_cancelled"])
+
+        summary = self.client.get(
+            "/api/v1/dashboard/summary", params={"date_from": "2026-01-01"}
+        ).json()
+        self.assertEqual(summary["upcoming_events"], 0)
+
+        calendar = self.client.get(
+            "/api/v1/calendar/events", params={"month": "2026-08"}
+        ).json()
+        self.assertEqual(calendar["items"], [])
+
+    def test_cancelling_a_missing_event_is_a_404(self) -> None:
+        response = self.client.post("/api/v1/events/999/cancel")
+        self.assertEqual(response.status_code, 404)
+
     def test_organizer_manages_reusable_templates(self) -> None:
         original = self.client.post(
             "/api/v1/event-templates",

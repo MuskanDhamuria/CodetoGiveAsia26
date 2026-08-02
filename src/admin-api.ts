@@ -64,6 +64,7 @@ export type EventDetail = {
   event_date: string
   status: EventStatus
   expected_attendance?: number | null
+  is_cancelled: boolean
   created_at: string
   updated_at: string
   tasks: EventTask[]
@@ -168,7 +169,7 @@ type ListResponse<T> = {
 type EventTemplateSummary = Omit<EventTemplate, "tasks" | "roles">
 type EventSummary = Pick<
   EventDetail,
-  "id" | "name" | "venue" | "event_date" | "status"
+  "id" | "name" | "venue" | "event_date" | "status" | "is_cancelled"
 >
 
 export interface AdminApi {
@@ -182,6 +183,7 @@ export interface AdminApi {
   rescheduleEvent(eventId: number, input: RescheduleEventInput): Promise<EventDetail>
   closeEvent(eventId: number): Promise<EventDetail>
   reopenEvent(eventId: number): Promise<EventDetail>
+  cancelEvent(eventId: number): Promise<EventDetail>
   deleteEvent(eventId: number): Promise<void>
   createEventTask(eventId: number, input: CreateEventTaskInput): Promise<EventTask>
   updateEventTask(eventId: number, taskId: number, changes: UpdateEventTaskInput): Promise<EventTask>
@@ -275,6 +277,10 @@ export const adminApi: AdminApi = {
 
   reopenEvent(eventId) {
     return request<EventDetail>(`/events/${eventId}/reopen`, { method: "POST" })
+  },
+
+  cancelEvent(eventId) {
+    return request<EventDetail>(`/events/${eventId}/cancel`, { method: "POST" })
   },
 
   deleteEvent(eventId) {

@@ -1908,6 +1908,10 @@ function AdminPanel() {
   const [openVolunteerIndex, setOpenVolunteerIndex] = useState<number | null>(
     null,
   );
+  // TICKET-35: bumped whenever the AI panel successfully mutates something,
+  // so the page behind it can be remounted to refetch instead of showing
+  // stale data until a manual reload.
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     setActivePage(readInitialPage(location.pathname));
@@ -2014,7 +2018,7 @@ function AdminPanel() {
   }
 
   return (
-    <main className={activePage === "home" ? "" : "product-app"}>
+    <main>
       <Navbar
         activePage={activePage}
         onNavigate={navigate}
@@ -2026,21 +2030,28 @@ function AdminPanel() {
         <div className="product-frame">
           <div className="product-page-content">
             {activePage === "dashboard" && (
-              <DashboardPage onQuickAction={handleQuickAction} onOpenEvent={openEventWorkspace} />
+              <DashboardPage
+                key={`dashboard-${refreshKey}`}
+                onQuickAction={handleQuickAction}
+                onOpenEvent={openEventWorkspace}
+              />
             )}
             {activePage === "events" && (
               <EventsPage
-                key={`events-${openEventIndex ?? "list"}`}
+                key={`events-${openEventIndex ?? "list"}-${refreshKey}`}
                 initialEventIndex={openEventIndex}
               />
             )}
             {activePage === "inventory" && <InventoryPage />}
-            {activePage === "volunteers" && <VolunteersPage />}
+            {activePage === "volunteers" && <VolunteersPage key={`volunteers-${refreshKey}`} />}
             {activePage === "reports" && <ReportsPage />}
             {activePage === "broadcasts" && <WhatsAppPanel />}
             {activePage === "ai" && <PlaceholderPage title="AI Copilot" />}
           </div>
-          <AiCopilot activePage={activePage} />
+          <AiCopilot
+            activePage={activePage}
+            onDataChanged={() => setRefreshKey((previous) => previous + 1)}
+          />
         </div>
       )}
     </main>

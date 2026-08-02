@@ -90,14 +90,22 @@ def event_detail(db, event_id: int) -> EventDetail:
         status=event["status"],
         beneficiary_id=event["beneficiary_id"],
         expected_attendance=event["expected_attendance"],
+        is_cancelled=event["cancelled_at"] is not None,
         created_at=event["created_at"],
         updated_at=event["updated_at"],
         tasks=tasks,
     )
 
 
-@router.post("/events", response_model=EventDetail, status_code=201)
-def create_event(payload: EventCreate, db: Connection) -> EventDetail:
+def resolve_event_template_context(db, payload: EventCreate) -> tuple[int | None, str]:
+    """Look up the payload's template (if any) and resolve inherited fields.
+
+    Shared by ``create_event`` and the AI ``create_event_draft`` tool
+    (backend/ai_tools) so draft validation can reuse the exact same
+    template-existence check and default-inheritance rules without a DB
+    write, instead of re-implementing them.
+    """
+
     template = None
     if payload.event_template_id is not None:
         template = db.execute(
@@ -121,6 +129,12 @@ def create_event(payload: EventCreate, db: Connection) -> EventDetail:
         if payload.description is not None
         else template["description"] if template is not None else ""
     )
+    return beneficiary_id, description
+
+
+@router.post("/events", response_model=EventDetail, status_code=201)
+def create_event(payload: EventCreate, db: Connection) -> EventDetail:
+    beneficiary_id, description = resolve_event_template_context(db, payload)
 
     with db:
         event = db.execute(
@@ -261,14 +275,21 @@ def list_events(
     rows = db.execute(
         f"""
         SELECT id, name, venue, event_date, description, start_time, end_time,
-               status, beneficiary_id, expected_attendance FROM events
+               status, beneficiary_id, expected_attendance, cancelled_at FROM events
         WHERE {clause}
         ORDER BY {sort} {order.upper()}
         LIMIT ? OFFSET ?
         """,
         [*params, pagination.limit, pagination.offset],
     ).fetchall()
-    items = [EventSummary(**dict(row), event_time=row["start_time"]) for row in rows]
+    items = [
+        EventSummary(
+            **{k: v for k, v in dict(row).items() if k != "cancelled_at"},
+            event_time=row["start_time"],
+            is_cancelled=row["cancelled_at"] is not None,
+        )
+        for row in rows
+    ]
     return list_envelope(items, total, pagination)
 
 
@@ -732,3 +753,18 @@ def close_event(event_id: int, db: Connection) -> EventDetail:
 @router.post("/events/{event_id}/reopen", response_model=EventDetail)
 def reopen_event(event_id: int, db: Connection) -> EventDetail:
     return set_event_status(event_id, "open", db)
+
+
+@router.post("/events/{event_id}/cancel", response_model=EventDetail)
+def cancel_event(event_id: int, db: Connection) -> EventDetail:
+    row = db.execute(
+        """
+        UPDATE events SET status = 'closed', cancelled_at = CURRENT_TIMESTAMP
+        WHERE id = ? RETURNING id
+        """,
+        (event_id,),
+    ).fetchone()
+    if row is None:
+        raise HTTPException(404, f"Event {event_id} was not found")
+    db.commit()
+    return event_detail(db, event_id)

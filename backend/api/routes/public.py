@@ -44,6 +44,19 @@ class PublicRsvpIn(BaseModel):
     rsvp_status: bool = True
 
 
+class PublicSignupIn(BaseModel):
+    name: str = Field(min_length=1)
+    contact_number: str | None = None
+    email: str | None = None
+
+
+class PublicSignupOut(BaseModel):
+    participant_id: int
+    participant_name: str
+    participant_contact_number: str | None
+    participant_email: str | None
+
+
 class PublicRsvpOut(BaseModel):
     participant_id: int
     # The participant record actually matched/created — not an echo of the
@@ -92,6 +105,41 @@ def _find_or_create_participant(
         if row is None:
             raise
         return row
+
+
+@router.post(
+    "/signup",
+    response_model=PublicSignupOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def public_signup(body: PublicSignupIn, request: Request) -> PublicSignupOut:
+    """Create (or find) a participant account without registering for an event."""
+    if not body.contact_number and not body.email:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, "Provide a contact number or email to sign up"
+        )
+
+    contact_number = None
+    if body.contact_number:
+        try:
+            contact_number = normalize_phone_number(body.contact_number)
+        except InvalidPhoneNumberError as error:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, str(error)) from error
+
+    connection = connect(request.app.state.database_path)
+    try:
+        with connection:
+            participant = _find_or_create_participant(
+                connection, body.name.strip(), contact_number, body.email
+            )
+        return PublicSignupOut(
+            participant_id=participant["id"],
+            participant_name=participant["name"],
+            participant_contact_number=participant["contact_number"],
+            participant_email=participant["email"],
+        )
+    finally:
+        connection.close()
 
 
 @router.post(

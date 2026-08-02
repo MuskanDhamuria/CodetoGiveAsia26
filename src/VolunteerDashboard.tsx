@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react"
 import { clearVolunteerToken, getVolunteerDashboard, getVolunteerToken, type VolunteerDashboard as DashboardData, type VolunteerDashboardEvent } from "./volunteer-api"
 import { AccountHeader } from "./VolunteerRegister"
+import VolunteerAttendanceQrCode from "./VolunteerAttendanceQrCode"
 
 function formatDate(value: string) {
   const date = new Date(`${value}T00:00:00Z`)
@@ -13,7 +14,19 @@ function focusedEventFromUrl() {
 }
 
 function EventRow({ event, focused }: { event: VolunteerDashboardEvent; focused: boolean }) {
-  return <article id={`volunteer-event-${event.event_id}`} className={`pts-dashboard-event ${focused ? "focused" : ""}`}><div><p>{event.signup_status}</p><h3>{event.event_name}</h3><span>{formatDate(event.event_date)} · {event.venue}</span></div><aside>{event.assigned_role_name || "Role to be confirmed"}<small>{event.attendance === null ? "Attendance pending" : event.attendance ? "Attended" : "Not attended"}</small></aside></article>
+  const [showQr, setShowQr] = useState(false)
+  return <article id={`volunteer-event-${event.event_id}`} className={`pts-dashboard-event ${focused ? "focused" : ""}`}>
+    <div>
+      <p>{event.signup_status}</p>
+      <h3>{event.event_name}</h3>
+      <span>{formatDate(event.event_date)} · {event.venue}</span>
+      <button type="button" className="pts-dashboard-qr-toggle" onClick={() => setShowQr((current) => !current)}>
+        {showQr ? "Hide my QR code" : "Show my QR code"}
+      </button>
+      {showQr && <VolunteerAttendanceQrCode eventId={event.event_id} />}
+    </div>
+    <aside>{event.assigned_role_name || "Role to be confirmed"}<small>{event.attendance === null ? "Attendance pending" : event.attendance ? "Attended" : "Not attended"}</small></aside>
+  </article>
 }
 
 export default function VolunteerDashboard({ onBack, onSignIn }: { onBack: () => void; onSignIn: () => void }) {

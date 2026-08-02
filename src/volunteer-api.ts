@@ -81,6 +81,7 @@ export type VolunteerAccount = {
   name: string
   contact_number: string | null
   email: string | null
+  phone_verified: boolean
 }
 
 export type VolunteerAuthResult = {
@@ -141,6 +142,17 @@ function authorizedGet<T>(path: string): Promise<T> {
   return fetch(`${API_BASE}${path}`, { headers: authorizedHeaders() }).then((response) => handle<T>(response))
 }
 
+function authorizedPost<T>(path: string, body?: unknown): Promise<T> {
+  return fetch(`${API_BASE}${path}`, {
+    method: "POST",
+    headers: {
+      ...authorizedHeaders(),
+      ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+    },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  }).then((response) => handle<T>(response))
+}
+
 export function getVolunteerToken() {
   return window.localStorage.getItem(VOLUNTEER_TOKEN_KEY)
 }
@@ -174,6 +186,24 @@ export function getVolunteerMe(): Promise<VolunteerAccount> {
 
 export function getVolunteerDashboard(): Promise<VolunteerDashboard> {
   return authorizedGet("/volunteer-auth/dashboard")
+}
+
+export type OtpResult = { phone_verified: boolean }
+
+// Verifies the code sent to the volunteer's WhatsApp number via the "otp"
+// Meta template right after registration — see backend/api/routes/volunteer_auth.py.
+export function verifyVolunteerOtp(code: string): Promise<OtpResult> {
+  return authorizedPost("/volunteer-auth/verify-otp", { code })
+}
+
+export function resendVolunteerOtp(): Promise<OtpResult> {
+  return authorizedPost("/volunteer-auth/resend-otp")
+}
+
+// Signed token an admin's QR scanner reads back to mark this volunteer
+// present at the event — see backend/attendance_qr.py.
+export function getVolunteerAttendanceQrToken(eventId: number): Promise<{ token: string }> {
+  return authorizedGet(`/volunteer-auth/qr-token?event_id=${eventId}`)
 }
 
 export function listEvents(): Promise<ListEnvelope<EventSummary>> {

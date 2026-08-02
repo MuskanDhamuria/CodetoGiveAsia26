@@ -5,23 +5,33 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
+import logging
+import os
 import secrets
 import sqlite3
 from datetime import UTC, datetime, timedelta
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Security, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Security, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from backend.api.routes._common import Connection
+from backend.attendance_qr import VOLUNTEER_KIND, generate_token
+from backend.bot.commands import get_or_create_contact
+from backend.integrations.whatsapp_client import get_client
 from backend.schema.volunteer_auth import (
     VolunteerAccountOut,
     VolunteerDashboardEvent,
     VolunteerDashboardOut,
     VolunteerAuthResult,
     VolunteerLogin,
+    VolunteerOtpResult,
     VolunteerRegister,
+    VolunteerVerifyOtp,
 )
 
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/volunteer-auth", tags=["volunteer auth"])
 bearer = HTTPBearer(auto_error=False)
@@ -29,6 +39,56 @@ SESSION_DAYS = 30
 PASSWORD_N = 2**14
 PASSWORD_R = 8
 PASSWORD_P = 1
+
+# --------------------------------------------------------------------------- #
+# WhatsApp OTP verification
+#
+# All volunteer signup happens on the website (backend.bot.commands no longer
+# creates volunteers on the fly). Right after registering, we send a code
+# through the "otp" Meta template — chosen over a free-form text message
+# because the volunteer hasn't necessarily messaged the bot yet, so they may
+# be outside WhatsApp's 24-hour customer-service window for plain text.
+# --------------------------------------------------------------------------- #
+OTP_LENGTH = 6
+OTP_TTL_MINUTES = 10
+OTP_MAX_ATTEMPTS = 5
+
+
+def generate_otp_code() -> str:
+    return f"{secrets.randbelow(10 ** OTP_LENGTH):0{OTP_LENGTH}d}"
+
+
+def hash_otp_code(code: str) -> str:
+    return hashlib.sha256(code.encode("utf-8")).hexdigest()
+
+
+def otp_expiry_timestamp() -> str:
+    return (datetime.now(UTC) + timedelta(minutes=OTP_TTL_MINUTES)).isoformat()
+
+
+def issue_and_send_otp(db: sqlite3.Connection, account_id: int, phone: str) -> None:
+    code = generate_otp_code()
+    with db:
+        db.execute(
+            """
+            UPDATE volunteer_accounts
+            SET otp_code_hash = ?, otp_expires_at = ?, otp_attempts = 0
+            WHERE id = ?
+            """,
+            (hash_otp_code(code), otp_expiry_timestamp(), account_id),
+        )
+    try:
+        get_client().send_template(
+            phone,
+            template_name=os.environ.get("WHATSAPP_OTP_TEMPLATE_NAME", "otp"),
+            language_code=os.environ.get("WHATSAPP_OTP_TEMPLATE_LANG", "en_US"),
+            body_params=[code],
+            button_param=code,
+        )
+    except Exception:
+        # Registration/resend already succeeded and committed above; a failed
+        # WhatsApp delivery shouldn't make the request look like it failed.
+        logger.exception("Failed to send OTP WhatsApp template to %s", phone)
 
 
 def normalise_phone(value: str) -> str:
@@ -87,6 +147,7 @@ def account_model(row: sqlite3.Row) -> VolunteerAccountOut:
         name=row["name"],
         contact_number=row["contact_number"],
         email=row["email"],
+        phone_verified=row["phone_verified_at"] is not None,
     )
 
 
@@ -94,7 +155,7 @@ def find_account_by_phone(db: sqlite3.Connection, phone: str) -> sqlite3.Row | N
     return db.execute(
         """
         SELECT va.id AS account_id, v.id AS volunteer_id, v.name,
-               v.contact_number, v.email, va.password_hash
+               v.contact_number, v.email, va.password_hash, va.phone_verified_at
         FROM volunteer_accounts va
         JOIN volunteers v ON v.id = va.volunteer_id
         WHERE v.contact_number = ?
@@ -127,7 +188,7 @@ def current_account(
     row = db.execute(
         """
         SELECT va.id AS account_id, v.id AS volunteer_id, v.name,
-               v.contact_number, v.email
+               v.contact_number, v.email, va.phone_verified_at
         FROM volunteer_sessions vs
         JOIN volunteer_accounts va ON va.id = vs.volunteer_account_id
         JOIN volunteers v ON v.id = va.volunteer_id
@@ -175,10 +236,24 @@ def register(payload: VolunteerRegister, db: Connection) -> VolunteerAuthResult:
     except sqlite3.IntegrityError as error:
         raise HTTPException(status_code=409, detail="An account already exists for this volunteer") from error
 
+    # Auto-link this phone number to the WhatsApp bot so it already
+    # recognizes them as a volunteer if they message it later — no separate
+    # WhatsApp signup step required. Safe to run every time: never overwrites
+    # an existing link to a different volunteer.
+    contact = get_or_create_contact(db, volunteer["contact_number"])
+    if contact["volunteer_id"] is None:
+        db.execute(
+            "UPDATE whatsapp_contacts SET volunteer_id = ? WHERE id = ?",
+            (volunteer["id"], contact["id"]),
+        )
+        db.commit()
+
+    issue_and_send_otp(db, account["id"], volunteer["contact_number"])
+
     row = db.execute(
         """
         SELECT va.id AS account_id, v.id AS volunteer_id, v.name,
-               v.contact_number, v.email
+               v.contact_number, v.email, va.phone_verified_at
         FROM volunteer_accounts va JOIN volunteers v ON v.id = va.volunteer_id
         WHERE va.id = ?
         """,
@@ -208,6 +283,87 @@ def me(
     credentials: HTTPAuthorizationCredentials | None = Security(bearer),
 ) -> VolunteerAccountOut:
     return account_model(current_account(credentials, db))
+
+
+@router.post("/verify-otp", response_model=VolunteerOtpResult)
+def verify_otp(
+    payload: VolunteerVerifyOtp,
+    db: Connection,
+    credentials: HTTPAuthorizationCredentials | None = Security(bearer),
+) -> VolunteerOtpResult:
+    account = current_account(credentials, db)
+    if account["phone_verified_at"] is not None:
+        return VolunteerOtpResult(phone_verified=True)
+
+    state = db.execute(
+        "SELECT otp_code_hash, otp_expires_at, otp_attempts FROM volunteer_accounts WHERE id = ?",
+        (account["account_id"],),
+    ).fetchone()
+    if state is None or state["otp_code_hash"] is None:
+        raise HTTPException(status_code=400, detail="No verification code is pending. Request a new one.")
+    if state["otp_attempts"] >= OTP_MAX_ATTEMPTS:
+        raise HTTPException(status_code=429, detail="Too many attempts. Request a new code.")
+    if datetime.now(UTC) > datetime.fromisoformat(state["otp_expires_at"]):
+        raise HTTPException(status_code=400, detail="This code has expired. Request a new one.")
+    if not hmac.compare_digest(hash_otp_code(payload.code.strip()), state["otp_code_hash"]):
+        db.execute(
+            "UPDATE volunteer_accounts SET otp_attempts = otp_attempts + 1 WHERE id = ?",
+            (account["account_id"],),
+        )
+        db.commit()
+        raise HTTPException(status_code=400, detail="That code is incorrect.")
+
+    with db:
+        db.execute(
+            """
+            UPDATE volunteer_accounts
+            SET phone_verified_at = CURRENT_TIMESTAMP, otp_code_hash = NULL,
+                otp_expires_at = NULL, otp_attempts = 0
+            WHERE id = ?
+            """,
+            (account["account_id"],),
+        )
+    try:
+        get_client().send_text(
+            account["contact_number"],
+            f"You're verified, {account['name'].split(' ')[0]}! Welcome to Passion to Serve — "
+            "reply HELP anytime to see what I can do.",
+        )
+    except Exception:
+        logger.exception(
+            "Verified account %s but failed to send welcome WhatsApp message to %s",
+            account["account_id"],
+            account["contact_number"],
+        )
+    return VolunteerOtpResult(phone_verified=True)
+
+
+@router.post("/resend-otp", response_model=VolunteerOtpResult)
+def resend_otp(
+    db: Connection,
+    credentials: HTTPAuthorizationCredentials | None = Security(bearer),
+) -> VolunteerOtpResult:
+    account = current_account(credentials, db)
+    if account["phone_verified_at"] is not None:
+        return VolunteerOtpResult(phone_verified=True)
+    issue_and_send_otp(db, account["account_id"], account["contact_number"])
+    return VolunteerOtpResult(phone_verified=False)
+
+
+@router.get("/qr-token")
+def get_volunteer_attendance_qr_token(
+    db: Connection,
+    event_id: Annotated[int, Query()],
+    credentials: HTTPAuthorizationCredentials | None = Security(bearer),
+) -> dict:
+    account = current_account(credentials, db)
+    registered = db.execute(
+        "SELECT 1 FROM volunteer_signups WHERE event_id = ? AND volunteer_id = ?",
+        (event_id, account["volunteer_id"]),
+    ).fetchone()
+    if registered is None:
+        raise HTTPException(status_code=404, detail="Not signed up for that event")
+    return {"token": generate_token(VOLUNTEER_KIND, account["volunteer_id"], event_id)}
 
 
 @router.get("/dashboard", response_model=VolunteerDashboardOut)

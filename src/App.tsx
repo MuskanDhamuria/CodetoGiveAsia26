@@ -8,6 +8,7 @@ import EventOperationsMvp from "./EventOperationsMvp";
 import ParticipantApp from "./participant/ParticipantApp";
 import AdminEventsPage from "./AdminEventsPage";
 import WhatsAppPanel from "./WhatsAppPanel";
+import AttendanceScannerPage from "./AttendanceScannerPage";
 import InventoryPage from "./InventoryPage";
 import { adminApi, type AdminApi, type DashboardSummary, type EventDetail, type UpcomingDeadline } from "./admin-api";
 import VolunteerDirectory from "./VolunteerDirectory";
@@ -25,6 +26,7 @@ export type Page =
   | "volunteers"
   | "reports"
   | "broadcasts"
+  | "scan-attendance"
   | "ai"
   | "signup"
   | "community"
@@ -39,6 +41,7 @@ const navLinks: { label: string; page: Page }[] = [
   { label: "Volunteers", page: "volunteers" },
   { label: "Post-event", page: "reports" },
   { label: "Broadcasts", page: "broadcasts" },
+  { label: "Scan Attendance", page: "scan-attendance" },
 ];
 
 const pageLabels: Record<Page, string> = {
@@ -49,6 +52,7 @@ const pageLabels: Record<Page, string> = {
   volunteers: "Volunteers",
   reports: "Post-event",
   broadcasts: "Broadcasts",
+  "scan-attendance": "Scan Attendance",
   ai: "AI Copilot",
   signup: "Volunteer Sign-Up",
   community: "Community Events",
@@ -70,6 +74,7 @@ function readInitialPage(pathname = window.location.pathname): Page {
       adminPage === "volunteers" ||
       adminPage === "reports" ||
       adminPage === "broadcasts" ||
+      adminPage === "scan-attendance" ||
       adminPage === "ai"
       ? adminPage
       : "home";
@@ -88,6 +93,7 @@ function readInitialPage(pathname = window.location.pathname): Page {
     page === "volunteers" ||
     page === "reports" ||
     page === "broadcasts" ||
+    page === "scan-attendance" ||
     page === "ai" ||
     page === "signup" ||
     page === "community" ||
@@ -1466,6 +1472,8 @@ function CertificateGenerationPanel({
   const [sentCertificates, setSentCertificates] = useState<
     Record<string, boolean>
   >({});
+  const [sendBusy, setSendBusy] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
   const getCertificateOptions = (event: CompletedEvent): CertificateType[] =>
     event.isSkillsWorkshop ? ["participants", "volunteers"] : ["volunteers"];
   const getCertificateType = (event: CompletedEvent): CertificateType => {
@@ -1525,13 +1533,45 @@ function CertificateGenerationPanel({
     onSelectEvent(event.name);
   }
 
-  function toggleSentCertificates() {
-    if (!activeCertificateKey) return;
+  async function toggleSentCertificates() {
+    if (!activeCertificateKey || !activeEvent) return;
 
-    setSentCertificates((current) => ({
-      ...current,
-      [activeCertificateKey]: !current[activeCertificateKey],
-    }));
+    // Already sent: this is just a local UI toggle to move the card back to
+    // "Unsent" for demo purposes — there's no real "unsend" on the backend.
+    if (sentCertificates[activeCertificateKey]) {
+      setSentCertificates((current) => ({
+        ...current,
+        [activeCertificateKey]: false,
+      }));
+      return;
+    }
+
+    // Not yet sent: actually generate and deliver certificates over
+    // WhatsApp for everyone with recorded attendance at this event, via the
+    // same endpoint the WhatsApp admin panel's "Certificates" card uses.
+    setSendBusy(true);
+    setSendError(null);
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/events/${activeEvent.id}/certificates/generate`,
+        { method: "POST" },
+      );
+      if (!response.ok) {
+        throw new Error("Could not send certificates over WhatsApp.");
+      }
+      setSentCertificates((current) => ({
+        ...current,
+        [activeCertificateKey]: true,
+      }));
+    } catch (reason) {
+      setSendError(
+        reason instanceof Error
+          ? reason.message
+          : "Could not send certificates over WhatsApp.",
+      );
+    } finally {
+      setSendBusy(false);
+    }
   }
 
   function renderCertificateEntry({
@@ -1628,14 +1668,17 @@ function CertificateGenerationPanel({
           <button
             className={hasSentActiveCertificates ? "sent" : ""}
             type="button"
-            disabled={!activeEvent || recipientNames.length === 0}
-            onClick={toggleSentCertificates}
+            disabled={!activeEvent || recipientNames.length === 0 || sendBusy}
+            onClick={() => void toggleSentCertificates()}
           >
-            {hasSentActiveCertificates
-              ? "Unsend Certificates"
-              : "Send Certificates"}
+            {sendBusy
+              ? "Sending…"
+              : hasSentActiveCertificates
+                ? "Unsend Certificates"
+                : "Send Certificates"}
           </button>
         </div>
+        {sendError && <p className="certificate-list-empty">{sendError}</p>}
 
         <div className="certificate-stats">
           <article>
@@ -1977,6 +2020,7 @@ function AdminPanel() {
         page === "volunteers" ||
         page === "reports" ||
         page === "broadcasts" ||
+        page === "scan-attendance" ||
         page === "ai")
     ) {
       routerNavigate(page === "home" ? "/admin" : `/admin/${page}`);
@@ -2094,6 +2138,7 @@ function AdminPanel() {
             {activePage === "volunteers" && <VolunteersPage key={`volunteers-${refreshKey}`} />}
             {activePage === "reports" && <ReportsPage />}
             {activePage === "broadcasts" && <WhatsAppPanel />}
+            {activePage === "scan-attendance" && <AttendanceScannerPage />}
             {activePage === "ai" && <PlaceholderPage title="AI Copilot" />}
           </div>
           <AiCopilot
@@ -2133,6 +2178,7 @@ function LegacyRouteRedirect() {
     volunteers: "/admin/volunteers",
     reports: "/admin/reports",
     broadcasts: "/admin/broadcasts",
+    "scan-attendance": "/admin/scan-attendance",
     ai: "/admin/ai",
     community: "/community",
     signup: "/signup",

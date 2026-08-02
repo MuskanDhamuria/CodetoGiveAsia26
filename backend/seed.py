@@ -15,6 +15,49 @@ from backend.database import DEFAULT_DATABASE_PATH, connect, initialize_database
 
 ROLE_CATEGORY = "volunteer"
 
+# Phone numbers that should always have WhatsApp bot admin access, regardless
+# of whether anyone has linked them through the admin panel. Digits only, SG
+# country code included (e.g. "6593430297"), matching the format Meta's
+# webhook reports senders in.
+ADMIN_WHATSAPP_LINKS: list[tuple[str, str]] = [
+    ("John", "6593430297"),
+]
+
+
+def seed_admin_whatsapp_links(db) -> None:
+    """Ensure ADMIN_WHATSAPP_LINKS always have bot admin access.
+
+    Called on every app startup (not gated behind "does the DB already have
+    data" like seed() below) so these numbers keep working even after a
+    database reset — e.g. Render's free tier wiping the ephemeral disk on
+    restart. Safe to run repeatedly: never overwrites an existing link to a
+    different team member, and reuses the team member record if it already
+    exists (matched by email).
+    """
+
+    # Local import: avoids a circular import, since backend.bot.commands
+    # doesn't need to know about backend.seed.
+    from backend.bot.commands import get_or_create_contact
+
+    for name, phone_number in ADMIN_WHATSAPP_LINKS:
+        email = f"{name.lower().replace(' ', '.')}@passiontoserve.org"
+        row = db.execute("SELECT id FROM team_members WHERE email = ?", (email,)).fetchone()
+        if row is None:
+            member_id = db.execute(
+                "INSERT INTO team_members (name, email) VALUES (?, ?) RETURNING id",
+                (name, email),
+            ).fetchone()[0]
+        else:
+            member_id = row[0]
+
+        contact = get_or_create_contact(db, phone_number)
+        if contact["team_member_id"] is None:
+            db.execute(
+                "UPDATE whatsapp_contacts SET team_member_id = ? WHERE id = ?",
+                (member_id, contact["id"]),
+            )
+        db.commit()
+
 
 def seed_logistics(db) -> None:
     """Add a small, idempotent logistics catalogue for local UI development."""

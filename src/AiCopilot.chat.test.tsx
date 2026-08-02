@@ -3,7 +3,7 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import AiCopilot from "./AiCopilot"
-import { mockChatFetch } from "./AiCopilot.testFetch"
+import { mockChatFetch, setMobileViewport } from "./AiCopilot.testFetch"
 
 afterEach(cleanup)
 
@@ -30,6 +30,9 @@ async function openPanel(onDataChanged?: () => void) {
 }
 
 beforeEach(() => {
+  // TICKET-68: this file exercises the FAB-open flow, which is mobile-only
+  // now that desktop starts permanently open.
+  setMobileViewport()
   fetch = mockChatFetch()
 })
 

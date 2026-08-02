@@ -4122,7 +4122,11 @@ button {
     #ffffff;
   border-left: 1px solid rgba(0, 0, 0, 0.08);
   bottom: 0;
-  box-shadow: -28px 0 70px rgba(0, 0, 0, 0.18);
+  /* TICKET-68: minimized from a dramatic -28px/70px floating shadow — on
+     desktop the panel is a permanent structural sidebar, not a dismissible
+     overlay, so it should read as part of the page. border-left above
+     already carries the visual separation from the reflowed content. */
+  box-shadow: -1px 0 12px rgba(0, 0, 0, 0.04);
   display: flex;
   flex-direction: column;
   opacity: 0;
@@ -4154,6 +4158,19 @@ button {
 
 .product-frame:has(.copilot-panel.open) .product-page-content {
   margin-right: 440px;
+}
+
+/* TICKET-68: .navbar is a preceding sibling of .product-frame (both live
+   directly under <main>), not a descendant of it, so the reflow needs a
+   shared-ancestor :has() instead of the .product-frame-scoped rule above.
+   .navbar is unconditionally right: 0 by default; this shifts it to make
+   room for the panel, and the max-width: 810px block below resets it. */
+.navbar {
+  transition: right 0.24s ease;
+}
+
+main:has(.copilot-panel.open) .navbar {
+  right: 440px;
 }
 
 .copilot-header {
@@ -4716,6 +4733,10 @@ button {
 
   .product-frame:has(.copilot-panel.open) .product-page-content {
     margin-right: 0;
+  }
+
+  main:has(.copilot-panel.open) .navbar {
+    right: 0;
   }
 }
 

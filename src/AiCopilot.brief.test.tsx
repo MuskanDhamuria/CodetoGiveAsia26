@@ -1,11 +1,17 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import AiCopilot from "./AiCopilot"
-import { mockChatFetch } from "./AiCopilot.testFetch"
+import { mockChatFetch, setDesktopViewport } from "./AiCopilot.testFetch"
 
 afterEach(cleanup)
+
+beforeEach(() => {
+  // TICKET-68: the panel starts open on desktop, so these tests don't need
+  // to click the FAB (which no longer renders there at all).
+  setDesktopViewport()
+})
 
 function sseResponse(events: { event: string; data: unknown }[]): Response {
   const body = events
@@ -42,9 +48,7 @@ describe("AiCopilot suggested actions (TICKET-67)", () => {
       },
     ])
 
-    const user = userEvent.setup()
     render(<AiCopilot activePage="dashboard" />)
-    await user.click(screen.getByRole("button", { name: /Ask Passion AI/ }))
 
     await waitFor(() =>
       expect(screen.getByText("3 volunteer signups need review")).toBeTruthy(),
@@ -72,7 +76,6 @@ describe("AiCopilot suggested actions (TICKET-67)", () => {
 
     const user = userEvent.setup()
     render(<AiCopilot activePage="dashboard" />)
-    await user.click(screen.getByRole("button", { name: /Ask Passion AI/ }))
     await waitFor(() =>
       expect(screen.getByText("2 tasks are overdue")).toBeTruthy(),
     )
@@ -94,9 +97,7 @@ describe("AiCopilot suggested actions (TICKET-67)", () => {
   it("shows only the static prompts when there is nothing to surface", async () => {
     mockChatFetch([])
 
-    const user = userEvent.setup()
     render(<AiCopilot activePage="dashboard" />)
-    await user.click(screen.getByRole("button", { name: /Ask Passion AI/ }))
 
     await waitFor(() =>
       expect(screen.getByText("List my upcoming events")).toBeTruthy(),
@@ -117,9 +118,7 @@ describe("AiCopilot suggested actions (TICKET-67)", () => {
       }),
     )
 
-    const user = userEvent.setup()
     render(<AiCopilot activePage="dashboard" />)
-    await user.click(screen.getByRole("button", { name: /Ask Passion AI/ }))
 
     await waitFor(() =>
       expect(screen.getByText("List my upcoming events")).toBeTruthy(),

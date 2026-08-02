@@ -3,11 +3,15 @@ import { cleanup, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import AiCopilot from "./AiCopilot"
-import { mockChatFetch } from "./AiCopilot.testFetch"
+import { mockChatFetch, setMobileViewport } from "./AiCopilot.testFetch"
 
 afterEach(cleanup)
 
 beforeEach(() => {
+  // TICKET-68: the FAB/close/Escape popup mechanics this file covers are
+  // mobile-only now — desktop starts permanently open instead (see
+  // AiCopilot.desktop.test.tsx).
+  setMobileViewport()
   mockChatFetch()
 })
 

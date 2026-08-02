@@ -1376,3 +1376,67 @@ There is currently no single endpoint that turns these into a ranked "needs atte
 - No new mutating capability is implied here — this is a read/summary surface, not a new AI tool.
 
 </details>
+
+---
+
+TICKET-68: On desktop, the AI panel should be permanently expanded (not a togglable popup), the navbar should reflow too, and the panel's shadow should read as part of the page rather than floating above it
+
+**Priority:** Medium — requested UX refinement on top of TICKET-66's reflow.
+**Area:** `src/AiCopilot.tsx` (initial `open` state, FAB/close-button rendering, `aria-modal`), `src/index.css` (`.copilot-panel` box-shadow, `.navbar`, TICKET-66's `.product-frame:has(.copilot-panel.open) .product-page-content` reflow rule)
+
+### What's wrong
+
+TICKET-66 made the desktop panel reflow `.product-page-content` instead of overlaying it, but it's still a togglable popup underneath: it starts closed, is opened via the `.copilot-fab` trigger, and can be dismissed via the close button or Escape — same open/close mechanics as the mobile popup, just with different CSS once open. On desktop this should not be a popup at all: the panel should be expanded and fixed from the moment the page loads, with no FAB needed to reveal it and no way to collapse it away.
+
+Two more gaps once the panel is always present on desktop:
+- `.navbar` (`src/index.css:883-894`) is `position: fixed; left: 0; right: 0` — it spans the full viewport width regardless of the panel, so a permanently-open panel would sit on top of (or visually compete with) the right edge of the navbar instead of the navbar also making room for it.
+- `.copilot-panel`'s `box-shadow: -28px 0 70px rgba(0, 0, 0, 0.18)` (`src/index.css:4118`) is a dramatic floating-above-the-page shadow, appropriate for a dismissible overlay but wrong once the panel is a permanent, structural part of the desktop layout — it should read as part of the page.
+
+### What to do
+
+- Give `AiCopilot.tsx`'s `open` state a lazy initial value derived from viewport width at mount (matching the existing `810px` breakpoint already used throughout `index.css`), so desktop mounts already open and mobile mounts still start closed exactly as today. Don't add a resize listener to keep re-deriving this after mount — "fixed from the start" is an initial-state concern, not a continuous one, and avoids fighting a user's manual mobile toggle mid-session.
+- On desktop, don't render the FAB or the close button, and don't let Escape close the panel — there is no way to open it, so nothing should imply there's a way to close it either. Mobile keeps the existing FAB/close/Escape popup behavior unchanged.
+- `aria-modal` should be `false` on desktop even while open — it's no longer a dismissible dialog trapping focus, it's a permanent structural sidebar; keep `aria-modal={open}`'s existing mobile behavior otherwise.
+- Add a `.navbar` right-offset reflow rule alongside TICKET-66's existing `.product-frame:has(.copilot-panel.open) .product-page-content` rule (same `:has()` pattern, scoped to a shared ancestor since `.navbar` is a preceding sibling of `.product-frame`, not a descendant of it), reset back to `right: 0` in the existing `max-width: 810px` mobile block next to the `.product-page-content` reset.
+- Reduce `.copilot-panel`'s `box-shadow` to something subtle (a thin ambient shadow, not a 70px floating blur) — the existing `border-left` already provides enough visual separation from the reflowed page content.
+
+</details>
+
+---
+
+~~TICKET-69: Resizing the browser after mount doesn't update the AI panel's desktop/mobile mode~~
+— **Done.** `isDesktop` is now tracked with `useState` + a `window`
+`resize` listener (`AiCopilot.tsx`) instead of TICKET-68's mount-only lazy
+initializer, and a second effect keyed on `isDesktop` calls
+`setOpen(isDesktop)` whenever the breakpoint is actually crossed — desktop
+snaps open (matching "no FAB to reopen it"), mobile snaps closed (matching
+the popup's normal fresh-mount default). Because the effect is keyed on
+`isDesktop` rather than firing on every resize tick, resizing within the
+same mode (e.g. 1400px → 1200px, still desktop) never touches a user's
+in-progress interaction — only an actual crossing does. Added
+`resizeViewport()` to `AiCopilot.testFetch.ts` (sets `window.innerWidth`
+and dispatches a real `resize` event, since the mount-only
+`setDesktopViewport`/`setMobileViewport` helpers don't) and covered both
+directions plus the "no-op within the same mode" case in
+`AiCopilot.desktop.test.tsx`.
+
+<details>
+<summary>Original ticket text</summary>
+
+TICKET-69: Resizing the browser after mount doesn't update the AI panel's desktop/mobile mode
+
+**Priority:** High — regression reported immediately after TICKET-68 shipped; the panel gets stuck in whichever mode it happened to mount in.
+**Area:** `src/AiCopilot.tsx` (`isDesktopViewport`, the `useState(isDesktopViewport)` initializers, TICKET-68's "no resize listener" decision)
+
+### What's wrong
+
+TICKET-68 deliberately read `window.innerWidth` only once, via a lazy `useState` initializer, on the stated reasoning that "fixed from the start" is an initial-state concern and a resize listener would fight a user's manual mobile toggle. In practice this produces two broken states reported directly against the shipped behavior:
+
+- Open the panel (or load on desktop, where it starts open), then resize the browser down to mobile width — the panel stays open with no close button, because `isDesktop` (and the FAB/close-button rendering gated on it) was decided once at mount and never re-evaluated. There's no way to dismiss it anymore.
+- Load on mobile (panel closed, FAB visible), then widen the browser past the breakpoint — the panel does not automatically expand into the desktop sidebar; it stays collapsed with the FAB still showing, contradicting "should be expanded and fixed" for anyone actually at a desktop width by the time they look at the page.
+
+### What to do
+
+Track `isDesktop` as real state updated by a `window` `resize` listener, not just a one-time lazy initializer. When the breakpoint is actually crossed, snap `open` to match `isDesktop` (desktop always open, mobile always closed) — but only on an actual crossing, not on every resize event within the same mode, so a user's manual open/close toggle on mobile isn't overwritten by, say, the browser chrome causing a 1px resize tick while they're mid-conversation.
+
+</details>

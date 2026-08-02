@@ -76,6 +76,19 @@ type EventDraftFields = {
   beneficiary_id: number | null;
 };
 
+// TICKET-68: matches index.css's `@media (max-width: 810px)` breakpoint —
+// above it the panel is a permanent, non-dismissible sidebar (expanded from
+// the start, no FAB/close/Escape); at or below it, the existing mobile
+// popup behavior is unchanged. Re-derived on resize (TICKET-69) so dragging
+// the window across the breakpoint mid-session flips the panel to match,
+// rather than only deciding this once at mount.
+const MOBILE_BREAKPOINT_PX = 810;
+
+function isDesktopViewport(): boolean {
+  if (typeof window === "undefined") return true;
+  return window.innerWidth > MOBILE_BREAKPOINT_PX;
+}
+
 export default function AiCopilot({
   activePage,
   onDataChanged,
@@ -83,7 +96,8 @@ export default function AiCopilot({
   activePage: Page;
   onDataChanged?: () => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const [isDesktop, setIsDesktop] = useState(isDesktopViewport);
+  const [open, setOpen] = useState(isDesktopViewport);
   const [input, setInput] = useState("");
   const [conversation, setConversation] = useState<ChatMessage[]>([]);
   const [toolActivity, setToolActivity] = useState<ToolActivity[]>([]);
@@ -102,10 +116,34 @@ export default function AiCopilot({
   const chatRef = useRef<HTMLDivElement>(null);
   const streamAbortRef = useRef<AbortController | null>(null);
 
+  // TICKET-69: keep isDesktop in sync with the viewport for the lifetime of
+  // the component, not just at mount — dragging the window across the
+  // breakpoint should flip the panel to match immediately, instead of
+  // leaving it stuck in whatever mode it started in.
+  useEffect(() => {
+    function handleResize() {
+      setIsDesktop(isDesktopViewport());
+    }
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  // Whenever the breakpoint is actually crossed (not on every resize tick
+  // within the same mode), snap `open` to match: desktop has no FAB to
+  // reopen it, so it must be open; mobile has no way to reach a
+  // permanently-open panel with no close/FAB, so it must start closed —
+  // same default the popup already uses on a fresh mobile mount.
+  useEffect(() => {
+    setOpen(isDesktop);
+  }, [isDesktop]);
+
   // The FAB and the close button aren't mounted at the same time (each only
   // renders for its own `open` state), so focus has to move after the swap
   // commits rather than inline in the click handler that toggles `open`.
+  // Desktop has neither control (TICKET-68) and shouldn't steal focus into
+  // the panel just because the page loaded, so this is mobile-only.
   useEffect(() => {
+    if (isDesktop) return;
     if (open) {
       wasOpenRef.current = true;
       closeButtonRef.current?.focus();
@@ -113,10 +151,12 @@ export default function AiCopilot({
       wasOpenRef.current = false;
       fabRef.current?.focus();
     }
-  }, [open]);
+  }, [open, isDesktop]);
 
   useEffect(() => {
-    if (!open) return;
+    // TICKET-68: desktop has no way to open the panel, so Escape shouldn't
+    // close it either — there'd be no way back in.
+    if (!open || isDesktop) return;
 
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") close();
@@ -124,7 +164,7 @@ export default function AiCopilot({
 
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [open]);
+  }, [open, isDesktop]);
 
   useEffect(() => {
     const chat = chatRef.current;
@@ -282,7 +322,7 @@ export default function AiCopilot({
 
   return (
     <>
-      {!open && (
+      {!open && !isDesktop && (
         <button
           ref={fabRef}
           type="button"
@@ -301,7 +341,7 @@ export default function AiCopilot({
       <aside
         id="ai-copilot-panel"
         role="dialog"
-        aria-modal={open}
+        aria-modal={open && !isDesktop}
         aria-hidden={!open}
         aria-label="AI Copilot"
         className={`copilot-panel${open ? " open" : ""}`}
@@ -317,9 +357,11 @@ export default function AiCopilot({
                 Clear chat
               </button>
             )}
-            <button ref={closeButtonRef} type="button" onClick={close} aria-label="Close AI Copilot">
-              Close
-            </button>
+            {!isDesktop && (
+              <button ref={closeButtonRef} type="button" onClick={close} aria-label="Close AI Copilot">
+                Close
+              </button>
+            )}
           </div>
         </header>
 

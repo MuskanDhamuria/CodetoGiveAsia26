@@ -11,7 +11,7 @@ CREATE TABLE event_logistics_backfills (
 
 CREATE INDEX idx_logistics_backfills_requirement ON event_logistics_backfills(requirement_id);
 
-INSERT INTO schema_migrations (version, name)
-VALUES (12, 'event logistics backfills');
+INSERT OR IGNORE INTO schema_migrations (version, name)
+VALUES (19, '019_logistics_backfills.sql');
 
 COMMIT;

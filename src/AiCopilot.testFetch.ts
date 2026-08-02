@@ -1,4 +1,4 @@
-// Shared test helper for AiCopilot.*.test.tsx (TICKET-67).
+// Shared test helpers for AiCopilot.*.test.tsx (TICKET-67, TICKET-68).
 //
 // AiCopilot now fires a GET /dashboard/brief request as soon as the panel
 // opens on an empty conversation, in addition to whatever chat/tool fetches
@@ -34,4 +34,36 @@ export function mockChatFetch(briefItems: DashboardBriefItem[] = []) {
     }),
   )
   return chatFetch
+}
+
+// TICKET-68: AiCopilot reads window.innerWidth (via a lazy useState
+// initializer) to decide whether it starts as a permanently-open desktop
+// sidebar or a closed mobile popup. jsdom defaults innerWidth to 1024 —
+// above the 810px breakpoint — so every existing test exercising the mobile
+// popup flow (FAB click to open, close button, Escape) must force a mobile
+// width before rendering, or it'll silently get desktop behavior instead.
+// Call before render().
+function setViewportWidth(width: number) {
+  Object.defineProperty(window, "innerWidth", {
+    writable: true,
+    configurable: true,
+    value: width,
+  })
+}
+
+export function setMobileViewport() {
+  setViewportWidth(375)
+}
+
+export function setDesktopViewport() {
+  setViewportWidth(1400)
+}
+
+// TICKET-69: AiCopilot also re-derives desktop/mobile on a live `resize`
+// event (not just at mount), so a test simulating the user dragging the
+// window across the breakpoint mid-session needs to change the width AND
+// dispatch the event React's listener is actually bound to.
+export function resizeViewport(width: number) {
+  setViewportWidth(width)
+  window.dispatchEvent(new Event("resize"))
 }

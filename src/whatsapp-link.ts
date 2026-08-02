@@ -7,9 +7,10 @@
 // reload the page — no frontend rebuild/redeploy needed.
 import { useEffect, useState } from "react"
 
+// Same VITE_API_BASE_URL env var used by every other API client in the app
+// (App.tsx, admin-api.ts, volunteer-api.ts, participant/api/client.ts).
 const API_BASE =
-  (import.meta.env.VITE_API_BASE as string | undefined) ??
-  "http://localhost:8000/api/v1"
+  (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "/api/v1"
 
 const FALLBACK_NUMBER = "6580000000"
 const WHATSAPP_GREETING = "Hi! I'd like to know about upcoming Passion To Serve events."

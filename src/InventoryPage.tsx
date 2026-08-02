@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import {
   logisticsApi,
   type DonationBatch,
@@ -17,6 +17,7 @@ import "./InventoryLogistics.css"
 
 type View = "stock" | "locations" | "orders" | "organizations" | "venues" | "donations" | "movements"
 type Dialog = "item" | "location" | "adjust" | "transfer" | "organization" | "order" | "order-receive" | "order-return" | "order-complete" | "venue" | "donation" | "sort-donation" | "distribute-donation" | null
+type StockAdjustmentInput = { item_id: number; location_id: number; quantity_delta: number; reason: string; expiry_date?: string | null }
 type LoadState<T> = { data: T; loading: boolean; error: string | null }
 
 const empty = <T,>(data: T): LoadState<T> => ({ data, loading: true, error: null })
@@ -35,7 +36,7 @@ function formatDateTime(value: string | null) { return value ? new Intl.DateTime
 function errorMessage(error: unknown) { return error instanceof Error ? error.message : "Unable to load this workspace." }
 
 function exportRows(view: View, stock: StockRow[], locations: InventoryLocation[], orders: SupplierOrder[], organizations: ExternalOrganization[], venues: Venue[], donations: DonationBatch[], movements: StockMovement[]): ExportRows {
-  if (view === "stock") return [["Item", "Item code", "Stock type", "Counting unit", "Storage location", "Total in storage", "Reserved for Events", "Available", "Expiring soon", "Stock status"], ...stock.map((row) => [row.item_name, row.sku, row.item_type === "consumable" ? "Consumable — used up or given away" : "Reusable — returned after use", row.unit, row.location_name, row.on_hand, row.reserved, row.available, row.expiring, row.reorder_status ? "Low stock" : "Enough stock"])]
+  if (view === "stock") return [["Item", "Item code", "Stock type", "Counting unit", "Storage location", "Total in storage", "Reserved for Events", "Available", "Expiring soon", "Stock status"], ...stock.map((row) => [row.item_name, row.sku, row.item_type === "consumable" ? "Consumable — used up or given away" : "Reusable — returned after use", row.unit, row.location_name, row.on_hand, row.reserved, row.available, row.expiring, row.location_id === 0 ? "No stock" : row.reorder_status ? "Low stock" : "Enough stock"])]
   if (view === "locations") return [["Location", "Address", "Stocked Items", "Low-stock Items", "Type", "Status"], ...locations.map((row) => { const lines = stock.filter((item) => item.location_id === row.id); return [row.name, row.address, lines.length, lines.filter((line) => line.reorder_status).length, row.is_temporary ? "Temporary" : "Permanent", row.is_active ? "Active" : "Inactive"] })]
   if (view === "orders") return [["Order", "Organization", "Type", "Status", "Lines", "Delivery start", "Delivery end", "Collection start", "Destination"], ...orders.map((row) => [`#${row.id}`, row.organization_name, row.order_type, row.status, row.lines.length, row.delivery_start, row.delivery_end, row.collection_start, row.destination_location_name || row.destination_text])]
   if (view === "organizations") return [["Organization", "Capabilities", "Primary contact", "Phone", "Email", "Events", "Orders", "Status"], ...organizations.map((row) => { const primary = row.contacts.find((contact) => contact.is_primary) ?? row.contacts[0]; return [row.name, row.capabilities.join(", "), primary?.name, primary?.phone, primary?.email, row.event_count, row.order_count, row.is_active ? "Active" : "Inactive"] })]
@@ -58,17 +59,20 @@ export default function InventoryPage({ api = logisticsApi }: { api?: LogisticsA
   const [donations, setDonations] = useState(empty<DonationBatch[]>([]))
   const [movements, setMovements] = useState(empty<StockMovement[]>([]))
   const [form, setForm] = useState<Record<string, string>>({})
+  const loadSequence = useRef(0)
 
   async function loadAll() {
+    const sequence = ++loadSequence.current
+    const isCurrentLoad = () => sequence === loadSequence.current
     const loads = [
-      [api.listStock(), (value: { items: StockRow[] }) => setStock({ data: value.items, loading: false, error: null }), (message: string) => setStock({ data: [], loading: false, error: message })],
-      [api.listItems(), (value: { items: InventoryItem[] }) => setItems({ data: value.items, loading: false, error: null }), (message: string) => setItems({ data: [], loading: false, error: message })],
-      [api.listLocations(), (value: { items: InventoryLocation[] }) => setLocations({ data: value.items, loading: false, error: null }), (message: string) => setLocations({ data: [], loading: false, error: message })],
-      [api.listOrders(), (value: { items: SupplierOrder[] }) => setOrders({ data: value.items, loading: false, error: null }), (message: string) => setOrders({ data: [], loading: false, error: message })],
-      [api.listOrganizations(), (value: { items: ExternalOrganization[] }) => setOrganizations({ data: value.items, loading: false, error: null }), (message: string) => setOrganizations({ data: [], loading: false, error: message })],
-      [api.listVenues(), (value: { items: Venue[] }) => setVenues({ data: value.items, loading: false, error: null }), (message: string) => setVenues({ data: [], loading: false, error: message })],
-      [api.listDonations(), (value: { items: DonationBatch[] }) => setDonations({ data: value.items, loading: false, error: null }), (message: string) => setDonations({ data: [], loading: false, error: message })],
-      [api.listMovements(), (value: { items: StockMovement[] }) => setMovements({ data: value.items, loading: false, error: null }), (message: string) => setMovements({ data: [], loading: false, error: message })],
+      [api.listStock(), (value: { items: StockRow[] }) => isCurrentLoad() && setStock({ data: value.items, loading: false, error: null }), (message: string) => isCurrentLoad() && setStock((current) => ({ ...current, loading: false, error: message }))],
+      [api.listItems(), (value: { items: InventoryItem[] }) => isCurrentLoad() && setItems({ data: value.items, loading: false, error: null }), (message: string) => isCurrentLoad() && setItems((current) => ({ ...current, loading: false, error: message }))],
+      [api.listLocations(), (value: { items: InventoryLocation[] }) => isCurrentLoad() && setLocations({ data: value.items, loading: false, error: null }), (message: string) => isCurrentLoad() && setLocations((current) => ({ ...current, loading: false, error: message }))],
+      [api.listOrders(), (value: { items: SupplierOrder[] }) => isCurrentLoad() && setOrders({ data: value.items, loading: false, error: null }), (message: string) => isCurrentLoad() && setOrders((current) => ({ ...current, loading: false, error: message }))],
+      [api.listOrganizations(), (value: { items: ExternalOrganization[] }) => isCurrentLoad() && setOrganizations({ data: value.items, loading: false, error: null }), (message: string) => isCurrentLoad() && setOrganizations((current) => ({ ...current, loading: false, error: message }))],
+      [api.listVenues(), (value: { items: Venue[] }) => isCurrentLoad() && setVenues({ data: value.items, loading: false, error: null }), (message: string) => isCurrentLoad() && setVenues((current) => ({ ...current, loading: false, error: message }))],
+      [api.listDonations(), (value: { items: DonationBatch[] }) => isCurrentLoad() && setDonations({ data: value.items, loading: false, error: null }), (message: string) => isCurrentLoad() && setDonations((current) => ({ ...current, loading: false, error: message }))],
+      [api.listMovements(), (value: { items: StockMovement[] }) => isCurrentLoad() && setMovements({ data: value.items, loading: false, error: null }), (message: string) => isCurrentLoad() && setMovements((current) => ({ ...current, loading: false, error: message }))],
     ] as const
     await Promise.all(loads.map(async ([promise, success, failure]) => { try { success(await promise as never) } catch (error) { failure(errorMessage(error)) } }))
   }
@@ -82,11 +86,21 @@ export default function InventoryPage({ api = logisticsApi }: { api?: LogisticsA
     reorder: stock.data.filter((row) => row.reorder_status).length,
   }), [items.data, locations.data, stock.data])
   const tabState = view === "stock" ? stock : view === "locations" ? locations : view === "orders" ? orders : view === "organizations" ? organizations : view === "venues" ? venues : view === "donations" ? donations : movements
-  const currentExportRows = useMemo(() => exportRows(view, stock.data, locations.data, orders.data, organizations.data, venues.data, donations.data, movements.data), [view, stock.data, locations.data, orders.data, organizations.data, venues.data, donations.data, movements.data])
+  const visibleStock = useMemo(() => {
+    const stockedItemIds = new Set(stock.data.map((row) => row.item_id))
+    const zeroStockItems: StockRow[] = items.data.filter((item) => item.is_active && !stockedItemIds.has(item.id)).map((item) => ({
+      item_id: item.id, item_name: item.name, sku: item.sku, item_type: item.item_type, unit: item.unit,
+      reorder_level: item.reorder_level, location_id: 0, location_name: "No stock recorded", on_hand: 0,
+      reserved: 0, available: 0, expiring: 0, reorder_status: item.reorder_level > 0,
+    }))
+    return [...stock.data, ...zeroStockItems]
+  }, [items.data, stock.data])
+  const currentExportRows = useMemo(() => exportRows(view, view === "stock" ? visibleStock : stock.data, locations.data, orders.data, organizations.data, venues.data, donations.data, movements.data), [view, visibleStock, stock.data, locations.data, orders.data, organizations.data, venues.data, donations.data, movements.data])
   const currentView = views.find((item) => item.id === view) ?? views[0]
   const currentViewLabel = currentView.label
   const itemUnit = form.unit === "custom" ? form.custom_unit : form.unit
   const itemSaveInvalid = dialog === "item" && (!form.name?.trim() || !itemUnit?.trim() || !form.item_type || (Number(form.starting_quantity || 0) > 0 && !form.starting_location_id))
+  const adjustSaveInvalid = dialog === "adjust" && !form.reason?.trim()
 
   function openDialog(next: Dialog) {
     setDialog(next)
@@ -101,8 +115,26 @@ export default function InventoryPage({ api = logisticsApi }: { api?: LogisticsA
   function field(name: string, value: string) { setForm((current) => ({ ...current, [name]: value })) }
   const number = (name: string) => Number(form[name] || 0)
 
+  function applyStockAdjustment(adjustment: StockAdjustmentInput) {
+    setStock((current) => {
+      const rowIndex = current.data.findIndex((row) => row.item_id === adjustment.item_id && row.location_id === adjustment.location_id)
+      if (rowIndex < 0) return current
+      const row = current.data[rowIndex]
+      const onHand = row.on_hand + adjustment.quantity_delta
+      const available = row.available + adjustment.quantity_delta
+      const nextRow = { ...row, on_hand: onHand, available, reorder_status: available <= row.reorder_level }
+      const data = [...current.data]
+      data[rowIndex] = nextRow
+      return { ...current, data, loading: false }
+    })
+  }
+
   async function submit() {
     if (!dialog) return
+    if (dialog === "adjust" && !form.reason?.trim()) {
+      setFeedback("A reason is required before adjusting stock.")
+      return
+    }
     setSaving(true); setFeedback("")
     try {
       if (dialog === "item") {
@@ -115,7 +147,11 @@ export default function InventoryPage({ api = logisticsApi }: { api?: LogisticsA
         if (number("starting_quantity") > 0) await api.adjustStock({ item_id: itemId, location_id: number("starting_location_id"), quantity_delta: number("starting_quantity"), reason: "Opening balance when Item was created" })
       }
       if (dialog === "location") await api.createLocation({ name: form.name, address: form.address || "", is_temporary: form.is_temporary === "true" })
-      if (dialog === "adjust") await api.adjustStock({ item_id: number("item_id"), location_id: number("location_id"), quantity_delta: number("quantity"), reason: form.reason, expiry_date: form.expiry_date || null })
+      if (dialog === "adjust") {
+        const adjustment = { item_id: number("item_id"), location_id: number("location_id"), quantity_delta: number("quantity"), reason: form.reason.trim(), expiry_date: form.expiry_date || null }
+        await api.adjustStock(adjustment)
+        applyStockAdjustment(adjustment)
+      }
       if (dialog === "transfer") await api.transferStock({ item_id: number("item_id"), source_location_id: number("source_location_id"), destination_location_id: number("destination_location_id"), quantity: number("quantity"), reason: form.reason })
       if (dialog === "organization") {
         const organization = await api.createOrganization({ name: form.name, notes: form.notes || "", capabilities: (form.capabilities || "").split(",").map((item) => item.trim()).filter(Boolean) })
@@ -152,14 +188,14 @@ export default function InventoryPage({ api = logisticsApi }: { api?: LogisticsA
       <div className="inventory-panel-heading"><div><h2>{currentViewLabel}</h2><p>{currentView.description}</p></div><div className="inventory-panel-actions"><TableExportButtons name={currentViewLabel} rows={currentExportRows} />{view === "stock" && <button onClick={() => openDialog("item")}>New Item</button>}{view === "locations" && <button onClick={() => openDialog("location")}>New Storage Location</button>}{view === "orders" && <button onClick={() => openDialog("order")}>New Order</button>}{view === "organizations" && <button onClick={() => openDialog("organization")}>New External Partner</button>}{view === "venues" && <button onClick={() => openDialog("venue")}>New Venue</button>}{view === "donations" && <button onClick={() => openDialog("donation")}>New Donation Batch</button>}</div></div>
       {tabState.loading && <p className="inventory-state" role="status">Loading {views.find((item) => item.id === view)?.label.toLowerCase()}…</p>}
       {tabState.error && <div className="inventory-state error" role="alert"><strong>This view could not load.</strong><span>{tabState.error}</span><button onClick={() => void loadAll()}>Try again</button></div>}
-      {!tabState.loading && !tabState.error && <div className="inventory-table-scroll">{view === "stock" ? <StockTable rows={stock.data} /> : view === "locations" ? <LocationsTable rows={locations.data} stock={stock.data} /> : view === "orders" ? <OrdersTable rows={orders.data} onAction={orderAction} onFulfil={openOrderAction} /> : view === "organizations" ? <OrganizationsTable rows={organizations.data} /> : view === "venues" ? <VenuesTable rows={venues.data} /> : view === "donations" ? <DonationsTable rows={donations.data} onAction={donationAction} onSort={(batch) => { openDialog("sort-donation"); setForm((current) => ({ ...current, batch_id: String(batch.id), condition: "usable" })) }} onDistribute={(batch) => { openDialog("distribute-donation"); setForm((current) => ({ ...current, batch_id: String(batch.id) })) }} /> : <MovementsTable rows={movements.data} />}</div>}
+      {!tabState.loading && !tabState.error && <div className="inventory-table-scroll">{view === "stock" ? <StockTable rows={visibleStock} /> : view === "locations" ? <LocationsTable rows={locations.data} stock={stock.data} /> : view === "orders" ? <OrdersTable rows={orders.data} onAction={orderAction} onFulfil={openOrderAction} /> : view === "organizations" ? <OrganizationsTable rows={organizations.data} /> : view === "venues" ? <VenuesTable rows={venues.data} /> : view === "donations" ? <DonationsTable rows={donations.data} onAction={donationAction} onSort={(batch) => { openDialog("sort-donation"); setForm((current) => ({ ...current, batch_id: String(batch.id), condition: "usable" })) }} onDistribute={(batch) => { openDialog("distribute-donation"); setForm((current) => ({ ...current, batch_id: String(batch.id) })) }} /> : <MovementsTable rows={movements.data} />}</div>}
     </section>
-    {dialog && <div className="inventory-modal-backdrop"><section aria-modal="true" className="inventory-modal" role="dialog"><header><div><p>Inventory operation</p><h2>{dialogTitle(dialog)}</h2></div><button aria-label="Close" onClick={() => setDialog(null)}>×</button></header><div className="inventory-form">{dialogFields(dialog, form, field, items.data, locations.data, organizations.data, orders.data)}</div>{feedback && <p className="inventory-feedback">{feedback}</p>}<footer><button onClick={() => setDialog(null)}>Cancel</button><button disabled={saving || itemSaveInvalid} onClick={() => void submit()}>{saving ? "Saving…" : "Save"}</button></footer></section></div>}
+    {dialog && <div className="inventory-modal-backdrop"><section aria-modal="true" className="inventory-modal" role="dialog"><header><div><p>Inventory operation</p><h2>{dialogTitle(dialog)}</h2></div><button aria-label="Close" onClick={() => setDialog(null)}>×</button></header><div className="inventory-form">{dialogFields(dialog, form, field, items.data, locations.data, organizations.data, orders.data)}</div>{feedback && <p className="inventory-feedback">{feedback}</p>}<footer><button onClick={() => setDialog(null)}>Cancel</button><button disabled={saving || itemSaveInvalid || adjustSaveInvalid} onClick={() => void submit()}>{saving ? "Saving…" : "Save"}</button></footer></section></div>}
   </section>
 }
 
 function Empty({ children }: { children: string }) { return <p className="inventory-empty">{children}</p> }
-function StockTable({ rows }: { rows: StockRow[] }) { if (!rows.length) return <Empty>No stock recorded yet. Add an Item with a starting quantity, or use Adjust stock.</Empty>; return <table><thead><tr><th>Item</th><th>Stock type</th><th>Storage location</th><th>Total in storage</th><th>Reserved for Events</th><th>Available</th><th>Expiring soon</th><th>Stock status</th></tr></thead><tbody>{rows.map((row) => <tr key={`${row.item_id}-${row.location_id}`}><td><strong>{row.item_name}</strong><small>{row.sku || "No item code"}</small></td><td><strong>{row.item_type === "consumable" ? "Consumable" : "Reusable"}</strong><small>{row.item_type === "consumable" ? "Used up or given away" : "Returned after use"}</small></td><td>{row.location_name}</td><td>{formatNumber(row.on_hand)} {row.unit}</td><td>{formatNumber(row.reserved)} {row.unit}</td><td><strong>{formatNumber(row.available)} {row.unit}</strong></td><td>{formatNumber(row.expiring)} {row.unit}</td><td><span className={`inventory-chip ${row.reorder_status ? "danger" : "good"}`}>{row.reorder_status ? "Low stock" : "Enough stock"}</span><small>{row.reorder_level > 0 ? `Alert below ${formatNumber(row.reorder_level)} ${row.unit}` : "No low-stock alert set"}</small></td></tr>)}</tbody></table> }
+function StockTable({ rows }: { rows: StockRow[] }) { if (!rows.length) return <Empty>No stock recorded yet. Add an Item with a starting quantity, or use Adjust stock.</Empty>; return <table><thead><tr><th>Item</th><th>Stock type</th><th>Storage location</th><th>Total in storage</th><th>Reserved for Events</th><th>Available</th><th>Expiring soon</th><th>Stock status</th></tr></thead><tbody>{rows.map((row) => { const noStock = row.location_id === 0; return <tr key={`${row.item_id}-${row.location_id}`}><td><strong>{row.item_name}</strong><small>{row.sku || "No item code"}</small></td><td><strong>{row.item_type === "consumable" ? "Consumable" : "Reusable"}</strong><small>{row.item_type === "consumable" ? "Used up or given away" : "Returned after use"}</small></td><td>{row.location_name}</td><td>{formatNumber(row.on_hand)} {row.unit}</td><td>{formatNumber(row.reserved)} {row.unit}</td><td><strong>{formatNumber(row.available)} {row.unit}</strong></td><td>{formatNumber(row.expiring)} {row.unit}</td><td><span className={`inventory-chip ${noStock ? "danger" : row.reorder_status ? "danger" : "good"}`}>{noStock ? "No stock" : row.reorder_status ? "Low stock" : "Enough stock"}</span><small>{noStock ? "Add stock to an Inventory Location" : row.reorder_level > 0 ? `Alert below ${formatNumber(row.reorder_level)} ${row.unit}` : "No low-stock alert set"}</small></td></tr> })}</tbody></table> }
 function LocationsTable({ rows, stock }: { rows: InventoryLocation[]; stock: StockRow[] }) { if (!rows.length) return <Empty>No storage locations yet. Add the places where your stock is kept.</Empty>; return <table><thead><tr><th>Storage Location</th><th>Address</th><th>Stocked Items</th><th>Low-stock Items</th><th>Type</th><th>Status</th></tr></thead><tbody>{rows.map((row) => { const lines = stock.filter((item) => item.location_id === row.id); return <tr key={row.id}><td><strong>{row.name}</strong></td><td>{row.address || "—"}</td><td>{lines.length}</td><td>{lines.filter((line) => line.reorder_status).length}</td><td>{row.is_temporary ? "Temporary" : "Permanent"}</td><td>{row.is_active ? "Active" : "Inactive"}</td></tr> })}</tbody></table> }
 function OrdersTable({ rows, onAction, onFulfil }: { rows: SupplierOrder[]; onAction: (order: SupplierOrder, action: "confirm" | "cancel") => void; onFulfil: (order: SupplierOrder, action: "receive" | "return" | "complete") => void }) { if (!rows.length) return <Empty>No orders or deliveries yet.</Empty>; return <table><thead><tr><th>Order</th><th>External Partner</th><th>Type</th><th>Status</th><th>Delivery window</th><th>Collection</th><th>Destination</th><th>Action</th></tr></thead><tbody>{rows.map((row) => { const active = row.status === "confirmed" || row.status === "in_progress"; const overdue = active && !!row.delivery_end && Date.parse(row.delivery_end) < Date.now(); return <tr key={row.id}><td><strong>#{row.id}</strong><small>{row.lines.length} line(s)</small></td><td>{row.organization_name}</td><td>{row.order_type}</td><td><span className={`inventory-chip ${overdue ? "danger" : ""}`}>{overdue ? "overdue" : row.status.replace("_", " ")}</span></td><td>{formatDateTime(row.delivery_start)}<small>{row.delivery_end ? `to ${formatDateTime(row.delivery_end)}` : ""}</small></td><td>{formatDateTime(row.collection_start)}</td><td>{row.destination_location_name || row.destination_text || "—"}</td><td><div className="inventory-row-actions">{row.status === "draft" && <button onClick={() => onAction(row, "confirm")}>Confirm</button>}{active && row.order_type !== "service" && <button onClick={() => onFulfil(row, "receive")}>Receive</button>}{active && row.order_type === "rental" && <button onClick={() => onFulfil(row, "return")}>Return</button>}{active && <button onClick={() => onFulfil(row, "complete")}>Complete</button>}{row.status !== "completed" && row.status !== "cancelled" && <button className="text-danger" onClick={() => onAction(row, "cancel")}>Cancel</button>}</div></td></tr> })}</tbody></table> }
 function OrganizationsTable({ rows }: { rows: ExternalOrganization[] }) { if (!rows.length) return <Empty>No External Partners yet.</Empty>; return <table><thead><tr><th>External Partner</th><th>How they help</th><th>Main contact</th><th>Events</th><th>Orders</th><th>Status</th></tr></thead><tbody>{rows.map((row) => { const primary = row.contacts.find((contact) => contact.is_primary) ?? row.contacts[0]; return <tr key={row.id}><td><strong>{row.name}</strong><small>{row.notes}</small></td><td><div className="inventory-chip-list">{row.capabilities.map((item) => <span className="inventory-chip" key={item}>{item.replaceAll("_", " ")}</span>)}</div></td><td>{primary?.name || "—"}<small>{primary?.phone || primary?.email || ""}</small></td><td>{row.event_count}</td><td>{row.order_count}</td><td>{row.is_active ? "Active" : "Inactive"}</td></tr> })}</tbody></table> }
@@ -189,7 +225,7 @@ function dialogFields(dialog: Exclude<Dialog, null>, form: Record<string, string
     {locationSelect("starting_location_id", "Store at")}
   </>
   if (dialog === "location") return <>{input("Location name", "name")}{input("Address", "address")}<label><input type="checkbox" checked={form.is_temporary === "true"} onChange={(event) => field("is_temporary", String(event.target.checked))} /> Temporary Event location</label></>
-  if (dialog === "adjust") return <>{itemSelect}{locationSelect("location_id", "Location")}{input("Quantity change (+ or −)", "quantity", "number")}{input("Expiry date", "expiry_date", "date")}{input("Mandatory reason", "reason")}</>
+  if (dialog === "adjust") return <>{itemSelect}{locationSelect("location_id", "Location")}{input("Quantity change (+ or −)", "quantity", "number")}{input("Expiry date (optional)", "expiry_date", "date")}{input("Mandatory reason", "reason")}</>
   if (dialog === "transfer") return <>{itemSelect}{locationSelect("source_location_id", "Source Location")}{locationSelect("destination_location_id", "Destination Location")}{input("Quantity", "quantity", "number")}{input("Reason", "reason")}</>
   if (dialog === "organization") return <>{input("Organization name", "name")}{input("Capabilities (comma separated)", "capabilities")}{input("Notes", "notes")}<h3>Primary contact (optional)</h3>{input("Contact name", "contact_name")}{input("Email", "email", "email")}{input("Phone", "phone")}</>
   if (dialog === "order") return <>{organizationSelect("organization_id", "Organization")}<Select field={field} form={form} label="Order type" name="order_type" options={[["purchase", "Purchase"], ["rental", "Rental"], ["service", "Service"]]} />{locationSelect("destination_location_id", "Inventory destination (purchases)")}<h3>First order line</h3>{form.order_type === "purchase" && <Select field={field} form={form} label="Inventory Item" name="inventory_item_id" options={items.map((item) => [String(item.id), item.name])} />}{input("Description", "description")}{input("Quantity", "quantity", "number")}{input("Unit", "unit")}{input("Unit cost (SGD)", "unit_cost_sgd", "number")}{input("Delivery start", "delivery_start", "datetime-local")}{input("Delivery end", "delivery_end", "datetime-local")}{input("Notes", "notes")}</>

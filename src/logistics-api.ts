@@ -11,7 +11,7 @@ export type VenueSpace = { id: number; venue_id: number; name: string; pax_capac
 export type Venue = { id: number; name: string; address: string; managing_organization_id: number | null; managing_organization_name: string | null; notes: string; is_active: boolean; spaces: VenueSpace[]; booking_count: number }
 export type DonationBatch = { id: number; event_id: number | null; event_name: string | null; source_organization_id: number | null; source_organization_name: string | null; status: string; container_count: number | null; container_unit: string | null; collection_at: string | null; received_at: string | null; sorting_completed_at: string | null; distribution_at: string | null; notes: string; quantities_by_condition: Record<string, number>; distributed_quantity: number }
 export type LogisticsAllocation = { id: number; requirement_id: number; item_id: number; source_location_id: number; source_location_name: string; reserved_quantity: number; issued_quantity: number; returned_quantity: number; consumed_quantity: number; damaged_quantity: number; lost_quantity: number; distributed_quantity: number; status: string }
-export type LogisticsRequirement = { id: number; event_id: number; requirement_type: "goods" | "service"; inventory_item_id: number | null; service_name: string | null; name: string; required_quantity: number; unit: string; needed_by: string; priority: "low" | "normal" | "high" | "critical"; notes: string; is_cancelled: boolean; allocations: LogisticsAllocation[]; inventory_reserved: number; inventory_issued: number; supplier_ordered: number; supplier_on_site: number; on_site: number; still_to_source: number; not_yet_on_site: number; status: string }
+export type LogisticsRequirement = { id: number; event_id: number; requirement_type: "goods" | "service"; inventory_item_id: number | null; service_name: string | null; name: string; required_quantity: number; unit: string; needed_by: string; priority: "low" | "normal" | "high" | "critical"; notes: string; is_cancelled: boolean; allocations: LogisticsAllocation[]; inventory_reserved: number; inventory_issued: number; supplier_ordered: number; supplier_on_site: number; backfilled_on_site: number; on_site: number; still_to_source: number; not_yet_on_site: number; status: string }
 export type AttendanceForecast = { registrations: number; historical_show_up_rate: number | null; similar_event_sample_size: number; suggested_attendance: number | null; calculation_basis: string }
 export type VenueBooking = { id: number; event_id: number; venue_space_id: number; venue_name: string; space_name: string; pax_capacity: number | null; is_primary: boolean; status: string; start_at: string; end_at: string; capacity_warning?: boolean }
 export type LogisticsWarning = { type: string; message: string; requirement_id?: number; booking_id?: number }
@@ -56,7 +56,9 @@ export interface LogisticsApi {
   getEventLogistics(eventId: number): Promise<LogisticsReadModel>
   createEventRequirement(eventId: number, input: Record<string, unknown>): Promise<LogisticsRequirement>
   updateEventRequirement(eventId: number, requirementId: number, input: Partial<LogisticsRequirement>): Promise<LogisticsRequirement>
+  cancelEventRequirement(eventId: number, requirementId: number): Promise<void>
   reserveInventory(eventId: number, requirementId: number, input: { location_id: number; quantity: number }): Promise<LogisticsAllocation>
+  backfillRequirement(eventId: number, requirementId: number, input: { quantity: number; notes: string }): Promise<LogisticsRequirement>
   allocationAction(eventId: number, requirementId: number, allocationId: number, action: "release" | "issue", input: { quantity: number }): Promise<LogisticsAllocation>
   reconcileAllocation(eventId: number, requirementId: number, allocationId: number, input: Record<string, unknown>): Promise<LogisticsAllocation>
   finalizeReconciliation(eventId: number, notes: string): Promise<LogisticsReadModel["reconciliation"]>
@@ -93,7 +95,9 @@ export const logisticsApi: LogisticsApi = {
   getEventLogistics: (eventId) => request(`/events/${eventId}/logistics`),
   createEventRequirement: (eventId, input) => request(`/events/${eventId}/logistics-requirements`, json("POST", input)),
   updateEventRequirement: (eventId, requirementId, input) => request(`/events/${eventId}/logistics-requirements/${requirementId}`, json("PATCH", input)),
+  cancelEventRequirement: (eventId, requirementId) => request(`/events/${eventId}/logistics-requirements/${requirementId}`, json("DELETE")),
   reserveInventory: (eventId, requirementId, input) => request(`/events/${eventId}/logistics-requirements/${requirementId}/reserve`, json("POST", input)),
+  backfillRequirement: (eventId, requirementId, input) => request(`/events/${eventId}/logistics-requirements/${requirementId}/backfill`, json("POST", input)),
   allocationAction: (eventId, requirementId, allocationId, action, input) => request(`/events/${eventId}/logistics-requirements/${requirementId}/allocations/${allocationId}/${action}`, json("POST", input)),
   reconcileAllocation: (eventId, requirementId, allocationId, input) => request(`/events/${eventId}/logistics-requirements/${requirementId}/allocations/${allocationId}/reconcile`, json("POST", input)),
   finalizeReconciliation: (eventId, notes) => request(`/events/${eventId}/logistics/reconciliation/finalize`, json("POST", { notes })),

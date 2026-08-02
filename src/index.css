@@ -4078,7 +4078,9 @@ button {
   padding: 12px 18px 12px 12px;
   position: fixed;
   right: 24px;
-  z-index: 150;
+  /* Keep the trigger below organizer modal overlays so it cannot cover
+     dialog actions such as Requirement Planning's Save button. */
+  z-index: 110;
 }
 
 .copilot-fab span {
@@ -4091,6 +4093,10 @@ button {
   height: 34px;
   justify-content: center;
   width: 34px;
+}
+
+.product-app:has(.inventory-modal-backdrop, .logistics-drawer-backdrop) .copilot-fab {
+  display: none;
 }
 
 .copilot-backdrop {

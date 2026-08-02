@@ -63,6 +63,11 @@ class ReserveAllocation(BaseModel):
     quantity: float = Field(gt=0)
 
 
+class RequirementBackfill(BaseModel):
+    quantity: float = Field(gt=0)
+    notes: str = ""
+
+
 class AllocationQuantity(BaseModel):
     quantity: float = Field(gt=0)
 

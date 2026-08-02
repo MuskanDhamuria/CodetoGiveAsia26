@@ -492,6 +492,7 @@ overwritten directly. Reservations that exceed Available stock return `409`.
 - `GET/POST /events/{event_id}/logistics-requirements`
 - `PATCH/DELETE /events/{event_id}/logistics-requirements/{requirement_id}`
 - `POST /events/{event_id}/logistics-requirements/{requirement_id}/reserve`
+- `POST /events/{event_id}/logistics-requirements/{requirement_id}/backfill` — record an already-on-site quantity when no allocation or Supplier Order log exists
 - `POST /events/{event_id}/logistics-requirements/{requirement_id}/allocations/{allocation_id}/release`
 - `POST /events/{event_id}/logistics-requirements/{requirement_id}/allocations/{allocation_id}/issue`
 - `POST /events/{event_id}/logistics-requirements/{requirement_id}/allocations/{allocation_id}/reconcile`

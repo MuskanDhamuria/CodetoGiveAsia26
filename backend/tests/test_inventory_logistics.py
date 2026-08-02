@@ -151,6 +151,28 @@ class InventoryLogisticsApiTest(unittest.TestCase):
         )
         self.assertEqual(final.status_code, 200)
 
+    def test_requirement_can_be_backfilled_when_already_on_site(self) -> None:
+        item, _ = self.make_item_location()
+        event = self.make_event()
+        requirement = self.client.post(
+            f"/api/v1/events/{event['id']}/logistics-requirements",
+            json={
+                "requirement_type": "goods",
+                "inventory_item_id": item["id"],
+                "required_quantity": 12,
+                "unit": "litre",
+                "needed_by": "2026-09-20T08:00:00",
+            },
+        ).json()
+        backfilled = self.client.post(
+            f"/api/v1/events/{event['id']}/logistics-requirements/{requirement['id']}/backfill",
+            json={"quantity": 12, "notes": "Already at the venue before tracking started"},
+        )
+        self.assertEqual(backfilled.status_code, 201)
+        self.assertEqual(backfilled.json()["on_site"], 12)
+        self.assertEqual(backfilled.json()["still_to_source"], 0)
+        self.assertEqual(backfilled.json()["status"], "on_site")
+
     def test_organization_purchase_receipt_and_venue_overlap(self) -> None:
         item, location = self.make_item_location()
         organization = self.client.post(

@@ -22,6 +22,7 @@ from backend.schema.logistics import (
     EventRequirementCreate,
     EventRequirementUpdate,
     ReconciliationFinalize,
+    RequirementBackfill,
     ReserveAllocation,
     TemplateRequirementCreate,
     TemplateRequirementUpdate,
@@ -83,10 +84,15 @@ def requirement_out(db, row) -> dict:
     ).fetchone()[0]
     result["supplier_ordered"] = q(ordered)
     result["supplier_on_site"] = q(fulfilled)
-    result["on_site"] = q(result["inventory_issued"] + result["supplier_on_site"])
+    backfilled = db.execute(
+        "SELECT COALESCE(SUM(quantity), 0) FROM event_logistics_backfills WHERE requirement_id = ?",
+        (row["id"],),
+    ).fetchone()[0]
+    result["backfilled_on_site"] = q(backfilled)
+    result["on_site"] = q(result["inventory_issued"] + result["supplier_on_site"] + result["backfilled_on_site"])
     result["still_to_source"] = q(max(
         float(result["required_quantity"]) - result["inventory_reserved"]
-        - result["inventory_issued"] - result["supplier_ordered"], 0
+        - result["inventory_issued"] - result["supplier_ordered"] - result["backfilled_on_site"], 0
     ))
     result["not_yet_on_site"] = q(max(float(result["required_quantity"]) - result["on_site"], 0))
     reconciled = (
@@ -283,6 +289,20 @@ def reserve_inventory(event_id: int, requirement_id: int, payload: ReserveAlloca
     ).fetchone()
     db.commit()
     return allocation_out(row)
+
+
+@router.post("/events/{event_id}/logistics-requirements/{requirement_id}/backfill", status_code=201)
+def backfill_requirement(event_id: int, requirement_id: int, payload: RequirementBackfill, db: Connection) -> dict:
+    ensure_event_editable(db, event_id)
+    requirement = require_event_requirement(db, event_id, requirement_id)
+    quantity = q(payload.quantity)
+    with db:
+        db.execute(
+            """INSERT INTO event_logistics_backfills (requirement_id, quantity, notes)
+               VALUES (?, ?, ?)""",
+            (requirement_id, quantity, payload.notes.strip()),
+        )
+    return requirement_out(db, require_event_requirement(db, event_id, requirement["id"]))
 
 
 def require_allocation(db, event_id: int, requirement_id: int, allocation_id: int):

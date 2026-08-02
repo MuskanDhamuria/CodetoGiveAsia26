@@ -19,6 +19,24 @@ build and are done — see git history for that backlog).
 
 ---
 
+~~TICKET-42: Participant identity hijack — signing up with an existing phone number but a different name is silently accepted, no error~~
+— **Done.** `_find_or_create_participant` (`backend/api/routes/public.py`) now
+compares the submitted name (case/whitespace-insensitive) against the matched
+row's stored name and raises `ParticipantNameMismatchError`, which both
+`POST /public/signup` and `POST /public/events/{event_id}/rsvp` turn into a
+409 with an explicit "already registered under a different name" message —
+no more silent identity switch. Went with the "return a distinguishable
+error" option from the two listed below rather than a frontend-only diff
+notice, since erroring closes the vector outright instead of just surfacing
+it after the fact. The frontend needed no changes: `SignupForm.tsx`/
+`AccountSignupForm.tsx` already render `err.message` from any thrown
+`ApiError`, so the new 409 text shows up automatically. Covered by
+`backend/tests/test_public.py` (`test_rsvp_rejects_a_different_name_for_an_existing_contact_number`,
+`test_signup_rejects_a_different_name_for_an_existing_email`).
+
+<details>
+<summary>Original ticket text</summary>
+
 TICKET-42: Participant identity hijack — signing up with an existing phone number but a different name is silently accepted, no error
 
 **Priority:** Highest — this is a live security bug in a public, unauthenticated endpoint.
@@ -67,7 +85,24 @@ Either way this needs a product decision (the participant-portal's own "Key
 decisions" doc should be updated to reflect it), not just a silent code fix, since
 the underlying design intentionally treats phone number as the sole identity key.
 
+</details>
+
 ---
+
+~~TICKET-43: `/participants/*` routes are an unauthenticated PII oracle — full enumeration and identity overwrite~~
+— **Won't fix.** No auth system exists anywhere in this admin backend by
+design — this is a hackathon prototype, not a production deployment, and
+every other admin route (events, volunteers, tasks, etc.) has the exact same
+"anyone with network access can call it" shape. Singling out `/participants/*`
+for an OTP-style possession-proof layer would be inconsistent with that
+project-wide decision rather than closing a gap specific to this route.
+TICKET-42's fix (reject a mismatched name on signup/RSVP) closes the most
+concrete abuse case reachable from the public-facing side without requiring
+an auth system. Full auth remains explicitly out of scope, consistent with
+the original TICKET-0 decision this ticket itself referenced.
+
+<details>
+<summary>Original ticket text</summary>
 
 TICKET-43: `/participants/*` routes are an unauthenticated PII oracle — full enumeration and identity overwrite
 
@@ -118,7 +153,27 @@ production-safe — `backend/api/routes/public.py`'s own module docstring alread
 production-safe," but doesn't call out that the lookup/patch paths need the same
 treatment.
 
+</details>
+
 ---
+
+~~TICKET-44: Participant identity is trusted purely from `localStorage` with no server-side revalidation~~
+— **Done**, to the extent possible without a full auth system (TICKET-43 is
+explicitly won't-fix for that reason). Two things changed: (1) TICKET-42's
+fix means a mismatched name on signup/RSVP is now rejected server-side
+rather than silently trusted, closing the main way a *new* impersonation
+could be established; (2) TICKET-45's fix makes the *reactive* revalidation
+this ticket's own text points at (`isStaleIdentityError`) actually work —
+so when the cached `participant_id` no longer exists server-side, the app
+now correctly detects it and clears the stale identity instead of getting
+stuck showing raw error text forever. Editing `participantId` in devtools to
+someone else's *valid* ID remains possible — that's the residual gap
+inherent to "no possession proof exists yet," tracked under the same
+won't-fix rationale as TICKET-43, not something either fix could close on
+its own.
+
+<details>
+<summary>Original ticket text</summary>
 
 TICKET-44: Participant identity is trusted purely from `localStorage` with no server-side revalidation
 
@@ -142,7 +197,24 @@ as sole identity key, no possession proof) from the client-storage angle rather 
 the API angle — filing separately because the fix surface is different (client-side
 identity model vs. server-side auth), but any fix to TICKET-43 should also close this.
 
+</details>
+
 ---
+
+~~TICKET-45: `isStaleIdentityError`'s string match never actually matches on the two code paths it's meant to guard — CONFIRMED~~
+— **Done.** `EventDetailCard.tsx`'s `isStaleIdentityError` and the matching
+helper in `MyEventsList.tsx` now check
+`/^Participant \d+ was not found$/.test(error.message)`, matching
+`require_participant`'s actual message shape instead of the old
+`"Participant not found"` exact-match that never fired on either guarded
+path. This landed as part of the `feature/participant` branch merge
+(`9ef5d37 fix: signup bug`) prior to this ticket pass — verified against
+current source rather than re-implemented. Added
+`EventDetailCard.test.tsx`'s "Stale saved identity recovery" test, which
+didn't previously exist, to lock the fix in going forward.
+
+<details>
+<summary>Original ticket text</summary>
 
 TICKET-45: `isStaleIdentityError`'s string match never actually matches on the two code paths it's meant to guard — CONFIRMED
 
@@ -194,7 +266,39 @@ about a participant (or better: have the backend return a stable machine-readabl
 error code instead of matching on prose, which is inherently fragile — any future
 wording tweak to `require_participant`'s message silently breaks this again).
 
+</details>
+
 ---
+
+~~TICKET-46: Missing participant self-service functionality — profile edit, account recovery, attendance/certificate view~~
+— **Done**, except account recovery (explicitly out of scope — identity
+staying 100% phone-number-based is an intentional design decision per
+`docs/participant-portal.md`, not something to relitigate here).
+- **Profile edit:** new `ProfileEditForm.tsx` at `/participant/profile`
+  (linked from the participant menu), calling the existing
+  `PATCH /participants/{id}` through a new `updateParticipant` client
+  wrapper. No new ownership check was added (that's TICKET-43's won't-fix
+  territory) — this is the same "no auth yet" boundary as the rest of the
+  admin backend.
+- **Attendance/certificate visibility:** `EventDetailCard.tsx` now shows "You
+  were marked present at this event" when `attendance === true`, and a
+  certificate download link when one exists. Certificates are still
+  generated in bulk by an organizer (`POST /events/{id}/certificates/generate`,
+  unchanged) — the portal doesn't create them, it surfaces the existing
+  public download link. Added a participant-scoped
+  `GET /participants/{participant_id}/events/{event_id}/certificate`
+  (`participants.py`) rather than exposing the admin-only
+  list-all-certificates-for-an-event route to the portal, so a participant
+  can't see certificates issued to other people at the same event.
+- **Cancelled RSVPs leave a trace:** `MyEventsList.tsx` no longer filters
+  out `rsvp_status: false` items — it shows them with a "You cancelled
+  this" badge instead of silently dropping them. This also fixed a latent
+  bug in `EventDetailCard.tsx`'s signup-check effect, which previously
+  treated *any* participation row (including a cancelled one) as "signed
+  up" rather than checking `rsvp_status`.
+
+<details>
+<summary>Original ticket text</summary>
 
 TICKET-46: Missing participant self-service functionality — profile edit, account recovery, attendance/certificate view
 
@@ -232,7 +336,26 @@ they share the same theme (participant self-service is currently read-mostly/sig
 everything else routes through the admin side) — worth splitting into separate tickets
 once prioritized.
 
+</details>
+
 ---
+
+~~TICKET-47: Participant-portal input-validation edge cases~~
+— **Partially done.** The name/strip-ordering bug is fixed: `public.py`
+now uses a `NonBlankName` annotated type
+(`Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]`)
+for `PublicSignupIn.name`/`PublicRsvpIn.name`, so Pydantic strips before
+validating instead of the old strip-after-validate order that let a
+whitespace-only name through as `min_length=1`-valid and store as `""`.
+Covered by `test_rsvp_rejects_a_whitespace_only_name`,
+`test_signup_rejects_a_whitespace_only_name`, and
+`test_rsvp_strips_surrounding_whitespace_from_a_valid_name` in
+`backend/tests/test_public.py`. The second item (phone-number-type
+validation for a hypothetical future WhatsApp-as-contact-channel use case)
+is dropped — no concrete use case exists yet to validate against.
+
+<details>
+<summary>Original ticket text</summary>
 
 TICKET-47: Participant-portal input-validation edge cases
 
@@ -253,6 +376,8 @@ TICKET-47: Participant-portal input-validation edge cases
   as a WhatsApp contact channel (the docs mention this as a likely future direction),
   a landline number would silently fail to ever receive a WhatsApp message with no
   validation-time warning that the number type is unsuitable.
+
+</details>
 
 ---
 

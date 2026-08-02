@@ -26,11 +26,18 @@ dashboard/events/volunteers pages in `src/App.tsx` (untouched):
   e.g. "15 Aug 2026 · 9:00 am").
 - `/participant/events/:eventId` — event detail (date, time, venue,
   description/instructions), sign-up or cancel
-- `/participant/my-events` — the signed-in participant's RSVP'd events, with
-  date and time
+- `/participant/my-events` — the signed-in participant's full RSVP history
+  (including RSVPs they've since cancelled, flagged "You cancelled this"
+  rather than dropped, and "Attended" when attendance was recorded — see
+  `docs/tickets.md` TICKET-46), with date and time
 - `/participant/sign-in` — restore identity on a new device/browser by phone
   number, no event context or RSVP side effect. Only shown in the nav when
   no participant is currently identified.
+- `/participant/profile` — self-service edit of name/phone/email
+  (`ProfileEditForm`), linked from the participant menu, backed by the
+  existing `PATCH /participants/{id}`. Event detail also shows an "attended"
+  message and certificate download link once both exist for that
+  participant/event (TICKET-46).
 
 Identity is phone-based with no login: first-time signup calls the backend's
 public RSVP endpoint (name + phone, optional email), the returned
@@ -75,9 +82,13 @@ FastAPI + `sqlite3` structure:
   number is parsed using its own country code. An unparseable number 400s
   instead of being stored as-is.
 
-Tests: `python3 -m unittest discover -s backend/tests -v` (55 passing,
-`unittest.TestCase` style to match the rest of the backend — no `pytest`
-dependency needed) and `npx vitest run` (45 passing).
+Tests: `python3 -m unittest discover -s backend/tests -v` (282 passing across
+the whole backend, `unittest.TestCase` style to match the rest of the
+backend — no `pytest` dependency needed) and `npx vitest run` (132 passing
+across the whole frontend). These counts cover the full app, not just this
+slice — kept here as a rough freshness signal rather than a precise count,
+since both suites grow as other slices (AI panel, volunteer/WhatsApp bot)
+add tests too.
 
 ## How to run it locally
 

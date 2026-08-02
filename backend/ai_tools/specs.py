@@ -131,6 +131,37 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
         "cannot be undone — only call after the organizer has explicitly "
         "confirmed based on preview_certificate_generation."
     ),
+    "list_event_participants": (
+        "List the participant/RSVP roster for one event — who's registered, "
+        "cancelled, or marked attended. Filter by rsvp_status/attendance or "
+        "search by name/contact/email with q."
+    ),
+    "get_participant": "Look up a single participant by id, including contact details.",
+    "list_participants": (
+        "Search participants by name/contact/email across all events "
+        "(not scoped to one event) — use list_event_participants instead "
+        "when the organizer names a specific event."
+    ),
+    "list_venues": "List venues and their bookable spaces.",
+    "get_venue": "Look up a single venue, its spaces, and its recent bookings.",
+    "list_venue_bookings": "List venue-space bookings for one event.",
+    "get_attendance_forecast": (
+        "Project expected attendance for one event from historical show-up "
+        "rates at similar past events (same template, or same beneficiary "
+        "group if there's not enough template history). Use this for "
+        "'how many people are we expecting' questions rather than just "
+        "the raw RSVP count."
+    ),
+    "get_event_logistics": (
+        "Full operational picture for one event in one call: logistics "
+        "requirements, venue bookings, the attendance forecast, and "
+        "shortage/late-delivery/capacity warnings. Use this for 'how are "
+        "we doing operationally for Saturday's event'-style questions."
+    ),
+    "list_event_logistics_requirements": (
+        "List the goods/services logistics requirements for one event "
+        "(quantities needed, sourced, on-site, still-to-source)."
+    ),
 }
 
 

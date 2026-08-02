@@ -14,7 +14,10 @@ from backend.api.routes import dashboard as dashboard_routes
 from backend.api.routes import event_templates as event_templates_routes
 from backend.api.routes import events as events_routes
 from backend.api.routes import inventory as inventory_routes
+from backend.api.routes import logistics as logistics_routes
+from backend.api.routes import participants as participants_routes
 from backend.api.routes import reports as reports_routes
+from backend.api.routes import venues as venues_routes
 from backend.api.routes import volunteers as volunteers_routes
 from backend.api.routes import whatsapp as whatsapp_routes
 from backend.api.routes._common import Pagination
@@ -25,10 +28,16 @@ from backend.ai_tools.schemas import (
     CancelEventArgs,
     CreateEventDraftArgs,
     GenerateEventCertificatesArgs,
+    GetAttendanceForecastArgs,
     GetEventArgs,
+    GetEventLogisticsArgs,
+    GetParticipantArgs,
     GetStockLevelsArgs,
+    GetVenueArgs,
     ListCompletedEventReportsArgs,
     ListEventCertificatesArgs,
+    ListEventLogisticsRequirementsArgs,
+    ListEventParticipantsArgs,
     ListEventRolesArgs,
     ListEventSignupsArgs,
     ListEventsArgs,
@@ -37,8 +46,11 @@ from backend.ai_tools.schemas import (
     ListInventoryItemsArgs,
     ListInventoryLocationsArgs,
     ListInventoryMovementsArgs,
+    ListParticipantsArgs,
     ListPendingSignupsArgs,
     ListUpcomingDeadlinesArgs,
+    ListVenueBookingsArgs,
+    ListVenuesArgs,
     ListVolunteersArgs,
     PreviewAnnouncementArgs,
     PreviewCertificateGenerationArgs,
@@ -384,6 +396,96 @@ def generate_event_certificates(
     return {"items": [certificate.model_dump(mode="json") for certificate in certificates]}
 
 
+def list_event_participants(db: sqlite3.Connection, args: ListEventParticipantsArgs) -> dict:
+    """TICKET-54: read-only. The participant/RSVP side of event management,
+
+    distinct from volunteers — previously invisible to the AI entirely.
+    """
+
+    pagination = Pagination(limit=args.limit, offset=args.offset)
+    envelope = participants_routes.list_event_participants(
+        args.event_id,
+        db,
+        pagination,
+        rsvp_status=args.rsvp_status,
+        attendance=args.attendance,
+        q=args.q,
+    )
+    return {
+        **envelope,
+        "items": [item.model_dump(mode="json") for item in envelope["items"]],
+    }
+
+
+def get_participant(db: sqlite3.Connection, args: GetParticipantArgs) -> dict:
+    """TICKET-54."""
+
+    participant = participants_routes.get_participant(args.participant_id, db)
+    return participant.model_dump(mode="json")
+
+
+def list_participants(db: sqlite3.Connection, args: ListParticipantsArgs) -> dict:
+    """TICKET-54."""
+
+    pagination = Pagination(limit=args.limit, offset=args.offset)
+    envelope = participants_routes.list_participants(db, pagination, q=args.q)
+    return {
+        **envelope,
+        "items": [item.model_dump(mode="json") for item in envelope["items"]],
+    }
+
+
+def list_venues(db: sqlite3.Connection, args: ListVenuesArgs) -> dict:
+    """TICKET-54: read-only. Write tools (create/update venue, bookings) are
+
+    deliberately not wired up yet, same as inventory's TICKET-39 precedent —
+    no organizer chat use case identified for mutating venue data yet.
+    """
+
+    pagination = Pagination(limit=args.limit, offset=args.offset)
+    return venues_routes.list_venues(db, pagination)
+
+
+def get_venue(db: sqlite3.Connection, args: GetVenueArgs) -> dict:
+    """TICKET-54."""
+
+    return venues_routes.get_venue(args.venue_id, db)
+
+
+def list_venue_bookings(db: sqlite3.Connection, args: ListVenueBookingsArgs) -> dict:
+    """TICKET-54."""
+
+    return venues_routes.list_bookings(args.event_id, db)
+
+
+def get_attendance_forecast(db: sqlite3.Connection, args: GetAttendanceForecastArgs) -> dict:
+    """TICKET-54: historical show-up-rate projection for one event — "how
+
+    many people are we expecting Saturday?"
+    """
+
+    return logistics_routes.attendance_forecast(db, args.event_id)
+
+
+def get_event_logistics(db: sqlite3.Connection, args: GetEventLogisticsArgs) -> dict:
+    """TICKET-54: requirements, venue bookings, attendance forecast, and
+
+    shortage/late-delivery/capacity warnings for one event in one call —
+    the ticket's own highest-priority miss ("how are we doing operationally
+    for Saturday's event").
+    """
+
+    return logistics_routes.event_logistics(args.event_id, db)
+
+
+def list_event_logistics_requirements(
+    db: sqlite3.Connection, args: ListEventLogisticsRequirementsArgs
+) -> dict:
+    """TICKET-54."""
+
+    return logistics_routes.list_event_requirements(args.event_id, db)
+
+
 TOOL_EXECUTORS = {
     "create_event_draft": create_event_draft,
     "publish_event": publish_event,
@@ -413,4 +515,13 @@ TOOL_EXECUTORS = {
     "list_event_certificates": list_event_certificates,
     "preview_certificate_generation": preview_certificate_generation,
     "generate_event_certificates": generate_event_certificates,
+    "list_event_participants": list_event_participants,
+    "get_participant": get_participant,
+    "list_participants": list_participants,
+    "list_venues": list_venues,
+    "get_venue": get_venue,
+    "list_venue_bookings": list_venue_bookings,
+    "get_attendance_forecast": get_attendance_forecast,
+    "get_event_logistics": get_event_logistics,
+    "list_event_logistics_requirements": list_event_logistics_requirements,
 }

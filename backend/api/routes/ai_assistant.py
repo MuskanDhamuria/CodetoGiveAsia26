@@ -64,7 +64,20 @@ SYSTEM_PROMPT = (
     "preview_shift_reminder, preview_certificate_generation), show the "
     "organizer the exact draft and recipient count, and only call the send/"
     "generate tool after they explicitly confirm — never send on your own "
-    "initiative."
+    "initiative. "
+    "list_completed_event_reports defaults to counts only, not real names — "
+    "only pass include_names=true when the organizer's question actually "
+    "needs the participant/volunteer name list (e.g. 'who attended'), not "
+    "for general status/headcount questions. "
+    "For participant/RSVP questions about one event (e.g. 'who's signed up "
+    "for Saturday's cleanup'), use list_event_participants rather than "
+    "list_volunteers — participants and volunteers are different people. "
+    "For operational/logistics questions about one event (e.g. 'how are we "
+    "doing for Saturday', 'how many people are we expecting', 'what's "
+    "still needed'), use get_event_logistics for the full picture or "
+    "get_attendance_forecast specifically for an expected-turnout question "
+    "— don't just report the raw RSVP count, the forecast accounts for "
+    "historical show-up rate."
 )
 
 

@@ -329,6 +329,97 @@ class ApproveEventSignupArgs(BaseModel):
     is_leader: bool = False
 
 
+class ListEventParticipantsArgs(BaseModel):
+    """TICKET-54: the participant/RSVP roster for one event — "who's
+
+    RSVP'd for Saturday's cleanup?"-style questions.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    event_id: int
+    rsvp_status: bool | None = None
+    attendance: bool | None = None
+    q: str | None = None
+    limit: int = Field(default=DEFAULT_LIMIT, ge=1, le=MAX_LIMIT)
+    offset: int = Field(default=0, ge=0)
+
+
+class GetParticipantArgs(BaseModel):
+    """TICKET-54."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    participant_id: int
+
+
+class ListParticipantsArgs(BaseModel):
+    """TICKET-54: cross-event participant search, e.g. "look up Aisha"."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    q: str | None = None
+    limit: int = Field(default=DEFAULT_LIMIT, ge=1, le=MAX_LIMIT)
+    offset: int = Field(default=0, ge=0)
+
+
+class ListVenuesArgs(BaseModel):
+    """TICKET-54."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    limit: int = Field(default=DEFAULT_LIMIT, ge=1, le=MAX_LIMIT)
+    offset: int = Field(default=0, ge=0)
+
+
+class GetVenueArgs(BaseModel):
+    """TICKET-54."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    venue_id: int
+
+
+class ListVenueBookingsArgs(BaseModel):
+    """TICKET-54."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    event_id: int
+
+
+class GetAttendanceForecastArgs(BaseModel):
+    """TICKET-54: "how many people are we expecting Saturday?" — a
+
+    historical show-up-rate projection, not just the raw RSVP count.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    event_id: int
+
+
+class GetEventLogisticsArgs(BaseModel):
+    """TICKET-54: "how are we doing operationally for Saturday's event" —
+
+    requirements, venue bookings, attendance forecast, and shortage/late-
+    delivery/capacity warnings for one event, all in one call. Named after
+    this ticket's own framing of that question as the highest-value miss.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    event_id: int
+
+
+class ListEventLogisticsRequirementsArgs(BaseModel):
+    """TICKET-54."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    event_id: int
+
+
 TOOL_ARG_MODELS: dict[str, type[BaseModel]] = {
     "create_event_draft": CreateEventDraftArgs,
     "publish_event": PublishEventArgs,
@@ -358,4 +449,13 @@ TOOL_ARG_MODELS: dict[str, type[BaseModel]] = {
     "list_event_certificates": ListEventCertificatesArgs,
     "preview_certificate_generation": PreviewCertificateGenerationArgs,
     "generate_event_certificates": GenerateEventCertificatesArgs,
+    "list_event_participants": ListEventParticipantsArgs,
+    "get_participant": GetParticipantArgs,
+    "list_participants": ListParticipantsArgs,
+    "list_venues": ListVenuesArgs,
+    "get_venue": GetVenueArgs,
+    "list_venue_bookings": ListVenueBookingsArgs,
+    "get_attendance_forecast": GetAttendanceForecastArgs,
+    "get_event_logistics": GetEventLogisticsArgs,
+    "list_event_logistics_requirements": ListEventLogisticsRequirementsArgs,
 }

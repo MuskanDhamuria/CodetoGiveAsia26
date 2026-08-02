@@ -185,6 +185,15 @@ class AiToolsTest(unittest.TestCase):
                 "list_event_certificates",
                 "preview_certificate_generation",
                 "generate_event_certificates",
+                "list_event_participants",
+                "get_participant",
+                "list_participants",
+                "list_venues",
+                "get_venue",
+                "list_venue_bookings",
+                "get_attendance_forecast",
+                "get_event_logistics",
+                "list_event_logistics_requirements",
             },
         )
 
@@ -1137,6 +1146,177 @@ class AiToolsBroadcastAndReportsTest(AiToolsTest):
         result = dispatch_tool_call(self.db, "list_event_certificates", {"event_id": event["id"]})
         self.assertTrue(result["success"])
         self.assertEqual(len(result["result"]["items"]), 1)
+
+    def test_list_event_certificates_never_includes_the_download_token_or_link(self) -> None:
+        # TICKET-50: download_token/link are bearer-style secrets — the
+        # model never needs them to answer a status/count question, and
+        # sending them to OpenRouter would leak a real access credential.
+        event = self._publish()
+        participant_id = self.create_participant()
+        self.db.execute(
+            "INSERT INTO participations (event_id, participant_id, rsvp_status, attendance) VALUES (?, ?, 1, 1)",
+            (event["id"], participant_id),
+        )
+        self.db.commit()
+        dispatch_tool_call(self.db, "generate_event_certificates", {"event_id": event["id"]})
+
+        result = dispatch_tool_call(self.db, "list_event_certificates", {"event_id": event["id"]})
+
+        item = result["result"]["items"][0]
+        self.assertNotIn("download_token", item)
+        self.assertNotIn("link", item)
+
+
+class AiToolsParticipantsVenuesLogisticsTest(AiToolsTest):
+    """TICKET-54: read-only AI tools for participants.py, venues.py, and
+
+    logistics.py — previously zero AI coverage for any of the three.
+    """
+
+    def create_participant(self, **overrides) -> int:
+        fields = {"name": "Aisha Rahman", "contact_number": "+6591234567"}
+        fields.update(overrides)
+        row = self.db.execute(
+            "INSERT INTO participants (name, contact_number) VALUES (?, ?) RETURNING id",
+            (fields["name"], fields["contact_number"]),
+        ).fetchone()
+        self.db.commit()
+        return row["id"]
+
+    def create_venue(self, **overrides) -> int:
+        fields = {"name": "Community Hub", "address": "1 Hub Way"}
+        fields.update(overrides)
+        row = self.db.execute(
+            "INSERT INTO venues (name, address, is_active) VALUES (?, ?, 1) RETURNING id",
+            (fields["name"], fields["address"]),
+        ).fetchone()
+        self.db.commit()
+        return row["id"]
+
+    # -- participants ---------------------------------------------------
+
+    def test_list_event_participants_returns_the_roster(self) -> None:
+        event = self._publish()
+        participant_id = self.create_participant(name="Aisha Rahman")
+        self.db.execute(
+            "INSERT INTO participations (event_id, participant_id, rsvp_status) VALUES (?, ?, 1)",
+            (event["id"], participant_id),
+        )
+        self.db.commit()
+
+        result = dispatch_tool_call(
+            self.db, "list_event_participants", {"event_id": event["id"]}
+        )
+
+        self.assertTrue(result["success"])
+        names = [item["name"] for item in result["result"]["items"]]
+        self.assertEqual(names, ["Aisha Rahman"])
+
+    def test_list_event_participants_filters_by_rsvp_status(self) -> None:
+        event = self._publish()
+        signed_up = self.create_participant(name="Signed Up", contact_number="+6591111111")
+        cancelled = self.create_participant(name="Cancelled", contact_number="+6592222222")
+        self.db.execute(
+            "INSERT INTO participations (event_id, participant_id, rsvp_status) VALUES (?, ?, 1)",
+            (event["id"], signed_up),
+        )
+        self.db.execute(
+            "INSERT INTO participations (event_id, participant_id, rsvp_status) VALUES (?, ?, 0)",
+            (event["id"], cancelled),
+        )
+        self.db.commit()
+
+        result = dispatch_tool_call(
+            self.db,
+            "list_event_participants",
+            {"event_id": event["id"], "rsvp_status": True},
+        )
+
+        names = [item["name"] for item in result["result"]["items"]]
+        self.assertEqual(names, ["Signed Up"])
+
+    def test_get_participant_returns_the_record(self) -> None:
+        participant_id = self.create_participant(name="Aisha Rahman")
+
+        result = dispatch_tool_call(self.db, "get_participant", {"participant_id": participant_id})
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["result"]["name"], "Aisha Rahman")
+
+    def test_get_participant_missing_id_is_a_structured_error(self) -> None:
+        result = dispatch_tool_call(self.db, "get_participant", {"participant_id": 9999})
+
+        self.assertFalse(result["success"])
+
+    def test_list_participants_searches_by_name(self) -> None:
+        self.create_participant(name="Aisha Rahman", contact_number="+6591111111")
+        self.create_participant(name="Someone Else", contact_number="+6592222222")
+
+        result = dispatch_tool_call(self.db, "list_participants", {"q": "Aisha"})
+
+        names = [item["name"] for item in result["result"]["items"]]
+        self.assertEqual(names, ["Aisha Rahman"])
+
+    # -- venues -----------------------------------------------------------
+
+    def test_list_venues_returns_created_venues(self) -> None:
+        self.create_venue(name="Community Hub")
+
+        result = dispatch_tool_call(self.db, "list_venues", {})
+
+        names = [item["name"] for item in result["result"]["items"]]
+        self.assertIn("Community Hub", names)
+
+    def test_get_venue_returns_spaces_and_bookings(self) -> None:
+        venue_id = self.create_venue(name="Community Hub")
+
+        result = dispatch_tool_call(self.db, "get_venue", {"venue_id": venue_id})
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["result"]["name"], "Community Hub")
+        self.assertIn("bookings", result["result"])
+
+    def test_get_venue_missing_id_is_a_structured_error(self) -> None:
+        result = dispatch_tool_call(self.db, "get_venue", {"venue_id": 9999})
+
+        self.assertFalse(result["success"])
+
+    def test_list_venue_bookings_requires_an_existing_event(self) -> None:
+        result = dispatch_tool_call(self.db, "list_venue_bookings", {"event_id": 9999})
+
+        self.assertFalse(result["success"])
+
+    # -- logistics ----------------------------------------------------------
+
+    def test_get_attendance_forecast_reports_insufficient_history_for_a_new_event(self) -> None:
+        event = self._publish()
+
+        result = dispatch_tool_call(self.db, "get_attendance_forecast", {"event_id": event["id"]})
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["result"]["calculation_basis"], "insufficient_history")
+
+    def test_get_event_logistics_bundles_forecast_requirements_and_bookings(self) -> None:
+        event = self._publish()
+
+        result = dispatch_tool_call(self.db, "get_event_logistics", {"event_id": event["id"]})
+
+        self.assertTrue(result["success"])
+        body = result["result"]
+        self.assertIn("forecast", body)
+        self.assertIn("requirements", body)
+        self.assertIn("venue_bookings", body)
+        self.assertIn("warnings", body)
+
+    def test_list_event_logistics_requirements_returns_an_empty_list_for_a_fresh_event(self) -> None:
+        event = self._publish()
+
+        result = dispatch_tool_call(
+            self.db, "list_event_logistics_requirements", {"event_id": event["id"]}
+        )
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["result"]["items"], [])
 
 
 if __name__ == "__main__":

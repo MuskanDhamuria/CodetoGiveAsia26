@@ -194,6 +194,53 @@ class WhatsAppBotTest(unittest.TestCase):
         self.assertNotIn("didn't understand", self.fake_whatsapp.sent[0][1])
         self.assertIn("Hi", self.fake_whatsapp.sent[0][1])
 
+    def test_new_contact_is_asked_to_choose_participant_or_volunteer(self) -> None:
+        phone = "6580000033"
+        response = self.send_message(phone, "HI")
+        self.assertEqual(response.status_code, 200)
+        reply = self.fake_whatsapp.sent[-1][1]
+        self.assertIn("PARTICIPANT", reply)
+        self.assertIn("VOLUNTEER", reply)
+        # The full command menu shouldn't show yet — just the role prompt.
+        self.assertNotIn("SIGNUP <id>", reply)
+
+    def test_participant_command_lists_events(self) -> None:
+        event = self.create_event()
+        phone = "6580000034"
+        response = self.send_message(phone, "PARTICIPANT")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(event["name"], self.fake_whatsapp.sent[-1][1])
+
+    def test_bare_volunteer_command_lists_events_with_a_hint(self) -> None:
+        event = self.create_event()
+        phone = "6580000035"
+        response = self.send_message(phone, "VOLUNTEER")
+        self.assertEqual(response.status_code, 200)
+        reply = self.fake_whatsapp.sent[-1][1]
+        self.assertIn(event["name"], reply)
+        self.assertIn("VOLUNTEER SIGNUP <id>", reply)
+
+    def test_role_prompt_stops_once_someone_has_signed_up(self) -> None:
+        event = self.create_event()
+        phone = "6580000036"
+        self.send_message(phone, f"SIGNUP {event['id']}")
+        self.send_message(phone, "Test Participant")
+
+        response = self.send_message(phone, "HI")
+        self.assertEqual(response.status_code, 200)
+        reply = self.fake_whatsapp.sent[-1][1]
+        self.assertIn("SIGNUP <id>", reply)
+        self.assertNotIn("Reply PARTICIPANT or VOLUNTEER", reply)
+
+    def test_admins_are_not_shown_the_role_prompt(self) -> None:
+        admin_phone = "6580000037"
+        self.make_team_member_contact(admin_phone)
+        response = self.send_message(admin_phone, "HI")
+        self.assertEqual(response.status_code, 200)
+        reply = self.fake_whatsapp.sent[-1][1]
+        self.assertIn("BROADCAST", reply)
+        self.assertNotIn("Reply PARTICIPANT or VOLUNTEER", reply)
+
     # ----------------------------------------------------------------- #
     # Participant flows
     # ----------------------------------------------------------------- #
@@ -219,6 +266,19 @@ class WhatsAppBotTest(unittest.TestCase):
         self.assertEqual(participants[0]["contact_number"], phone)
         self.assertEqual(participants[0]["name"], "Priya Kumar")
         self.assertTrue(participants[0]["rsvp_status"])
+
+    def test_signup_with_no_id_lists_events_instead_of_falling_back_to_unknown_command(self) -> None:
+        phone = "6580000030"
+        no_events_response = self.send_message(phone, "SIGNUP")
+        self.assertEqual(no_events_response.status_code, 200)
+        self.assertIn("no upcoming events", self.fake_whatsapp.sent[-1][1])
+
+        event = self.create_event()
+        with_event_response = self.send_message(phone, "SIGNUP")
+        self.assertEqual(with_event_response.status_code, 200)
+        reply = self.fake_whatsapp.sent[-1][1]
+        self.assertIn(f"#{event['id']}", reply)
+        self.assertIn("SIGNUP <id>", reply)
 
     def test_signup_name_prompt_can_be_cancelled(self) -> None:
         event = self.create_event()
@@ -321,13 +381,17 @@ class WhatsAppBotTest(unittest.TestCase):
         admin_phone = "6580000006"
         self.make_team_member_contact(admin_phone)
 
-        self.send_message(volunteer_phone, f"VOLUNTEER SIGNUP {event['id']}", name="Jamie")
+        prompt_response = self.send_message(volunteer_phone, f"VOLUNTEER SIGNUP {event['id']}", name="Jamie")
+        self.assertEqual(prompt_response.status_code, 200)
+        self.assertIn("What name", self.fake_whatsapp.sent[-1][1])
+        self.send_message(volunteer_phone, "Jamie Tan")
         signups = self.client.get(
             f"/api/v1/events/{event['id']}/volunteer-signups"
         ).json()["items"]
         self.assertEqual(len(signups), 1)
         signup_id = signups[0]["id"]
         self.assertEqual(signups[0]["status"], "requested")
+        self.assertEqual(signups[0]["volunteer_name"], "Jamie Tan")
 
         approve_response = self.send_message(admin_phone, f"APPROVE {signup_id} {role_id}")
         self.assertEqual(approve_response.status_code, 200)
@@ -346,6 +410,30 @@ class WhatsAppBotTest(unittest.TestCase):
         self.assertEqual(confirm_response.status_code, 200)
         self.assertIn("confirmed", self.fake_whatsapp.sent[-1][1].lower())
 
+    def test_volunteer_signup_name_prompt_can_be_cancelled(self) -> None:
+        event = self.create_event()
+        phone = "6580000031"
+        self.send_message(phone, f"VOLUNTEER SIGNUP {event['id']}")
+        response = self.send_message(phone, "STOP")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("cancelled", self.fake_whatsapp.sent[-1][1].lower())
+
+        signups = self.client.get(
+            f"/api/v1/events/{event['id']}/volunteer-signups"
+        ).json()["items"]
+        self.assertEqual(len(signups), 0)
+
+    def test_returning_volunteer_signs_up_without_being_asked_for_a_name_again(self) -> None:
+        first_event = self.create_event()
+        second_event = self.create_event()
+        phone = "6580000032"
+        self.send_message(phone, f"VOLUNTEER SIGNUP {first_event['id']}")
+        self.send_message(phone, "Noor")
+
+        response = self.send_message(phone, f"VOLUNTEER SIGNUP {second_event['id']}")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Thanks for volunteering", self.fake_whatsapp.sent[-1][1])
+
     def test_pending_lists_roles_and_approve_accepts_hash_prefixed_ids(self) -> None:
         # Reproduces a real transcript: PENDING must show role numbers (there
         # was previously no way for an admin to know a valid role id), and
@@ -357,6 +445,7 @@ class WhatsAppBotTest(unittest.TestCase):
         admin_phone = "6580000021"
         self.make_team_member_contact(admin_phone)
         self.send_message(volunteer_phone, f"VOLUNTEER SIGNUP {event['id']}", name="Farah Hassan")
+        self.send_message(volunteer_phone, "Farah Hassan")
         signup_id = self.client.get(
             f"/api/v1/events/{event['id']}/volunteer-signups"
         ).json()["items"][0]["id"]
@@ -434,6 +523,7 @@ class WhatsAppBotTest(unittest.TestCase):
         admin_phone = "6580000012"
         self.make_team_member_contact(admin_phone)
         self.send_message(volunteer_phone, f"VOLUNTEER SIGNUP {event['id']}")
+        self.send_message(volunteer_phone, "Test Volunteer")
         signup_id = self.client.get(
             f"/api/v1/events/{event['id']}/volunteer-signups"
         ).json()["items"][0]["id"]

@@ -120,9 +120,11 @@ def menu_for(contact: sqlite3.Row) -> str:
 def dispatch(db: sqlite3.Connection, contact: sqlite3.Row, text: str) -> list[str]:
     stripped = text.strip()
 
-    pending_event_id = _pending_signup_event_id(contact)
-    if pending_event_id is not None:
+    pending_kind, pending_event_id = _pending_state(contact)
+    if pending_kind == "participant":
         return complete_signup_with_name(db, contact, pending_event_id, stripped)
+    if pending_kind == "volunteer":
+        return complete_volunteer_signup_with_name(db, contact, pending_event_id, stripped)
 
     if not stripped:
         return [greeting(contact)]
@@ -138,7 +140,15 @@ def dispatch(db: sqlite3.Connection, contact: sqlite3.Row, text: str) -> list[st
         if command == "START":
             _touch_contact(db, contact["id"], notify_new_events=1)
             return ["You're subscribed to new-event alerts again.", menu_for(contact)]
+        if _needs_role_prompt(contact):
+            return [greeting(contact), ROLE_PROMPT]
         return [greeting(contact), menu_for(contact)]
+    if command == "PARTICIPANT":
+        return [list_events(db)]
+    if command == "VOLUNTEER" and not (rest and rest[0].upper() == "SIGNUP"):
+        return [
+            list_events(db) + "\nTo volunteer instead, reply VOLUNTEER SIGNUP <id>."
+        ]
     if command == "STOP":
         _touch_contact(db, contact["id"], notify_new_events=0)
         return ["You won't receive new-event alerts anymore. Reply START to resume."]
@@ -148,6 +158,10 @@ def dispatch(db: sqlite3.Connection, contact: sqlite3.Row, text: str) -> list[st
         return [event_details(db, contact, rest[0])]
     if command == "SIGNUP" and rest:
         return signup_for_event(db, contact, rest[0])
+    if command == "SIGNUP":
+        # No id given — show what's on (or that nothing is), same as EVENTS,
+        # instead of falling through to the generic "didn't understand" reply.
+        return [list_events(db)]
     if command == "MYEVENTS":
         return [my_events(db, contact)]
     if command == "CERT":
@@ -183,6 +197,24 @@ def dispatch(db: sqlite3.Connection, contact: sqlite3.Row, text: str) -> list[st
 def greeting(contact: sqlite3.Row) -> str:
     name = contact["display_name"] or "there"
     return f"Hi {name}! I'm the Passion to Serve bot."
+
+
+ROLE_PROMPT = (
+    "Are you here to attend an event as a participant, or to help out as a "
+    "volunteer? Reply PARTICIPANT or VOLUNTEER (or EVENTS to just browse)."
+)
+
+
+def _needs_role_prompt(contact: sqlite3.Row) -> bool:
+    """True until this contact has signed up as either a participant or a
+    volunteer. Admins (linked via the website, never self-service) aren't
+    nudged — they already have a defined role."""
+
+    return (
+        contact["participant_id"] is None
+        and contact["volunteer_id"] is None
+        and contact["team_member_id"] is None
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -265,15 +297,20 @@ def _find_or_create_participant(
 
 
 _SIGNUP_NAME_STATE_PREFIX = "SIGNUP_NAME:"
+_VOLUNTEER_SIGNUP_NAME_STATE_PREFIX = "VOLUNTEER_SIGNUP_NAME:"
 
 
-def _pending_signup_event_id(contact: sqlite3.Row) -> int | None:
-    """The event id waiting on a name reply, if this contact is mid-signup."""
+def _pending_state(contact: sqlite3.Row) -> tuple[str | None, int | None]:
+    """("participant" | "volunteer" | None, event id) if awaiting a name reply."""
 
     state = contact["conversation_state"]
-    if not state or not state.startswith(_SIGNUP_NAME_STATE_PREFIX):
-        return None
-    return _parse_int(state[len(_SIGNUP_NAME_STATE_PREFIX) :])
+    if not state:
+        return None, None
+    if state.startswith(_VOLUNTEER_SIGNUP_NAME_STATE_PREFIX):
+        return "volunteer", _parse_int(state[len(_VOLUNTEER_SIGNUP_NAME_STATE_PREFIX) :])
+    if state.startswith(_SIGNUP_NAME_STATE_PREFIX):
+        return "participant", _parse_int(state[len(_SIGNUP_NAME_STATE_PREFIX) :])
+    return None, None
 
 
 def _register_participation(db: sqlite3.Connection, event_id: int, participant_id: int) -> None:
@@ -467,6 +504,24 @@ def ensure_certificate(
 # --------------------------------------------------------------------------- #
 # Volunteer commands
 # --------------------------------------------------------------------------- #
+def _register_volunteer_signup(db: sqlite3.Connection, event: sqlite3.Row, volunteer_id: int) -> list[str]:
+    already = db.execute(
+        "SELECT status FROM volunteer_signups WHERE event_id = ? AND volunteer_id = ?",
+        (event["id"], volunteer_id),
+    ).fetchone()
+    if already is not None:
+        return [f"You already have a volunteer request for {event['name']} ({already['status']})."]
+    db.execute(
+        "INSERT INTO volunteer_signups (event_id, volunteer_id, status) VALUES (?, ?, 'requested')",
+        (event["id"], volunteer_id),
+    )
+    db.commit()
+    return [
+        f"Thanks for volunteering for {event['name']}! An organizer will review your request "
+        "and confirm your role."
+    ]
+
+
 def volunteer_signup(db: sqlite3.Connection, contact: sqlite3.Row, raw_id: str) -> list[str]:
     event_id = _parse_int(raw_id)
     if event_id is None:
@@ -476,37 +531,46 @@ def volunteer_signup(db: sqlite3.Connection, contact: sqlite3.Row, raw_id: str) 
         return [f"I couldn't find event #{event_id}."]
 
     if contact["volunteer_id"] is not None:
-        volunteer_id = contact["volunteer_id"]
-    else:
-        existing = db.execute(
-            "SELECT id FROM volunteers WHERE contact_number = ?", (contact["phone_number"],)
-        ).fetchone()
-        if existing is not None:
-            volunteer_id = existing["id"]
-        else:
-            name = contact["display_name"] or contact["phone_number"]
-            volunteer_id = db.execute(
-                "INSERT INTO volunteers (name, contact_number) VALUES (?, ?) RETURNING id",
-                (name, contact["phone_number"]),
-            ).fetchone()["id"]
-            db.commit()
-        _touch_contact(db, contact["id"], volunteer_id=volunteer_id)
+        return _register_volunteer_signup(db, event, contact["volunteer_id"])
 
-    already = db.execute(
-        "SELECT status FROM volunteer_signups WHERE event_id = ? AND volunteer_id = ?",
-        (event_id, volunteer_id),
+    existing = db.execute(
+        "SELECT id FROM volunteers WHERE contact_number = ?", (contact["phone_number"],)
     ).fetchone()
-    if already is not None:
-        return [f"You already have a volunteer request for {event['name']} ({already['status']})."]
-    db.execute(
-        "INSERT INTO volunteer_signups (event_id, volunteer_id, status) VALUES (?, ?, 'requested')",
-        (event_id, volunteer_id),
+    if existing is not None:
+        _touch_contact(db, contact["id"], volunteer_id=existing["id"])
+        return _register_volunteer_signup(db, event, existing["id"])
+
+    # First-time volunteer: ask for a name instead of guessing from the
+    # WhatsApp profile name, which is often a nickname or missing entirely.
+    # The reply to this message is picked up by dispatch()'s pending check.
+    _touch_contact(
+        db, contact["id"], conversation_state=f"{_VOLUNTEER_SIGNUP_NAME_STATE_PREFIX}{event_id}"
     )
+    return [f"Great! What name should we register for {event['name']}?"]
+
+
+def complete_volunteer_signup_with_name(
+    db: sqlite3.Connection, contact: sqlite3.Row, event_id: int, name: str
+) -> list[str]:
+    name = name.strip()
+    if not name:
+        return ["Please reply with a name to finish volunteering (or reply STOP to cancel)."]
+    if name.upper() == "STOP":
+        _touch_contact(db, contact["id"], conversation_state=None)
+        return ["Volunteer signup cancelled. Reply VOLUNTEER SIGNUP <event id> if you change your mind."]
+
+    event = db.execute("SELECT id, name FROM events WHERE id = ?", (event_id,)).fetchone()
+    _touch_contact(db, contact["id"], conversation_state=None)
+    if event is None:
+        return ["That event isn't available anymore. Reply EVENTS to see what's on."]
+
+    volunteer_id = db.execute(
+        "INSERT INTO volunteers (name, contact_number) VALUES (?, ?) RETURNING id",
+        (name, contact["phone_number"]),
+    ).fetchone()["id"]
     db.commit()
-    return [
-        f"Thanks for volunteering for {event['name']}! An organizer will review your request "
-        "and confirm your role."
-    ]
+    _touch_contact(db, contact["id"], volunteer_id=volunteer_id)
+    return _register_volunteer_signup(db, event, volunteer_id)
 
 
 def volunteer_tasks(db: sqlite3.Connection, contact: sqlite3.Row) -> str:

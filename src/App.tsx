@@ -8,6 +8,7 @@ import EventOperationsMvp from "./EventOperationsMvp";
 import ParticipantApp from "./participant/ParticipantApp";
 import AdminEventsPage from "./AdminEventsPage";
 import WhatsAppPanel from "./WhatsAppPanel";
+import AttendanceScannerPage from "./AttendanceScannerPage";
 import InventoryPage from "./InventoryPage";
 import { adminApi, type AdminApi, type DashboardSummary, type EventDetail, type UpcomingDeadline } from "./admin-api";
 import VolunteerDirectory from "./VolunteerDirectory";
@@ -25,6 +26,7 @@ export type Page =
   | "volunteers"
   | "reports"
   | "broadcasts"
+  | "scan-attendance"
   | "ai"
   | "signup"
   | "community"
@@ -39,6 +41,7 @@ const navLinks: { label: string; page: Page }[] = [
   { label: "Volunteers", page: "volunteers" },
   { label: "Post-event", page: "reports" },
   { label: "Broadcasts", page: "broadcasts" },
+  { label: "Scan Attendance", page: "scan-attendance" },
 ];
 
 const pageLabels: Record<Page, string> = {
@@ -49,6 +52,7 @@ const pageLabels: Record<Page, string> = {
   volunteers: "Volunteers",
   reports: "Post-event",
   broadcasts: "Broadcasts",
+  "scan-attendance": "Scan Attendance",
   ai: "AI Copilot",
   signup: "Volunteer Sign-Up",
   community: "Community Events",
@@ -70,6 +74,7 @@ function readInitialPage(pathname = window.location.pathname): Page {
       adminPage === "volunteers" ||
       adminPage === "reports" ||
       adminPage === "broadcasts" ||
+      adminPage === "scan-attendance" ||
       adminPage === "ai"
       ? adminPage
       : "home";
@@ -88,6 +93,7 @@ function readInitialPage(pathname = window.location.pathname): Page {
     page === "volunteers" ||
     page === "reports" ||
     page === "broadcasts" ||
+    page === "scan-attendance" ||
     page === "ai" ||
     page === "signup" ||
     page === "community" ||
@@ -2014,6 +2020,7 @@ function AdminPanel() {
         page === "volunteers" ||
         page === "reports" ||
         page === "broadcasts" ||
+        page === "scan-attendance" ||
         page === "ai")
     ) {
       routerNavigate(page === "home" ? "/admin" : `/admin/${page}`);
@@ -2131,6 +2138,7 @@ function AdminPanel() {
             {activePage === "volunteers" && <VolunteersPage key={`volunteers-${refreshKey}`} />}
             {activePage === "reports" && <ReportsPage />}
             {activePage === "broadcasts" && <WhatsAppPanel />}
+            {activePage === "scan-attendance" && <AttendanceScannerPage />}
             {activePage === "ai" && <PlaceholderPage title="AI Copilot" />}
           </div>
           <AiCopilot
@@ -2170,6 +2178,7 @@ function LegacyRouteRedirect() {
     volunteers: "/admin/volunteers",
     reports: "/admin/reports",
     broadcasts: "/admin/broadcasts",
+    "scan-attendance": "/admin/scan-attendance",
     ai: "/admin/ai",
     community: "/community",
     signup: "/signup",

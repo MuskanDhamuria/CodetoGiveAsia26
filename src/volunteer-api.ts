@@ -176,6 +176,12 @@ export function getVolunteerDashboard(): Promise<VolunteerDashboard> {
   return authorizedGet("/volunteer-auth/dashboard")
 }
 
+// Signed token an admin's QR scanner reads back to mark this volunteer
+// present at the event — see backend/attendance_qr.py.
+export function getVolunteerAttendanceQrToken(eventId: number): Promise<{ token: string }> {
+  return authorizedGet(`/volunteer-auth/qr-token?event_id=${eventId}`)
+}
+
 export function listEvents(): Promise<ListEnvelope<EventSummary>> {
   return getJson("/events")
 }

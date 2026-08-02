@@ -8,11 +8,13 @@ import hmac
 import secrets
 import sqlite3
 from datetime import UTC, datetime, timedelta
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Security, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Security, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from backend.api.routes._common import Connection
+from backend.attendance_qr import VOLUNTEER_KIND, generate_token
 from backend.bot.commands import get_or_create_contact
 from backend.schema.volunteer_auth import (
     VolunteerAccountOut,
@@ -221,6 +223,22 @@ def me(
     credentials: HTTPAuthorizationCredentials | None = Security(bearer),
 ) -> VolunteerAccountOut:
     return account_model(current_account(credentials, db))
+
+
+@router.get("/qr-token")
+def get_volunteer_attendance_qr_token(
+    db: Connection,
+    event_id: Annotated[int, Query()],
+    credentials: HTTPAuthorizationCredentials | None = Security(bearer),
+) -> dict:
+    account = current_account(credentials, db)
+    registered = db.execute(
+        "SELECT 1 FROM volunteer_signups WHERE event_id = ? AND volunteer_id = ?",
+        (event_id, account["volunteer_id"]),
+    ).fetchone()
+    if registered is None:
+        raise HTTPException(status_code=404, detail="Not signed up for that event")
+    return {"token": generate_token(VOLUNTEER_KIND, account["volunteer_id"], event_id)}
 
 
 @router.get("/dashboard", response_model=VolunteerDashboardOut)

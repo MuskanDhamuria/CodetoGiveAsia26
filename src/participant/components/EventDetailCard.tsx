@@ -10,6 +10,7 @@ import {
 } from "../api/client";
 import { formatEventDateLong, formatEventTime } from "../dateFormat";
 import type { ParticipantOutletContext } from "../ParticipantApp";
+import AttendanceQrCode from "./AttendanceQrCode";
 import SignupForm from "./SignupForm";
 
 // The backend uses this exact message when a participant_id doesn't exist —
@@ -37,6 +38,7 @@ export default function EventDetailCard() {
   );
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionPending, setActionPending] = useState(false);
+  const [showQr, setShowQr] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -206,6 +208,12 @@ export default function EventDetailCard() {
         ) : isSignedUp ? (
           <>
             <p className="event-detail-confirmed">You're signed up for this event.</p>
+            <button type="button" onClick={() => setShowQr((current) => !current)}>
+              {showQr ? "Hide my QR code" : "Show my QR code"}
+            </button>
+            {showQr && participant && (
+              <AttendanceQrCode participantId={participant.participantId} eventId={numericEventId} />
+            )}
             <button type="button" onClick={handleCancel} disabled={actionPending}>
               Cancel my signup
             </button>

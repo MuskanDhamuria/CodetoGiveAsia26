@@ -1466,6 +1466,8 @@ function CertificateGenerationPanel({
   const [sentCertificates, setSentCertificates] = useState<
     Record<string, boolean>
   >({});
+  const [sendBusy, setSendBusy] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
   const getCertificateOptions = (event: CompletedEvent): CertificateType[] =>
     event.isSkillsWorkshop ? ["participants", "volunteers"] : ["volunteers"];
   const getCertificateType = (event: CompletedEvent): CertificateType => {
@@ -1525,13 +1527,45 @@ function CertificateGenerationPanel({
     onSelectEvent(event.name);
   }
 
-  function toggleSentCertificates() {
-    if (!activeCertificateKey) return;
+  async function toggleSentCertificates() {
+    if (!activeCertificateKey || !activeEvent) return;
 
-    setSentCertificates((current) => ({
-      ...current,
-      [activeCertificateKey]: !current[activeCertificateKey],
-    }));
+    // Already sent: this is just a local UI toggle to move the card back to
+    // "Unsent" for demo purposes — there's no real "unsend" on the backend.
+    if (sentCertificates[activeCertificateKey]) {
+      setSentCertificates((current) => ({
+        ...current,
+        [activeCertificateKey]: false,
+      }));
+      return;
+    }
+
+    // Not yet sent: actually generate and deliver certificates over
+    // WhatsApp for everyone with recorded attendance at this event, via the
+    // same endpoint the WhatsApp admin panel's "Certificates" card uses.
+    setSendBusy(true);
+    setSendError(null);
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/events/${activeEvent.id}/certificates/generate`,
+        { method: "POST" },
+      );
+      if (!response.ok) {
+        throw new Error("Could not send certificates over WhatsApp.");
+      }
+      setSentCertificates((current) => ({
+        ...current,
+        [activeCertificateKey]: true,
+      }));
+    } catch (reason) {
+      setSendError(
+        reason instanceof Error
+          ? reason.message
+          : "Could not send certificates over WhatsApp.",
+      );
+    } finally {
+      setSendBusy(false);
+    }
   }
 
   function renderCertificateEntry({
@@ -1628,14 +1662,17 @@ function CertificateGenerationPanel({
           <button
             className={hasSentActiveCertificates ? "sent" : ""}
             type="button"
-            disabled={!activeEvent || recipientNames.length === 0}
-            onClick={toggleSentCertificates}
+            disabled={!activeEvent || recipientNames.length === 0 || sendBusy}
+            onClick={() => void toggleSentCertificates()}
           >
-            {hasSentActiveCertificates
-              ? "Unsend Certificates"
-              : "Send Certificates"}
+            {sendBusy
+              ? "Sending…"
+              : hasSentActiveCertificates
+                ? "Unsend Certificates"
+                : "Send Certificates"}
           </button>
         </div>
+        {sendError && <p className="certificate-list-empty">{sendError}</p>}
 
         <div className="certificate-stats">
           <article>

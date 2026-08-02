@@ -112,6 +112,16 @@ class AssignEventTaskArgs(BaseModel):
     team_member_id: int | None
 
 
+class UpdateTaskStatusArgs(BaseModel):
+    """TICKET-15: one tool over the three status-transition handlers."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    event_id: int
+    task_id: int
+    status: TaskStatus
+
+
 TOOL_ARG_MODELS: dict[str, type[BaseModel]] = {
     "create_event_draft": CreateEventDraftArgs,
     "publish_event": PublishEventArgs,
@@ -123,4 +133,5 @@ TOOL_ARG_MODELS: dict[str, type[BaseModel]] = {
     "list_volunteers": ListVolunteersArgs,
     "list_event_tasks": ListEventTasksArgs,
     "assign_event_task": AssignEventTaskArgs,
+    "update_task_status": UpdateTaskStatusArgs,
 }

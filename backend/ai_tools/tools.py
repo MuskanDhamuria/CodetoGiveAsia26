@@ -25,8 +25,15 @@ from backend.ai_tools.schemas import (
     ListVolunteersArgs,
     PublishEventArgs,
     UpdateEventArgs,
+    UpdateTaskStatusArgs,
 )
 from backend.schema.events import EventCreate, EventTaskUpdate, EventUpdate
+
+_TASK_STATUS_HANDLERS = {
+    "ongoing": events_routes.start_task,
+    "done": events_routes.complete_task,
+    "incomplete": events_routes.reopen_task,
+}
 
 
 def create_event_draft(db: sqlite3.Connection, args: CreateEventDraftArgs) -> dict:
@@ -146,6 +153,12 @@ def assign_event_task(db: sqlite3.Connection, args: AssignEventTaskArgs) -> dict
     return detail.model_dump(mode="json")
 
 
+def update_task_status(db: sqlite3.Connection, args: UpdateTaskStatusArgs) -> dict:
+    handler = _TASK_STATUS_HANDLERS[args.status]
+    detail = handler(args.event_id, args.task_id, db)
+    return detail.model_dump(mode="json")
+
+
 TOOL_EXECUTORS = {
     "create_event_draft": create_event_draft,
     "publish_event": publish_event,
@@ -157,4 +170,5 @@ TOOL_EXECUTORS = {
     "list_volunteers": list_volunteers,
     "list_event_tasks": list_event_tasks,
     "assign_event_task": assign_event_task,
+    "update_task_status": update_task_status,
 }

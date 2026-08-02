@@ -1174,7 +1174,22 @@ before assigning more — out of scope here, see TICKET-16's note).
 
 ---
 
-## TICKET-15: AI tool — mark a task's status (start / complete / reopen)
+~~TICKET-15: AI tool — mark a task's status (start / complete / reopen)~~
+— **Done.** One tool, `update_task_status(event_id, task_id, status)`
+(`backend/ai_tools/tools.py`), dispatching to whichever of `start_task`/
+`complete_task`/`reopen_task` matches the requested `TaskStatus`
+(`ongoing`/`done`/`incomplete`) — picked over three separate tools per the
+ticket's own "keep the tool-name list clearest" guidance, since all three
+handlers take identical arguments and differ only in the fixed status they
+set. `status` is typed `TaskStatus` (`backend/schema/common.py`) on
+`UpdateTaskStatusArgs`, so an invalid value (e.g. `"cancelled"`, not one of
+the three real states) is rejected at the schema stage. No new validation
+logic — every handler's own `require_event_task` 404 still applies.
+Covered by five new tests: starts, completes, and reopens a task, a missing
+task is a structured error, an invalid status value is rejected.
+
+<details>
+<summary>Original ticket text</summary>
 
 **Priority:** Medium
 **Area:** new `backend/ai_tools/` tool(s), reuses `backend/api/routes/events.py`
@@ -1199,6 +1214,8 @@ every check already lives in the handlers.
 Same pairing as TICKET-13/14 — an organizer flow like "what's overdue on
 the Health Fair? mark the venue booking done" chains TICKET-13 then this
 ticket naturally.
+
+</details>
 
 ---
 

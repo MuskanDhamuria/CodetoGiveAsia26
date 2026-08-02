@@ -55,6 +55,10 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
         "team_member_id: null. Task assignment always targets a team "
         "member, never a volunteer."
     ),
+    "update_task_status": (
+        "Set a task's status: 'ongoing' to start it, 'done' to complete "
+        "it, or 'incomplete' to reopen it."
+    ),
 }
 
 

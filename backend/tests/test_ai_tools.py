@@ -119,6 +119,7 @@ class AiToolsTest(unittest.TestCase):
                 "list_volunteers",
                 "list_event_tasks",
                 "assign_event_task",
+                "update_task_status",
             },
         )
 
@@ -431,6 +432,60 @@ class AiToolsTest(unittest.TestCase):
             self.db,
             "assign_event_task",
             {"event_id": event["id"], "task_id": task_id, "team_member_id": None, "run_sql": "x"},
+        )
+        self.assertFalse(result["success"])
+
+    # -- update_task_status (TICKET-15) ------------------------------------
+
+    def test_update_task_status_starts_a_task(self) -> None:
+        event = self._publish()
+        task_id = self.create_task(event["id"])
+        result = dispatch_tool_call(
+            self.db,
+            "update_task_status",
+            {"event_id": event["id"], "task_id": task_id, "status": "ongoing"},
+        )
+        self.assertTrue(result["success"])
+        self.assertEqual(result["result"]["status"], "ongoing")
+
+    def test_update_task_status_completes_a_task(self) -> None:
+        event = self._publish()
+        task_id = self.create_task(event["id"])
+        result = dispatch_tool_call(
+            self.db,
+            "update_task_status",
+            {"event_id": event["id"], "task_id": task_id, "status": "done"},
+        )
+        self.assertTrue(result["success"])
+        self.assertEqual(result["result"]["status"], "done")
+
+    def test_update_task_status_reopens_a_task(self) -> None:
+        event = self._publish()
+        task_id = self.create_task(event["id"], status="done")
+        result = dispatch_tool_call(
+            self.db,
+            "update_task_status",
+            {"event_id": event["id"], "task_id": task_id, "status": "incomplete"},
+        )
+        self.assertTrue(result["success"])
+        self.assertEqual(result["result"]["status"], "incomplete")
+
+    def test_update_task_status_missing_task_is_a_structured_error(self) -> None:
+        event = self._publish()
+        result = dispatch_tool_call(
+            self.db,
+            "update_task_status",
+            {"event_id": event["id"], "task_id": 9999, "status": "done"},
+        )
+        self.assertFalse(result["success"])
+
+    def test_update_task_status_rejects_an_invalid_status_value(self) -> None:
+        event = self._publish()
+        task_id = self.create_task(event["id"])
+        result = dispatch_tool_call(
+            self.db,
+            "update_task_status",
+            {"event_id": event["id"], "task_id": task_id, "status": "cancelled"},
         )
         self.assertFalse(result["success"])
 

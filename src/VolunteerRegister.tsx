@@ -117,7 +117,7 @@ export default function VolunteerRegister({
   )
 }
 
-function VolunteerOtpVerification({ onVerified, onSkip }: { onVerified: () => void; onSkip: () => void }) {
+export function VolunteerOtpVerification({ onVerified, onSkip }: { onVerified: () => void; onSkip: () => void }) {
   const [code, setCode] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [verifying, setVerifying] = useState(false)

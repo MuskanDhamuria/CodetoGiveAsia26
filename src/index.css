@@ -4193,6 +4193,29 @@ main:has(.copilot-panel.open) .navbar {
   right: 440px;
 }
 
+@media (min-width: 811px) and (max-width: 1600px) {
+  .navbar {
+    overflow-x: auto;
+  }
+
+  .navbar-inner {
+    gap: 24px;
+    justify-content: flex-start;
+    max-width: none;
+    min-width: max-content;
+  }
+
+  .nav-links {
+    flex: 0 0 auto;
+    flex-wrap: nowrap;
+    white-space: nowrap;
+  }
+
+  .nav-links button {
+    flex: 0 0 auto;
+  }
+}
+
 .copilot-header {
   align-items: flex-start;
   border-bottom: 1px solid rgba(0, 0, 0, 0.08);

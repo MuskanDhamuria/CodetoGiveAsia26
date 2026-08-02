@@ -10,6 +10,7 @@ The organizer frontend currently provides:
 - An Events workspace with Event lifecycle actions, Kanban Tasks, Subtasks, internal assignments, and Task progress.
 - A top-level Inventory workspace for Stock, Locations, Orders and Deliveries, External Organizations, Venues, Donations, and Stock Movements.
 - An Event-specific Logistics workspace for Requirements, Inventory allocations, external sourcing, delivery readiness, Venue Bookings, attendance planning, and post-Event reconciliation.
+- CSV and Excel-compatible export controls for each Inventory table and the Event Logistics Requirements table. Exports use the rows currently loaded in the selected view and omit UI-only action columns.
 
 The FastAPI backend and SQLite database provide the organizer APIs used by these screens. Inventory and Logistics were introduced by migration `008_inventory_logistics.sql`. Seed data can be populated idempotently through `backend/seed.py`.
 
@@ -120,6 +121,7 @@ Owns volunteer records, registrations, signups, and volunteer-facing screens. Or
 
 - Quantities support up to three decimal places.
 - Each Inventory Item has one fixed Unit of Measure; the system performs no automatic unit conversions.
+- Organizer forms present the Unit of Measure as the Item's counting unit. Packaging or size belongs in the Item name or description: for example, `Water bottle (1 L)` is counted in bottles, while bulk water is counted in litres.
 - Only usable, unexpired Inventory Lots are available for reservation.
 - Lots marked `pending_sort`, `damaged`, `expired`, or `discarded` are unavailable.
 - A reservation cannot exceed Available Stock. Over-allocation returns `409 Conflict`.
@@ -185,9 +187,10 @@ Owns volunteer records, registrations, signups, and volunteer-facing screens. Or
 
 ### Frontend
 
-- The top-level `Inventory` navigation item exposes Stock, Locations, Orders and Deliveries, Organizations, Venues, Donations, and Movements.
+- The top-level `Inventory` navigation item exposes Stock, Storage Locations, Orders and Deliveries, External Partners, Venues, Donations, and Stock History. The friendlier frontend labels map to the canonical Inventory Location, External Organization, and Stock Movement domain terms.
 - The Event workspace exposes `Tasks | Logistics` navigation.
 - Logistics uses a primary Requirement table and a detail drawer for allocation, sourcing, delivery, and history.
+- Operational tables can be exported client-side as UTF-8 CSV or an Excel-compatible workbook without requiring a backend export endpoint.
 - Dashboard sections load independently so one API failure does not blank the whole page.
 
 ## Compatibility and Naming Notes

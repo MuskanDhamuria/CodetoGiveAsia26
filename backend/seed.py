@@ -23,6 +23,7 @@ def seed_logistics(db) -> None:
         ("CareWell Supplies", ["supplier", "donor"]),
         ("Community Transit", ["transport_provider", "supplier"]),
         ("People's Association Hub", ["venue_partner", "government_agency"]),
+        ("Bright Futures Foundation", ["donor", "ngo"]),
     ]
     organization_ids = {}
     for name, capabilities in organizations:
@@ -44,6 +45,17 @@ def seed_logistics(db) -> None:
                (organization_id, name, role, email, phone, is_primary)
                VALUES (?, 'Mei Lin', 'Account manager', 'mei@carewell.example', '+65 6123 4567', 1)""",
             (organization_ids["CareWell Supplies"],),
+        )
+    if db.execute(
+        "SELECT COUNT(*) FROM organization_contacts WHERE organization_id = ?",
+        (organization_ids["Community Transit"],),
+    ).fetchone()[0] == 0:
+        db.execute(
+            """INSERT INTO organization_contacts
+               (organization_id, name, role, email, phone, is_primary)
+               VALUES (?, 'Daniel Lim', 'Operations coordinator',
+                       'daniel@communitytransit.example', '+65 6234 5678', 1)""",
+            (organization_ids["Community Transit"],),
         )
 
     item_definitions = [
@@ -154,6 +166,300 @@ def seed_logistics(db) -> None:
                 "INSERT OR IGNORE INTO event_logistics_reconciliations (event_id, status) VALUES (?, 'pending')",
                 (event["id"],),
             )
+
+    event_ids = {
+        row["name"]: row["id"]
+        for row in db.execute(
+            "SELECT id, name FROM events WHERE name IN (?, ?, ?)",
+            (
+                "Yoga at Tampines Hub",
+                "Zumba at Boon Lay Dormitory",
+                "Clothes & Essentials Distribution",
+            ),
+        ).fetchall()
+    }
+
+    def create_donation(
+        marker: str,
+        *,
+        event_name: str | None,
+        organization_name: str,
+        container_count: float,
+        container_unit: str,
+        status: str,
+        collection_at: str | None = None,
+        received_at: str | None = None,
+        sorting_completed_at: str | None = None,
+        distribution_at: str | None = None,
+    ) -> int | None:
+        existing = db.execute(
+            "SELECT id FROM donation_batches WHERE notes = ?", (marker,)
+        ).fetchone()
+        if existing is not None:
+            return existing[0]
+        event_id = event_ids.get(event_name) if event_name else None
+        if event_name and event_id is None:
+            return None
+        return db.execute(
+            """INSERT INTO donation_batches
+               (event_id, source_organization_id, collection_at, received_at,
+                sorting_completed_at, distribution_at, container_count,
+                container_unit, status, notes)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id""",
+            (
+                event_id,
+                organization_ids[organization_name],
+                collection_at,
+                received_at,
+                sorting_completed_at,
+                distribution_at,
+                container_count,
+                container_unit,
+                status,
+                marker,
+            ),
+        ).fetchone()[0]
+
+    planned_donation_id = create_donation(
+        "Demo donation: August essentials collection",
+        event_name="Clothes & Essentials Distribution",
+        organization_name="Bright Futures Foundation",
+        container_count=12,
+        container_unit="boxes",
+        status="collected",
+        collection_at="2026-08-01 10:00:00",
+    )
+    sorting_donation_id = create_donation(
+        "Demo donation: chairs awaiting sorting",
+        event_name="Clothes & Essentials Distribution",
+        organization_name="CareWell Supplies",
+        container_count=6,
+        container_unit="cages",
+        status="sorting",
+        collection_at="2026-07-27 09:00:00",
+        received_at="2026-07-27 15:30:00",
+    )
+    distributed_donation_id = create_donation(
+        "Demo donation: bottled water distribution",
+        event_name="Yoga at Tampines Hub",
+        organization_name="Bright Futures Foundation",
+        container_count=10,
+        container_unit="cartons",
+        status="distributed",
+        collection_at="2026-06-10 10:00:00",
+        received_at="2026-06-10 14:00:00",
+        sorting_completed_at="2026-06-11 16:00:00",
+        distribution_at="2026-06-14 12:00:00",
+    )
+
+    def add_donation_lot(
+        donation_id: int | None,
+        item_id: int,
+        condition: str,
+        received_quantity: float,
+        remaining_quantity: float,
+    ) -> None:
+        if donation_id is None or db.execute(
+            "SELECT COUNT(*) FROM inventory_lots WHERE donation_batch_id = ? AND item_id = ?",
+            (donation_id, item_id),
+        ).fetchone()[0] > 0:
+            return
+        lot_id = db.execute(
+            """INSERT INTO inventory_lots
+               (item_id, location_id, source_type, donation_batch_id,
+                received_date, condition, current_quantity)
+               VALUES (?, ?, 'donation', ?, '2026-07-27', ?, ?) RETURNING id""",
+            (item_id, location_id, donation_id, condition, remaining_quantity),
+        ).fetchone()[0]
+        db.execute(
+            """INSERT INTO stock_movements
+               (item_id, lot_id, location_id, donation_batch_id,
+                movement_type, quantity_delta, reason)
+               VALUES (?, ?, ?, ?, 'receipt', ?, 'Demo donation received')""",
+            (item_id, lot_id, location_id, donation_id, received_quantity),
+        )
+        distributed_quantity = received_quantity - remaining_quantity
+        if distributed_quantity > 0:
+            db.execute(
+                """INSERT INTO stock_movements
+                   (item_id, lot_id, location_id, donation_batch_id,
+                    movement_type, quantity_delta, reason)
+                   VALUES (?, ?, ?, ?, 'distribution', ?, 'Distributed at Demo Event')""",
+                (
+                    item_id,
+                    lot_id,
+                    location_id,
+                    donation_id,
+                    -distributed_quantity,
+                ),
+            )
+
+    add_donation_lot(sorting_donation_id, item_ids["CHAIR-FOLD"], "pending_sort", 24, 24)
+    add_donation_lot(distributed_donation_id, item_ids["WATER-1L"], "usable", 60, 45)
+
+    def requirement_id(event_name: str, item_id: int) -> int | None:
+        event_id = event_ids.get(event_name)
+        if event_id is None:
+            return None
+        row = db.execute(
+            """SELECT id FROM event_logistics_requirements
+               WHERE event_id = ? AND inventory_item_id = ? LIMIT 1""",
+            (event_id, item_id),
+        ).fetchone()
+        return row[0] if row else None
+
+    def create_order(
+        marker: str,
+        *,
+        organization_name: str,
+        event_name: str,
+        order_type: str,
+        status: str,
+        description: str,
+        quantity: float,
+        unit: str,
+        item_id: int | None,
+        requirement: int | None,
+        delivery_start: str,
+        delivery_end: str,
+        collection_start: str | None = None,
+        collection_end: str | None = None,
+        actual_delivery_at: str | None = None,
+    ) -> tuple[int, int] | None:
+        existing = db.execute(
+            "SELECT id FROM supplier_orders WHERE notes = ?", (marker,)
+        ).fetchone()
+        if existing is not None:
+            line = db.execute(
+                "SELECT id FROM supplier_order_lines WHERE supplier_order_id = ? LIMIT 1",
+                (existing[0],),
+            ).fetchone()
+            return (existing[0], line[0]) if line else None
+        event_id = event_ids.get(event_name)
+        if event_id is None:
+            return None
+        order_id = db.execute(
+            """INSERT INTO supplier_orders
+               (organization_id, event_id, order_type, status, delivery_start,
+                delivery_end, collection_start, collection_end,
+                actual_delivery_at, destination_location_id, notes)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id""",
+            (
+                organization_ids[organization_name],
+                event_id,
+                order_type,
+                status,
+                delivery_start,
+                delivery_end,
+                collection_start,
+                collection_end,
+                actual_delivery_at,
+                location_id if order_type == "purchase" else None,
+                marker,
+            ),
+        ).fetchone()[0]
+        line_id = db.execute(
+            """INSERT INTO supplier_order_lines
+               (supplier_order_id, requirement_id, inventory_item_id,
+                description, quantity, unit)
+               VALUES (?, ?, ?, ?, ?, ?) RETURNING id""",
+            (order_id, requirement, item_id, description, quantity, unit),
+        ).fetchone()[0]
+        db.execute(
+            "INSERT OR IGNORE INTO event_organizations (event_id, organization_id) VALUES (?, ?)",
+            (event_id, organization_ids[organization_name]),
+        )
+        return order_id, line_id
+
+    purchase = create_order(
+        "Demo order: partial water delivery",
+        organization_name="CareWell Supplies",
+        event_name="Clothes & Essentials Distribution",
+        order_type="purchase",
+        status="in_progress",
+        description="One-litre drinking water",
+        quantity=120,
+        unit="litre",
+        item_id=item_ids["WATER-1L"],
+        requirement=requirement_id("Clothes & Essentials Distribution", item_ids["WATER-1L"]),
+        delivery_start="2026-08-01 09:00:00",
+        delivery_end="2026-08-18 17:00:00",
+        actual_delivery_at="2026-08-01 11:15:00",
+    )
+    rental = create_order(
+        "Demo order: folding chair rental",
+        organization_name="CareWell Supplies",
+        event_name="Zumba at Boon Lay Dormitory",
+        order_type="rental",
+        status="confirmed",
+        description="Folding chair rental",
+        quantity=40,
+        unit="piece",
+        item_id=item_ids["CHAIR-FOLD"],
+        requirement=None,
+        delivery_start="2026-09-11 14:00:00",
+        delivery_end="2026-09-11 17:00:00",
+        collection_start="2026-09-12 18:00:00",
+        collection_end="2026-09-12 20:00:00",
+    )
+    service = create_order(
+        "Demo order: completed Event transport",
+        organization_name="Community Transit",
+        event_name="Yoga at Tampines Hub",
+        order_type="service",
+        status="completed",
+        description="Two-way Event transport",
+        quantity=1,
+        unit="service",
+        item_id=None,
+        requirement=None,
+        delivery_start="2026-06-14 07:00:00",
+        delivery_end="2026-06-14 18:00:00",
+        actual_delivery_at="2026-06-14 17:45:00",
+    )
+
+    if purchase and db.execute(
+        "SELECT COUNT(*) FROM supplier_order_fulfilments WHERE supplier_order_id = ?",
+        (purchase[0],),
+    ).fetchone()[0] == 0:
+        fulfilment_id = db.execute(
+            """INSERT INTO supplier_order_fulfilments
+               (supplier_order_id, line_id, fulfilment_type, quantity, occurred_at, notes)
+               VALUES (?, ?, 'receipt', 60, '2026-08-01 11:15:00',
+                       'First of two deliveries') RETURNING id""",
+            purchase,
+        ).fetchone()[0]
+        lot_id = db.execute(
+            """INSERT INTO inventory_lots
+               (item_id, location_id, source_type, source_order_fulfilment_id,
+                received_date, condition, current_quantity)
+               VALUES (?, ?, 'purchase', ?, '2026-08-01', 'usable', 60) RETURNING id""",
+            (item_ids["WATER-1L"], location_id, fulfilment_id),
+        ).fetchone()[0]
+        db.execute(
+            "UPDATE supplier_order_fulfilments SET inventory_lot_id = ? WHERE id = ?",
+            (lot_id, fulfilment_id),
+        )
+        db.execute(
+            """INSERT INTO stock_movements
+               (item_id, lot_id, location_id, movement_type, quantity_delta, reason)
+               VALUES (?, ?, ?, 'receipt', 60, 'Partial Demo Supplier Order receipt')""",
+            (item_ids["WATER-1L"], lot_id, location_id),
+        )
+
+    if service and db.execute(
+        "SELECT COUNT(*) FROM supplier_order_fulfilments WHERE supplier_order_id = ?",
+        (service[0],),
+    ).fetchone()[0] == 0:
+        db.execute(
+            """INSERT INTO supplier_order_fulfilments
+               (supplier_order_id, line_id, fulfilment_type, quantity, occurred_at, notes)
+               VALUES (?, ?, 'service_completion', 1, '2026-06-14 17:45:00',
+                       'All passengers returned safely')""",
+            service,
+        )
+
+    _ = planned_donation_id, rental
 
     db.commit()
 

@@ -1166,7 +1166,18 @@ ticket naturally.
 
 ---
 
-## TICKET-16: AI tool — view volunteers
+~~TICKET-16: AI tool — view volunteers~~
+— **Done.** New tool `list_volunteers` (`backend/ai_tools/tools.py`) wraps
+`volunteers.list_volunteers` exactly as scoped — `signup_status`/`skill_id`/
+`role_id`/`q` filters plus pagination, returning name/contact/skills/signup
+counts per the existing `VolunteerListItem` shape. No `get_volunteer`
+detail tool, per the ticket's own explicit out-of-scope note. Covered by
+four new tests: a volunteer's skills and counts round-trip correctly,
+filtering by `signup_status`, filtering by search text, unknown arguments
+rejected.
+
+<details>
+<summary>Original ticket text</summary>
 
 **Priority:** Medium
 **Area:** new `backend/ai_tools/` tool, reuses `backend/api/routes/volunteers.py`
@@ -1193,6 +1204,8 @@ still unscoped and should stay its own ticket if picked up, given
 approve/reject are real state changes that (per TICKET-6's precedent)
 likely deserve a draft-and-confirm treatment rather than firing
 immediately from a chat turn.
+
+</details>
 
 ---
 

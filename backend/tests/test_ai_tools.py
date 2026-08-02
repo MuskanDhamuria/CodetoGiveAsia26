@@ -30,6 +30,36 @@ class AiToolsTest(unittest.TestCase):
 
     # -- tool spec surface -------------------------------------------------
 
+    def create_volunteer(self, **overrides) -> int:
+        self._volunteer_counter = getattr(self, "_volunteer_counter", 0) + 1
+        fields = {
+            "name": "Devi Suresh",
+            "contact_number": f"+6585670{self._volunteer_counter:03d}",
+            "email": f"volunteer{self._volunteer_counter}@example.com",
+            "signup_status": "approved",
+        }
+        fields.update(overrides)
+        row = self.db.execute(
+            """
+            INSERT INTO volunteers (name, contact_number, email, signup_status)
+            VALUES (?, ?, ?, ?)
+            RETURNING id
+            """,
+            (fields["name"], fields["contact_number"], fields["email"], fields["signup_status"]),
+        ).fetchone()
+        self.db.commit()
+        return row["id"]
+
+    def add_volunteer_skill(self, volunteer_id: int, skill_name: str) -> None:
+        skill_id = self.db.execute(
+            "INSERT INTO skills (name) VALUES (?) RETURNING id", (skill_name,)
+        ).fetchone()["id"]
+        self.db.execute(
+            "INSERT INTO volunteer_skills (volunteer_id, skill_id) VALUES (?, ?)",
+            (volunteer_id, skill_id),
+        )
+        self.db.commit()
+
     def test_tool_specs_expose_exactly_the_named_tool_set(self) -> None:
         names = {spec["function"]["name"] for spec in TOOL_SPECS}
         self.assertEqual(
@@ -42,6 +72,7 @@ class AiToolsTest(unittest.TestCase):
                 "list_events",
                 "cancel_event",
                 "list_event_templates",
+                "list_volunteers",
             },
         )
 
@@ -216,6 +247,41 @@ class AiToolsTest(unittest.TestCase):
         # There is deliberately no "execute_sql"/"run_code" tool at all —
         # dispatch_tool_call must reject it by name before any lookup.
         result = dispatch_tool_call(self.db, "execute_sql", {"query": "DROP TABLE events"})
+        self.assertFalse(result["success"])
+
+    # -- list_volunteers (TICKET-16) ---------------------------------------
+
+    def test_list_volunteers_returns_a_volunteer_with_skills_and_counts(self) -> None:
+        volunteer_id = self.create_volunteer(name="Devi Suresh")
+        self.add_volunteer_skill(volunteer_id, "First Aid")
+        result = dispatch_tool_call(self.db, "list_volunteers", {})
+        self.assertTrue(result["success"])
+        items = result["result"]["items"]
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]["name"], "Devi Suresh")
+        self.assertEqual(items[0]["skills"], ["First Aid"])
+        self.assertEqual(items[0]["counts"]["events_signed_up"], 0)
+
+    def test_list_volunteers_filters_by_signup_status(self) -> None:
+        self.create_volunteer(
+            name="Approved Vol", email="approved@example.com", signup_status="approved"
+        )
+        self.create_volunteer(
+            name="Pending Vol", email="pending@example.com", signup_status="pending"
+        )
+        result = dispatch_tool_call(self.db, "list_volunteers", {"signup_status": "approved"})
+        self.assertTrue(result["success"])
+        names = [item["name"] for item in result["result"]["items"]]
+        self.assertEqual(names, ["Approved Vol"])
+
+    def test_list_volunteers_filters_by_search_text(self) -> None:
+        self.create_volunteer(name="Devi Suresh")
+        result = dispatch_tool_call(self.db, "list_volunteers", {"q": "does not exist"})
+        self.assertTrue(result["success"])
+        self.assertEqual(result["result"]["items"], [])
+
+    def test_list_volunteers_rejects_unknown_arguments(self) -> None:
+        result = dispatch_tool_call(self.db, "list_volunteers", {"run_sql": "DROP TABLE volunteers"})
         self.assertFalse(result["success"])
 
     # -- audit log (TICKET-4) ----------------------------------------------

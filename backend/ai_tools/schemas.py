@@ -68,6 +68,19 @@ class CancelEventArgs(BaseModel):
     event_id: int
 
 
+class ListVolunteersArgs(BaseModel):
+    """TICKET-16."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    signup_status: str | None = None
+    skill_id: int | None = None
+    role_id: int | None = None
+    q: str | None = None
+    limit: int = Field(default=DEFAULT_LIMIT, ge=1, le=MAX_LIMIT)
+    offset: int = Field(default=0, ge=0)
+
+
 TOOL_ARG_MODELS: dict[str, type[BaseModel]] = {
     "create_event_draft": CreateEventDraftArgs,
     "publish_event": PublishEventArgs,
@@ -76,4 +89,5 @@ TOOL_ARG_MODELS: dict[str, type[BaseModel]] = {
     "list_events": ListEventsArgs,
     "cancel_event": CancelEventArgs,
     "list_event_templates": ListEventTemplatesArgs,
+    "list_volunteers": ListVolunteersArgs,
 }

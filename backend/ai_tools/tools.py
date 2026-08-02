@@ -12,6 +12,7 @@ import sqlite3
 
 from backend.api.routes import event_templates as event_templates_routes
 from backend.api.routes import events as events_routes
+from backend.api.routes import volunteers as volunteers_routes
 from backend.api.routes._common import Pagination
 from backend.ai_tools.schemas import (
     CancelEventArgs,
@@ -19,6 +20,7 @@ from backend.ai_tools.schemas import (
     GetEventArgs,
     ListEventsArgs,
     ListEventTemplatesArgs,
+    ListVolunteersArgs,
     PublishEventArgs,
     UpdateEventArgs,
 )
@@ -96,6 +98,22 @@ def list_event_templates(db: sqlite3.Connection, args: ListEventTemplatesArgs) -
     }
 
 
+def list_volunteers(db: sqlite3.Connection, args: ListVolunteersArgs) -> dict:
+    pagination = Pagination(limit=args.limit, offset=args.offset)
+    envelope = volunteers_routes.list_volunteers(
+        db,
+        pagination,
+        signup_status=args.signup_status,
+        skill_id=args.skill_id,
+        role_id=args.role_id,
+        q=args.q,
+    )
+    return {
+        **envelope,
+        "items": [item.model_dump(mode="json") for item in envelope["items"]],
+    }
+
+
 TOOL_EXECUTORS = {
     "create_event_draft": create_event_draft,
     "publish_event": publish_event,
@@ -104,4 +122,5 @@ TOOL_EXECUTORS = {
     "list_events": list_events,
     "cancel_event": cancel_event,
     "list_event_templates": list_event_templates,
+    "list_volunteers": list_volunteers,
 }

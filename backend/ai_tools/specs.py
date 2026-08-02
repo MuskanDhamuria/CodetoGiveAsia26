@@ -39,6 +39,11 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
         "if nothing matches, proceed with null instead of treating it as "
         "missing required information."
     ),
+    "list_volunteers": (
+        "List volunteer profiles with their skills and signup counts, "
+        "optionally filtered by signup status, a skill id, an interested "
+        "role id, or free-text search on name/email/phone."
+    ),
 }
 
 

@@ -97,6 +97,21 @@ class ListEventTasksArgs(BaseModel):
     offset: int = Field(default=0, ge=0)
 
 
+class AssignEventTaskArgs(BaseModel):
+    """TICKET-14: task assignment only ever targets a team member, never a
+
+    volunteer — see the ticket's "scope correction" for why. `team_member_id`
+    is required (not defaulted) so the model must always state its intent
+    explicitly; pass null to unassign.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    event_id: int
+    task_id: int
+    team_member_id: int | None
+
+
 TOOL_ARG_MODELS: dict[str, type[BaseModel]] = {
     "create_event_draft": CreateEventDraftArgs,
     "publish_event": PublishEventArgs,
@@ -107,4 +122,5 @@ TOOL_ARG_MODELS: dict[str, type[BaseModel]] = {
     "list_event_templates": ListEventTemplatesArgs,
     "list_volunteers": ListVolunteersArgs,
     "list_event_tasks": ListEventTasksArgs,
+    "assign_event_task": AssignEventTaskArgs,
 }

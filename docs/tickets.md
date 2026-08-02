@@ -1120,7 +1120,24 @@ organizer asking "what needs doing" naturally leads into "assign this" or
 
 ---
 
-## TICKET-14: AI tool — allocate a task to a team member
+~~TICKET-14: AI tool — allocate a task to a team member~~
+— **Done.** New tool `assign_event_task` (`backend/ai_tools/tools.py`)
+wraps `update_event_task`, constrained to `team_member_id` exactly as
+scoped: it builds a fresh `EventTaskUpdate(team_member_id=args.team_member_id)`
+rather than reusing `model_dump(exclude_unset=True)` on the AI args, so
+`team_member_id` is always the one field marked "set" regardless of
+whether the model passes an id or an explicit `null` — every other field
+on the task (name, due date, category, position) is left untouched either
+way. `team_member_id` has no default on `AssignEventTaskArgs`
+(`backend/ai_tools/schemas.py`), so the model must always state its intent
+rather than the field silently defaulting to "no change." Reuses the
+handler's existing active-member check (404 missing member / 409 inactive)
+rather than reimplementing it. Covered by five new tests: assigns, unassigns
+via `team_member_id: null`, rejects an inactive team member, a missing
+team member is a structured error, unknown arguments are rejected.
+
+<details>
+<summary>Original ticket text</summary>
 
 **Priority:** Medium
 **Area:** new `backend/ai_tools/` tool, reuses `backend/api/routes/events.py`
@@ -1152,6 +1169,8 @@ how `cancel_event` was kept separate from a general `update_event`.
 Pairs naturally with TICKET-13 (see what's unassigned, then assign it) and
 TICKET-16 (an organizer may want to check a team member's current load
 before assigning more — out of scope here, see TICKET-16's note).
+
+</details>
 
 ---
 

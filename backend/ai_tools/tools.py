@@ -15,6 +15,7 @@ from backend.api.routes import events as events_routes
 from backend.api.routes import volunteers as volunteers_routes
 from backend.api.routes._common import Pagination
 from backend.ai_tools.schemas import (
+    AssignEventTaskArgs,
     CancelEventArgs,
     CreateEventDraftArgs,
     GetEventArgs,
@@ -25,7 +26,7 @@ from backend.ai_tools.schemas import (
     PublishEventArgs,
     UpdateEventArgs,
 )
-from backend.schema.events import EventCreate, EventUpdate
+from backend.schema.events import EventCreate, EventTaskUpdate, EventUpdate
 
 
 def create_event_draft(db: sqlite3.Connection, args: CreateEventDraftArgs) -> dict:
@@ -133,6 +134,18 @@ def list_event_tasks(db: sqlite3.Connection, args: ListEventTasksArgs) -> dict:
     }
 
 
+def assign_event_task(db: sqlite3.Connection, args: AssignEventTaskArgs) -> dict:
+    """Assign (or, with `team_member_id: null`, unassign) a task — the
+
+    active-member check lives in `update_event_task` itself, not duplicated
+    here (TICKET-14).
+    """
+
+    payload = EventTaskUpdate(team_member_id=args.team_member_id)
+    detail = events_routes.update_event_task(args.event_id, args.task_id, payload, db)
+    return detail.model_dump(mode="json")
+
+
 TOOL_EXECUTORS = {
     "create_event_draft": create_event_draft,
     "publish_event": publish_event,
@@ -143,4 +156,5 @@ TOOL_EXECUTORS = {
     "list_event_templates": list_event_templates,
     "list_volunteers": list_volunteers,
     "list_event_tasks": list_event_tasks,
+    "assign_event_task": assign_event_task,
 }

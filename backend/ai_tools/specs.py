@@ -50,6 +50,11 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
         "get_event when the organizer only wants to know what's still "
         "outstanding rather than the full event."
     ),
+    "assign_event_task": (
+        "Assign a task to a team member, or unassign it by passing "
+        "team_member_id: null. Task assignment always targets a team "
+        "member, never a volunteer."
+    ),
 }
 
 

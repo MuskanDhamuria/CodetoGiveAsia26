@@ -64,6 +64,16 @@ class AiToolsTest(unittest.TestCase):
         self.db.commit()
         return row["id"]
 
+    def create_team_member(
+        self, *, name: str = "Priya Nair", email: str = "priya@example.org", is_active: bool = True
+    ) -> int:
+        row = self.db.execute(
+            "INSERT INTO team_members (name, email, is_active) VALUES (?, ?, ?) RETURNING id",
+            (name, email, 1 if is_active else 0),
+        ).fetchone()
+        self.db.commit()
+        return row["id"]
+
     def create_volunteer(self, **overrides) -> int:
         self._volunteer_counter = getattr(self, "_volunteer_counter", 0) + 1
         fields = {
@@ -108,6 +118,7 @@ class AiToolsTest(unittest.TestCase):
                 "list_event_templates",
                 "list_volunteers",
                 "list_event_tasks",
+                "assign_event_task",
             },
         )
 
@@ -362,6 +373,64 @@ class AiToolsTest(unittest.TestCase):
             self.db,
             "list_event_tasks",
             {"event_id": event["id"], "run_sql": "DROP TABLE event_tasks"},
+        )
+        self.assertFalse(result["success"])
+
+    # -- assign_event_task (TICKET-14) -------------------------------------
+
+    def test_assign_event_task_sets_the_team_member(self) -> None:
+        event = self._publish()
+        task_id = self.create_task(event["id"])
+        member_id = self.create_team_member()
+        result = dispatch_tool_call(
+            self.db,
+            "assign_event_task",
+            {"event_id": event["id"], "task_id": task_id, "team_member_id": member_id},
+        )
+        self.assertTrue(result["success"])
+        self.assertEqual(result["result"]["team_member_id"], member_id)
+
+    def test_assign_event_task_unassigns_with_null(self) -> None:
+        event = self._publish()
+        member_id = self.create_team_member()
+        task_id = self.create_task(event["id"], team_member_id=member_id)
+        result = dispatch_tool_call(
+            self.db,
+            "assign_event_task",
+            {"event_id": event["id"], "task_id": task_id, "team_member_id": None},
+        )
+        self.assertTrue(result["success"])
+        self.assertIsNone(result["result"]["team_member_id"])
+
+    def test_assign_event_task_rejects_an_inactive_team_member(self) -> None:
+        event = self._publish()
+        task_id = self.create_task(event["id"])
+        member_id = self.create_team_member(is_active=False)
+        result = dispatch_tool_call(
+            self.db,
+            "assign_event_task",
+            {"event_id": event["id"], "task_id": task_id, "team_member_id": member_id},
+        )
+        self.assertFalse(result["success"])
+        self.assertIn("Inactive", result["reason"])
+
+    def test_assign_event_task_missing_team_member_is_a_structured_error(self) -> None:
+        event = self._publish()
+        task_id = self.create_task(event["id"])
+        result = dispatch_tool_call(
+            self.db,
+            "assign_event_task",
+            {"event_id": event["id"], "task_id": task_id, "team_member_id": 9999},
+        )
+        self.assertFalse(result["success"])
+
+    def test_assign_event_task_rejects_unknown_arguments(self) -> None:
+        event = self._publish()
+        task_id = self.create_task(event["id"])
+        result = dispatch_tool_call(
+            self.db,
+            "assign_event_task",
+            {"event_id": event["id"], "task_id": task_id, "team_member_id": None, "run_sql": "x"},
         )
         self.assertFalse(result["success"])
 

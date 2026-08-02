@@ -63,7 +63,7 @@ function mockFetch() {
         })
       }
       if (url === "/api/v1/participants/999/events?limit=100" && method === "GET") {
-        return jsonResponse({ detail: "Participant not found" }, 404)
+        return jsonResponse({ detail: "Participant 999 was not found" }, 404)
       }
       if (url.startsWith("/api/v1/participants/lookup?contact_number=") && method === "GET") {
         const raw = new URLSearchParams(url.split("?")[1]).get("contact_number") ?? ""

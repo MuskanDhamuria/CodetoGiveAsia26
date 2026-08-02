@@ -6063,6 +6063,38 @@ main:has(.copilot-panel.open) .navbar {
   grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
 }
 
+.whatsapp-cert-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.whatsapp-filter,
+.whatsapp-filter-active {
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 6px 12px;
+}
+
+.whatsapp-filter {
+  background: var(--bg);
+  border: 1px solid var(--border-soft);
+  color: var(--muted);
+}
+
+.whatsapp-filter:hover {
+  border-color: var(--text);
+  color: var(--text);
+}
+
+.whatsapp-filter-active {
+  background: var(--text);
+  border: 1px solid var(--text);
+  color: var(--bg);
+}
+
 .whatsapp-card {
   display: flex;
   flex-direction: column;

@@ -698,8 +698,6 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
             if (apiEvent) openCollectionEvent(apiEvent)
           }}
         />
-        <section className="event-operations-library" aria-labelledby="api-template-title"><div><p>Event Templates</p><h2 id="api-template-title">Reusable workflows</h2><span>Loaded from the organizer API.</span></div></section>
-        <div className="event-operations-template-list">{templates.map((template) => <article key={template.id}><div><strong>{template.name}</strong><span>{template.is_built_in ? "Built-in" : "Custom"} · {template.tasks.length} Tasks</span><p>{template.description}</p></div></article>)}</div>
         </>}
 
         {showCreator && (

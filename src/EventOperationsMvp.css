@@ -1,4 +1,5 @@
 .event-operations-page { max-width: none; }
+.api-event-operations-page > .collection-variant { padding-top: 0; }
 .event-operations-page.api-event-operations-page > .section-hero,
 .event-operations-page.api-event-operations-page > .event-operations-feedback,
 .event-operations-page.api-event-operations-page > .event-operations-template-list { display: grid; }

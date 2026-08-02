@@ -309,8 +309,7 @@ describe("API-backed organizer events", () => {
 
     const { container } = render(<AdminEventsPage api={api} />)
     await screen.findByRole("heading", { name: "Wellness session" })
-    const eventList = container.querySelector(".event-operations-template-list")!
-    expect(window.getComputedStyle(eventList).display).not.toBe("none")
+    expect(container.querySelector(".event-operations-template-list")).toBeNull()
     await user.click(await screen.findByRole("button", { name: /Open event workspace/ }))
     await user.click(screen.getByRole("button", { name: "Start task" }))
 

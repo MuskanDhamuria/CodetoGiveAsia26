@@ -38,6 +38,7 @@ function CollectionControls({
   onShowClosed,
   onShowCancelled,
   onView,
+  showNewEvent = true,
 }: {
   showClosed: boolean;
   showCancelled: boolean;
@@ -46,6 +47,7 @@ function CollectionControls({
   onShowClosed: () => void;
   onShowCancelled: () => void;
   onView: (view: View) => void;
+  showNewEvent?: boolean;
 }) {
   return (
     <div className="collection-controls">
@@ -61,7 +63,7 @@ function CollectionControls({
         <input checked={showCancelled} type="checkbox" onChange={onShowCancelled} />
         Show cancelled
       </label>
-      <button className="collection-new-event" type="button" onClick={onNewEvent}><span>＋</span> New event</button>
+      {showNewEvent && <button className="collection-new-event" type="button" onClick={onNewEvent}><span>＋</span> New event</button>}
     </div>
   );
 }
@@ -200,7 +202,10 @@ function VariantC({ events, view, month, showClosed, showCancelled, selected, on
     <div className="collection-variant collection-variant-c">
       <header className="portfolio-header">
         <div><p>Events / Portfolio</p><h1>Event portfolio</h1></div>
-        <CollectionControls {...{ showClosed, showCancelled, view, onNewEvent, onShowClosed, onShowCancelled, onView }} />
+        <div className="portfolio-header-actions">
+          <CollectionControls {...{ showClosed, showCancelled, view, onNewEvent, onShowClosed, onShowCancelled, onView }} showNewEvent={false} />
+          <button className="collection-new-event" type="button" onClick={onNewEvent}><span>＋</span> New event</button>
+        </div>
       </header>
       {view === "calendar" ? (
         renderCalendar ? renderCalendar() : <PrototypeCalendar events={events} month={month} onMonth={onMonth} onOpen={onOpen} />

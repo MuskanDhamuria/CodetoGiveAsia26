@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import sqlite3
+from contextlib import closing
 from pathlib import Path
 
 
@@ -129,7 +130,7 @@ def initialize_database(database_path: str | Path = DEFAULT_DATABASE_PATH) -> Pa
     path = Path(database_path)
     path.parent.mkdir(parents=True, exist_ok=True)
 
-    with connect(path) as connection:
+    with closing(connect(path)) as connection:
         has_migrations_table = connection.execute(
             """
             SELECT 1 FROM sqlite_master

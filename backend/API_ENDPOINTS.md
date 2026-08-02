@@ -19,11 +19,14 @@ The organizer/admin backend currently implements:
 - WhatsApp bot webhook, organizer announcements/reminders, and certificate
   generation/delivery (see "WhatsApp bot, announcements, and certificates"
   below).
+- Inventory Items, Locations, condition-aware Lots, stock views, immutable
+  movements, adjustments, and transfers.
+- Event and template Logistics Requirements, allocations, readiness warnings,
+  attendance forecasting, Venue Bookings, Supplier Orders, Donation Batches,
+  and post-Event reconciliation.
 
 Volunteer routes remain owned by the volunteer feature module. The organizer
-implementation does not change the event volunteer-signup endpoints. Routes in
-the “Proposed future endpoints” section still require schema/product decisions
-and are not implemented.
+implementation does not change the event volunteer-signup endpoints.
 
 ## Conventions
 
@@ -102,6 +105,10 @@ backend/
 │       ├── events.py
 │       ├── team_members.py
 │       ├── participants.py
+│       ├── inventory.py
+│       ├── logistics.py
+│       ├── organizations.py
+│       ├── venues.py
 │       ├── volunteers.py
 │       ├── roles.py
 │       └── dashboard.py
@@ -110,6 +117,10 @@ backend/
     ├── health.py
     ├── event_templates.py
     ├── events.py
+    ├── inventory.py
+    ├── logistics.py
+    ├── organizations.py
+    ├── venues.py
     ├── team_members.py
     └── participants.py
 ```
@@ -221,13 +232,16 @@ Create event body:
   "name": "August Wellness Session",
   "venue": "Tampines Hub",
   "event_date": "2026-08-09",
-  "event_time": "09:00"
+  "start_time": "09:00",
+  "end_time": "12:00",
+  "expected_attendance": 80
 }
 ```
 
-`event_time` ("HH:MM", 24-hour) is required — kept as a separate column from
-`event_date` rather than merged into a datetime, so date-only filtering/
-sorting/calendar-matching is unaffected.
+`start_time`, `end_time`, and `expected_attendance` are optional. Times remain
+separate from `event_date`, so date-only filtering and calendar matching are
+unaffected. Planned attendance drives template Requirement snapshots; changing
+it later does not silently recalculate existing Requirements.
 
 `event_template_id` may be `null` when the organizer chooses **Start from
 scratch**. That creates an Event with an empty Task plan. Otherwise, creating an
@@ -450,23 +464,74 @@ which of those links exist controls which commands are available.
 | `GET` | `/team-members/{member_id}/whatsapp-link` | Path: `member_id` | Get the phone number linked to a team member, if any. |
 | `DELETE` | `/team-members/{member_id}/whatsapp-link` | Path: `member_id` | Remove a team member's WhatsApp admin link. |
 
-## Proposed future endpoints requiring more design
+## Inventory and logistics
 
-The product plan mentions the following capabilities, but the current database
-schema does not yet contain the records needed to implement them safely. These
-routes should not be assigned until their data models and permissions are
-agreed.
+All quantities support up to three decimal places and use the fixed Unit of
+Measure on the Inventory Item or Requirement. There is no automatic conversion.
+Stock corrections must use an adjustment with a reason; balances are never
+overwritten directly. Reservations that exceed Available stock return `409`.
 
-### Inventory and logistics
-
-Likely resources: inventory items, locations, stock movements, event
-requirements, reservations, and fulfilment status.
+### Inventory
 
 - `GET/POST /inventory/items`
 - `GET/PATCH/DELETE /inventory/items/{item_id}`
+- `GET/POST /inventory/locations`
+- `PATCH /inventory/locations/{location_id}`
+- `GET /inventory/stock` — usable, unexpired On-hand, Reserved and Available by Item/Location
+- `GET /inventory/movements` — immutable ledger
+- `POST /inventory/adjustments` — `item_id`, `location_id`, signed `quantity_delta`, mandatory `reason`, optional lot condition/expiry
+- `POST /inventory/transfers` — Item, source/destination Locations, positive quantity and reason; creates paired movement rows
+
+### Event Logistics and templates
+
+- `GET/POST /event-templates/{template_id}/logistics-requirements`
+- `PATCH/DELETE /event-templates/{template_id}/logistics-requirements/{requirement_id}`
 - `GET/POST /events/{event_id}/logistics-requirements`
 - `PATCH/DELETE /events/{event_id}/logistics-requirements/{requirement_id}`
-- `POST /events/{event_id}/logistics-requirements/{requirement_id}/allocate`
+- `POST /events/{event_id}/logistics-requirements/{requirement_id}/reserve`
+- `POST /events/{event_id}/logistics-requirements/{requirement_id}/allocations/{allocation_id}/release`
+- `POST /events/{event_id}/logistics-requirements/{requirement_id}/allocations/{allocation_id}/issue`
+- `POST /events/{event_id}/logistics-requirements/{requirement_id}/allocations/{allocation_id}/reconcile`
+- `GET /events/{event_id}/logistics` — aggregated Requirements, sourcing/on-site totals, warnings, forecast, bookings and reconciliation
+- `POST /events/{event_id}/logistics/reconciliation/finalize`
+- `GET /events/{event_id}/attendance-forecast`
+
+Template quantities use `ceil((base + per_person × expected_attendance) ×
+(1 + buffer_percentage / 100))`. The Event stores the result as an editable
+snapshot; later RSVP changes never silently recalculate it.
+
+### External Organizations and Supplier Orders
+
+- `GET/POST /external-organizations`
+- `GET/PATCH /external-organizations/{organization_id}`
+- `POST /external-organizations/{organization_id}/contacts`
+- `PATCH/DELETE /external-organizations/{organization_id}/contacts/{contact_id}`
+- `POST /events/{event_id}/external-organizations?organization_id={id}`
+- `GET/POST /supplier-orders`
+- `GET/PATCH /supplier-orders/{order_id}`
+- `POST /supplier-orders/{order_id}/lines`
+- `PATCH/DELETE /supplier-orders/{order_id}/lines/{line_id}`
+- `POST /supplier-orders/{order_id}/confirm|receive|return|complete|cancel`
+
+Purchased-goods receipts create Inventory Lots. Rentals never enter Inventory
+and require a return before completion. Services complete through an explicit
+fulfilment record.
+
+### Venues and donations
+
+- `GET/POST/PATCH /venues[/{venue_id}]`
+- `POST /venues/{venue_id}/spaces`
+- `PATCH /venues/{venue_id}/spaces/{space_id}`
+- `GET/POST /events/{event_id}/venue-bookings`
+- `PATCH /events/{event_id}/venue-bookings/{booking_id}`
+- `GET/POST /donation-batches`
+- `POST /donation-batches/{batch_id}/collect|receive|sort|sorting-complete|distribute|close`
+
+Confirmed bookings for the same Venue Space cannot overlap. A booking above
+capacity succeeds with `capacity_warning=true`. Donation Lots in `pending_sort`
+or another unusable condition do not contribute to Available stock.
+
+## Proposed future endpoints requiring more design
 
 ### Announcements, reminders, bots, and certificates
 

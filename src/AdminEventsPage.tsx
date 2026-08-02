@@ -9,6 +9,7 @@ import {
   type TeamMember,
 } from "./admin-api"
 import EventCollectionPrototype, { type EventCollectionItem } from "./EventCollectionPrototype"
+import EventLogistics from "./EventLogistics"
 import "./EventOperationsMvp.css"
 
 
@@ -17,6 +18,7 @@ type Draft = {
   name: string
   event_date: string
   venue: string
+  expected_attendance: string
 }
 
 type CreationTaskEdit = {
@@ -45,6 +47,7 @@ const emptyDraft: Draft = {
   name: "",
   event_date: "",
   venue: "",
+  expected_attendance: "",
 }
 
 type EventDialog = "edit" | "reschedule" | "close" | "delete" | null
@@ -100,6 +103,7 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
   const [reviewPage, setReviewPage] = useState(0)
   const [creating, setCreating] = useState(false)
   const [openEventId, setOpenEventId] = useState<number | null>(initialEventId)
+  const [workspaceTab, setWorkspaceTab] = useState<"tasks" | "logistics">("tasks")
   const [draggedTaskId, setDraggedTaskId] = useState<number | null>(null)
   const [dragOverStatus, setDragOverStatus] = useState<string | null>(null)
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
@@ -175,6 +179,7 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
 
   function openCollectionEvent(event: EventDetail) {
     setOpenEventId(event.id)
+    setWorkspaceTab("tasks")
   }
 
   function openCreator() {
@@ -259,6 +264,7 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
         name: draft.name.trim(),
         venue: draft.venue.trim(),
         event_date: draft.event_date,
+        ...(draft.expected_attendance ? { expected_attendance: Number(draft.expected_attendance) } : {}),
       })
       if (draft.event_template_id === null && scratchTasks.length) {
         const createdTasks = await Promise.all(scratchTasks.map((task, position) => api.createEventTask(event.id, {
@@ -578,7 +584,11 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
               <div><dt>Tasks</dt><dd>{openEvent.tasks.length}</dd></div>
             </dl>
             {openEvent.status === "closed" && <p className="event-operations-closed-notice">Closed Events are read-only. The Task history is kept for reference.</p>}
-            <div className="api-event-workspace-body">
+            <nav aria-label="Event workspace sections" className="api-event-workspace-tabs">
+              <button aria-current={workspaceTab === "tasks" ? "page" : undefined} type="button" onClick={() => setWorkspaceTab("tasks")}>Tasks</button>
+              <button aria-current={workspaceTab === "logistics" ? "page" : undefined} type="button" onClick={() => setWorkspaceTab("logistics")}>Logistics</button>
+            </nav>
+            {workspaceTab === "tasks" ? <div className="api-event-workspace-body">
               <div className="api-event-workspace-main">
                 <div className="api-task-workspace-heading">
                   <h3>Task workspace</h3>
@@ -685,7 +695,7 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
                 </dl>
                 {openEvent.status === "open" && <p className="api-event-progress-help">Use <strong>Edit</strong> on a Task to update its details and Subtasks.</p>}
               </aside>
-            </div>
+            </div> : <EventLogistics eventId={openEvent.id} eventStatus={openEvent.status} />}
           </section>
         </>
         ) : <>
@@ -732,6 +742,7 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
                     <label>Event name<input value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} /></label>
                     <label>Event date<input type="date" value={draft.event_date} onChange={(event) => setDraft({ ...draft, event_date: event.target.value })} /></label>
                     <label>Venue<input value={draft.venue} onChange={(event) => setDraft({ ...draft, venue: event.target.value })} /></label>
+                    <label>Planned attendance<input min="0" type="number" value={draft.expected_attendance} onChange={(event) => setDraft({ ...draft, expected_attendance: event.target.value })} /></label>
                   </div>
                 </div>
               )}

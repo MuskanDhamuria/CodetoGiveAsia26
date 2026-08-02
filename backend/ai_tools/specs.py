@@ -59,6 +59,11 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
         "Set a task's status: 'ongoing' to start it, 'done' to complete "
         "it, or 'incomplete' to reopen it."
     ),
+    "list_upcoming_deadlines": (
+        "List not-yet-done tasks across every event due within the next N "
+        "days (default 14), ordered soonest first. Use this instead of "
+        "list_event_tasks when the question spans more than one event."
+    ),
 }
 
 

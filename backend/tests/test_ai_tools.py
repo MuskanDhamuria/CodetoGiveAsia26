@@ -3,6 +3,7 @@
 import json
 import tempfile
 import unittest
+from datetime import date, timedelta
 from pathlib import Path
 
 from backend.ai_tools import TOOL_SPECS, dispatch_tool_call
@@ -120,6 +121,7 @@ class AiToolsTest(unittest.TestCase):
                 "list_event_tasks",
                 "assign_event_task",
                 "update_task_status",
+                "list_upcoming_deadlines",
             },
         )
 
@@ -487,6 +489,50 @@ class AiToolsTest(unittest.TestCase):
             "update_task_status",
             {"event_id": event["id"], "task_id": task_id, "status": "cancelled"},
         )
+        self.assertFalse(result["success"])
+
+    # -- list_upcoming_deadlines (TICKET-17) -------------------------------
+
+    def test_list_upcoming_deadlines_returns_tasks_due_within_the_window(self) -> None:
+        event = self._publish()
+        due_soon = (date.today() + timedelta(days=3)).isoformat()
+        self.create_task(event["id"], name="Due soon", due_at=due_soon)
+        result = dispatch_tool_call(self.db, "list_upcoming_deadlines", {})
+        self.assertTrue(result["success"])
+        names = [item["name"] for item in result["result"]["items"]]
+        self.assertEqual(names, ["Due soon"])
+
+    def test_list_upcoming_deadlines_excludes_done_tasks(self) -> None:
+        event = self._publish()
+        due_soon = (date.today() + timedelta(days=3)).isoformat()
+        self.create_task(event["id"], name="Already done", due_at=due_soon, status="done")
+        result = dispatch_tool_call(self.db, "list_upcoming_deadlines", {})
+        self.assertTrue(result["success"])
+        self.assertEqual(result["result"]["items"], [])
+
+    def test_list_upcoming_deadlines_excludes_tasks_outside_the_window(self) -> None:
+        event = self._publish()
+        far_out = (date.today() + timedelta(days=90)).isoformat()
+        self.create_task(event["id"], name="Far out", due_at=far_out)
+        result = dispatch_tool_call(self.db, "list_upcoming_deadlines", {"days": 14})
+        self.assertTrue(result["success"])
+        self.assertEqual(result["result"]["items"], [])
+
+    def test_list_upcoming_deadlines_filters_by_team_member(self) -> None:
+        event = self._publish()
+        member_id = self.create_team_member()
+        due_soon = (date.today() + timedelta(days=3)).isoformat()
+        self.create_task(event["id"], name="Assigned", due_at=due_soon, team_member_id=member_id)
+        self.create_task(event["id"], name="Unassigned", due_at=due_soon, position=1)
+        result = dispatch_tool_call(
+            self.db, "list_upcoming_deadlines", {"team_member_id": member_id}
+        )
+        self.assertTrue(result["success"])
+        names = [item["name"] for item in result["result"]["items"]]
+        self.assertEqual(names, ["Assigned"])
+
+    def test_list_upcoming_deadlines_rejects_unknown_arguments(self) -> None:
+        result = dispatch_tool_call(self.db, "list_upcoming_deadlines", {"run_sql": "x"})
         self.assertFalse(result["success"])
 
     # -- audit log (TICKET-4) ----------------------------------------------

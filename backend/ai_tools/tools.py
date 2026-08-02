@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import sqlite3
 
+from backend.api.routes import dashboard as dashboard_routes
 from backend.api.routes import event_templates as event_templates_routes
 from backend.api.routes import events as events_routes
 from backend.api.routes import volunteers as volunteers_routes
@@ -22,6 +23,7 @@ from backend.ai_tools.schemas import (
     ListEventsArgs,
     ListEventTasksArgs,
     ListEventTemplatesArgs,
+    ListUpcomingDeadlinesArgs,
     ListVolunteersArgs,
     PublishEventArgs,
     UpdateEventArgs,
@@ -159,6 +161,12 @@ def update_task_status(db: sqlite3.Connection, args: UpdateTaskStatusArgs) -> di
     return detail.model_dump(mode="json")
 
 
+def list_upcoming_deadlines(db: sqlite3.Connection, args: ListUpcomingDeadlinesArgs) -> dict:
+    return dashboard_routes.upcoming_deadlines(
+        db, days=args.days, team_member_id=args.team_member_id, limit=args.limit
+    )
+
+
 TOOL_EXECUTORS = {
     "create_event_draft": create_event_draft,
     "publish_event": publish_event,
@@ -171,4 +179,5 @@ TOOL_EXECUTORS = {
     "list_event_tasks": list_event_tasks,
     "assign_event_task": assign_event_task,
     "update_task_status": update_task_status,
+    "list_upcoming_deadlines": list_upcoming_deadlines,
 }

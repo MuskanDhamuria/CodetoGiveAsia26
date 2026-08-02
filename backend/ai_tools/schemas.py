@@ -122,6 +122,16 @@ class UpdateTaskStatusArgs(BaseModel):
     status: TaskStatus
 
 
+class ListUpcomingDeadlinesArgs(BaseModel):
+    """TICKET-17."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    days: int = Field(default=14, ge=1, le=365)
+    team_member_id: int | None = None
+    limit: int = Field(default=20, ge=1, le=100)
+
+
 TOOL_ARG_MODELS: dict[str, type[BaseModel]] = {
     "create_event_draft": CreateEventDraftArgs,
     "publish_event": PublishEventArgs,
@@ -134,4 +144,5 @@ TOOL_ARG_MODELS: dict[str, type[BaseModel]] = {
     "list_event_tasks": ListEventTasksArgs,
     "assign_event_task": AssignEventTaskArgs,
     "update_task_status": UpdateTaskStatusArgs,
+    "list_upcoming_deadlines": ListUpcomingDeadlinesArgs,
 }

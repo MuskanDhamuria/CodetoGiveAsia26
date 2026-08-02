@@ -1262,7 +1262,20 @@ immediately from a chat turn.
 
 ---
 
-## TICKET-17: AI tool — upcoming deadlines across all events
+~~TICKET-17: AI tool — upcoming deadlines across all events~~
+— **Done.** New tool `list_upcoming_deadlines` (`backend/ai_tools/tools.py`)
+wraps `dashboard.upcoming_deadlines` exactly as scoped — `days` (default
+14), `team_member_id`, `limit` params, returning the same per-task rows
+(event name, task name, due date, category, status, assignee) already
+ordered by `due_at`. The handler's own `{"items": [...], "total": len(items)}`
+shape (plain dicts, no Pydantic model, unlike every other list tool here)
+is passed straight through — nothing to `model_dump`. Covered by five new
+tests: a task due within the window is returned, a done task is excluded,
+a task outside the window is excluded, filtering by `team_member_id`,
+unknown arguments rejected.
+
+<details>
+<summary>Original ticket text</summary>
 
 **Priority:** Medium
 **Area:** new `backend/ai_tools/` tool, reuses `backend/api/routes/dashboard.py`
@@ -1283,6 +1296,8 @@ scoped to one event at a time.
 
 This is the data source TICKET-18 (task prioritization) reasons over —
 land this one first.
+
+</details>
 
 ---
 

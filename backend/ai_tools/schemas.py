@@ -13,6 +13,7 @@ from datetime import date
 from pydantic import BaseModel, ConfigDict, Field
 
 from backend.api.routes._common import DEFAULT_LIMIT, MAX_LIMIT
+from backend.schema.common import TaskCategory, TaskStatus
 from backend.schema.events import EventCreate, EventUpdate
 
 
@@ -81,6 +82,21 @@ class ListVolunteersArgs(BaseModel):
     offset: int = Field(default=0, ge=0)
 
 
+class ListEventTasksArgs(BaseModel):
+    """TICKET-13: filtered task visibility for a single event."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    event_id: int
+    category: TaskCategory | None = None
+    status: TaskStatus | None = None
+    team_member_id: int | None = None
+    due_before: date | None = None
+    due_after: date | None = None
+    limit: int = Field(default=DEFAULT_LIMIT, ge=1, le=MAX_LIMIT)
+    offset: int = Field(default=0, ge=0)
+
+
 TOOL_ARG_MODELS: dict[str, type[BaseModel]] = {
     "create_event_draft": CreateEventDraftArgs,
     "publish_event": PublishEventArgs,
@@ -90,4 +106,5 @@ TOOL_ARG_MODELS: dict[str, type[BaseModel]] = {
     "cancel_event": CancelEventArgs,
     "list_event_templates": ListEventTemplatesArgs,
     "list_volunteers": ListVolunteersArgs,
+    "list_event_tasks": ListEventTasksArgs,
 }

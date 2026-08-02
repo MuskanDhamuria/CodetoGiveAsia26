@@ -44,6 +44,12 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
         "optionally filtered by signup status, a skill id, an interested "
         "role id, or free-text search on name/email/phone."
     ),
+    "list_event_tasks": (
+        "List an event's tasks, optionally filtered by category, status, "
+        "assigned team member, or due-date range. Use this instead of "
+        "get_event when the organizer only wants to know what's still "
+        "outstanding rather than the full event."
+    ),
 }
 
 

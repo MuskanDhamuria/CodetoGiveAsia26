@@ -19,6 +19,7 @@ from backend.ai_tools.schemas import (
     CreateEventDraftArgs,
     GetEventArgs,
     ListEventsArgs,
+    ListEventTasksArgs,
     ListEventTemplatesArgs,
     ListVolunteersArgs,
     PublishEventArgs,
@@ -114,6 +115,24 @@ def list_volunteers(db: sqlite3.Connection, args: ListVolunteersArgs) -> dict:
     }
 
 
+def list_event_tasks(db: sqlite3.Connection, args: ListEventTasksArgs) -> dict:
+    pagination = Pagination(limit=args.limit, offset=args.offset)
+    envelope = events_routes.list_event_tasks(
+        args.event_id,
+        db,
+        pagination,
+        category=args.category,
+        task_status=args.status,
+        team_member_id=args.team_member_id,
+        due_before=args.due_before.isoformat() if args.due_before else None,
+        due_after=args.due_after.isoformat() if args.due_after else None,
+    )
+    return {
+        **envelope,
+        "items": [item.model_dump(mode="json") for item in envelope["items"]],
+    }
+
+
 TOOL_EXECUTORS = {
     "create_event_draft": create_event_draft,
     "publish_event": publish_event,
@@ -123,4 +142,5 @@ TOOL_EXECUTORS = {
     "cancel_event": cancel_event,
     "list_event_templates": list_event_templates,
     "list_volunteers": list_volunteers,
+    "list_event_tasks": list_event_tasks,
 }

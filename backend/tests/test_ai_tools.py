@@ -30,6 +30,40 @@ class AiToolsTest(unittest.TestCase):
 
     # -- tool spec surface -------------------------------------------------
 
+    def create_task(self, event_id: int, **overrides) -> int:
+        if "position" not in overrides:
+            overrides["position"] = self.db.execute(
+                "SELECT COALESCE(MAX(position) + 1, 0) FROM event_tasks WHERE event_id = ?",
+                (event_id,),
+            ).fetchone()[0]
+        fields = {
+            "name": "Recruit volunteers",
+            "due_at": "2099-01-01",
+            "category": "planning",
+            "status": "incomplete",
+            "team_member_id": None,
+        }
+        fields.update(overrides)
+        row = self.db.execute(
+            """
+            INSERT INTO event_tasks
+                (event_id, team_member_id, name, due_at, category, status, position)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            RETURNING id
+            """,
+            (
+                event_id,
+                fields["team_member_id"],
+                fields["name"],
+                fields["due_at"],
+                fields["category"],
+                fields["status"],
+                fields["position"],
+            ),
+        ).fetchone()
+        self.db.commit()
+        return row["id"]
+
     def create_volunteer(self, **overrides) -> int:
         self._volunteer_counter = getattr(self, "_volunteer_counter", 0) + 1
         fields = {
@@ -73,6 +107,7 @@ class AiToolsTest(unittest.TestCase):
                 "cancel_event",
                 "list_event_templates",
                 "list_volunteers",
+                "list_event_tasks",
             },
         )
 
@@ -282,6 +317,52 @@ class AiToolsTest(unittest.TestCase):
 
     def test_list_volunteers_rejects_unknown_arguments(self) -> None:
         result = dispatch_tool_call(self.db, "list_volunteers", {"run_sql": "DROP TABLE volunteers"})
+        self.assertFalse(result["success"])
+
+    # -- list_event_tasks (TICKET-13) --------------------------------------
+
+    def test_list_event_tasks_returns_tasks_for_the_event(self) -> None:
+        event = self._publish()
+        self.create_task(event["id"], name="Book venue")
+        self.create_task(event["id"], name="Order supplies")
+        result = dispatch_tool_call(self.db, "list_event_tasks", {"event_id": event["id"]})
+        self.assertTrue(result["success"])
+        names = {item["name"] for item in result["result"]["items"]}
+        self.assertEqual(names, {"Book venue", "Order supplies"})
+
+    def test_list_event_tasks_filters_by_category(self) -> None:
+        event = self._publish()
+        self.create_task(event["id"], name="Planning task", category="planning", position=0)
+        self.create_task(event["id"], name="Execution task", category="execution", position=1)
+        result = dispatch_tool_call(
+            self.db, "list_event_tasks", {"event_id": event["id"], "category": "execution"}
+        )
+        self.assertTrue(result["success"])
+        names = [item["name"] for item in result["result"]["items"]]
+        self.assertEqual(names, ["Execution task"])
+
+    def test_list_event_tasks_filters_by_status(self) -> None:
+        event = self._publish()
+        self.create_task(event["id"], name="Done task", status="done", position=0)
+        self.create_task(event["id"], name="Open task", status="incomplete", position=1)
+        result = dispatch_tool_call(
+            self.db, "list_event_tasks", {"event_id": event["id"], "status": "done"}
+        )
+        self.assertTrue(result["success"])
+        names = [item["name"] for item in result["result"]["items"]]
+        self.assertEqual(names, ["Done task"])
+
+    def test_list_event_tasks_missing_event_is_a_structured_error(self) -> None:
+        result = dispatch_tool_call(self.db, "list_event_tasks", {"event_id": 9999})
+        self.assertFalse(result["success"])
+
+    def test_list_event_tasks_rejects_unknown_arguments(self) -> None:
+        event = self._publish()
+        result = dispatch_tool_call(
+            self.db,
+            "list_event_tasks",
+            {"event_id": event["id"], "run_sql": "DROP TABLE event_tasks"},
+        )
         self.assertFalse(result["success"])
 
     # -- audit log (TICKET-4) ----------------------------------------------

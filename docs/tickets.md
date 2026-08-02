@@ -1077,7 +1077,22 @@ concrete need for template task-lists in chat shows up later.
 
 ---
 
-## TICKET-13: AI tool — view tasks for an event
+~~TICKET-13: AI tool — view tasks for an event~~
+— **Done.** New tool `list_event_tasks` (`backend/ai_tools/tools.py`) wraps
+`events.list_event_tasks` (`GET /events/{event_id}/tasks`) exactly as
+scoped — `category`/`status`/`team_member_id`/`due_before`/`due_after`
+filters plus pagination, via `ListEventTasksArgs`
+(`backend/ai_tools/schemas.py`), which reuses `TaskCategory`/`TaskStatus`
+from `backend/schema/common.py` so an invalid category/status is rejected
+at the schema stage rather than silently matching nothing. `due_before`/
+`due_after` are typed `date` for that same reason and converted to the
+handler's plain ISO-string params at the call site — no new business logic.
+Covered by five new tests in `backend/tests/test_ai_tools.py`: returns an
+event's tasks, filters by category, filters by status, a missing event is
+a structured error, unknown arguments are rejected.
+
+<details>
+<summary>Original ticket text</summary>
 
 **Priority:** Medium
 **Area:** new `backend/ai_tools/` tool, reuses `backend/api/routes/events.py`
@@ -1100,6 +1115,8 @@ itself.
 None. Independent of TICKET-14/15 below, though useful alongside them (an
 organizer asking "what needs doing" naturally leads into "assign this" or
 "mark that done").
+
+</details>
 
 ---
 

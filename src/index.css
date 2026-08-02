@@ -619,6 +619,21 @@
   color: #7a827c;
 }
 
+@media (max-width: 640px) {
+  .portfolio-index > button {
+    gap: 12px;
+    grid-template-columns: 38px 1fr auto;
+  }
+
+  .portfolio-index time strong {
+    font-size: 22px;
+  }
+
+  .portfolio-index > button > span:nth-child(2) strong {
+    font-size: 15px;
+  }
+}
+
 .portfolio-preview {
   padding: 36px;
 }
@@ -3261,6 +3276,49 @@ button {
   overscroll-behavior-x: contain;
 }
 
+/* TICKET-73: the Participants tab's table needs horizontal scrolling to see
+   RSVP/repeat-signup/attendance on phones, with no hint that more columns
+   exist — show a two-line card per participant instead below 640px. */
+.participant-mobile-list {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  .event-participants-tab .volunteer-table-wrap {
+    display: none;
+  }
+
+  .participant-mobile-list {
+    display: grid;
+    gap: 10px;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  .participant-mobile-row {
+    background: #fafafa;
+    border: 1px solid var(--border-soft);
+    border-radius: 8px;
+    display: grid;
+    gap: 6px;
+    padding: 12px;
+  }
+
+  .participant-mobile-line {
+    align-items: baseline;
+    display: flex;
+    gap: 8px;
+    justify-content: space-between;
+  }
+
+  .participant-mobile-line strong {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
 .volunteer-table {
   border-collapse: collapse;
   min-width: 980px;
@@ -4629,6 +4687,10 @@ main:has(.copilot-panel.open) .navbar {
   }
 }
 
+.nav-menu-toggle {
+  display: none;
+}
+
 @media (max-width: 810px) {
   .navbar {
     padding: 18px 20px;
@@ -4639,25 +4701,59 @@ main:has(.copilot-panel.open) .navbar {
   }
 
   .navbar-inner {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 18px;
+    align-items: center;
+    flex-direction: row;
+    gap: 0;
+    position: relative;
   }
 
-  .nav-links {
+  /* TICKET-73: the previous horizontally-scrolling pill (overflow-x: auto,
+     no scroll affordance) hid most nav items with only a bare browser
+     scrollbar as a hint. A dropdown is discoverable without swiping. */
+  .nav-menu-toggle {
     background: rgba(255, 255, 255, 0.78);
     border: 1px solid var(--border-soft);
     border-radius: 9999px;
-    justify-content: flex-start;
+    cursor: pointer;
+    display: inline-flex;
+    font-size: 13px;
+    font-weight: 700;
+    padding: 10px 16px;
+  }
+
+  .nav-links {
+    background: #fff;
+    border: 1px solid var(--border-soft);
+    border-radius: 14px;
+    box-shadow: 0 14px 34px rgba(0, 0, 0, 0.12);
+    display: none;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 2px;
+    left: 0;
+    margin-top: 8px;
     max-width: 100%;
-    overflow-x: auto;
-    padding: 4px;
+    padding: 8px;
+    position: absolute;
+    right: 0;
+    top: 100%;
+    z-index: 101;
+  }
+
+  .nav-links.open {
+    display: flex;
   }
 
   .nav-links button {
-    flex: 0 0 auto;
-    font-size: 13px;
-    padding: 10px 13px;
+    border-radius: 8px;
+    font-size: 14px;
+    padding: 12px 14px;
+    text-align: left;
+    width: 100%;
+  }
+
+  .nav-links button.active {
+    background: rgba(23, 201, 100, 0.1);
   }
 
   .hero {
@@ -4814,6 +4910,66 @@ main:has(.copilot-panel.open) .navbar {
     z-index: 50;
   }
 
+  .copilot-fab {
+    bottom: 16px;
+    right: 16px;
+  }
+}
+
+/* TICKET-72: day cells are too narrow on phones to show truncated event
+   names legibly (e.g. "Clo…" for "Clothes & Essentials Distribution") — show
+   a compact status dot instead and keep the full name for screen readers
+   and the existing tap-to-preview panel. */
+@media (max-width: 480px) {
+  .calendar-grid {
+    gap: 3px;
+  }
+
+  .calendar-cell {
+    align-content: flex-start;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    min-height: 48px;
+    padding: 4px;
+  }
+
+  .calendar-cell strong {
+    flex-basis: 100%;
+    margin-bottom: 2px;
+  }
+
+  .calendar-event-button {
+    background: #0c7a3d;
+    border-radius: 50%;
+    height: 12px;
+    margin: 0;
+    padding: 0;
+    width: 12px;
+  }
+
+  .calendar-event-button.closed {
+    background: #5d6760;
+  }
+
+  .calendar-event-button + .calendar-event-button {
+    margin-top: 0;
+  }
+
+  .calendar-event-button span {
+    border: 0;
+    clip: rect(0, 0, 0, 0);
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    padding: 0;
+    position: absolute;
+    white-space: nowrap;
+    width: 1px;
+  }
+}
+
+@media (max-width: 810px) {
   .copilot-fab {
     bottom: 16px;
     right: 16px;
@@ -5171,6 +5327,7 @@ main:has(.copilot-panel.open) .navbar {
   box-shadow: 0 8px 30px rgba(26, 163, 196, 0.08);
   display: grid;
   gap: 16px;
+  grid-template-columns: minmax(0, 1fr);
   padding: 30px;
   width: min(520px, 100%);
 }
@@ -5178,6 +5335,7 @@ main:has(.copilot-panel.open) .navbar {
 .pts-field {
   display: grid;
   gap: 6px;
+  min-width: 0;
 }
 
 .pts-field > span {
@@ -5197,8 +5355,12 @@ main:has(.copilot-panel.open) .navbar {
   border: 1px solid #d5dde0;
   border-radius: 9px;
   font-size: 15px;
+  min-width: 0;
+  overflow: hidden;
   padding: 11px 12px;
+  text-overflow: ellipsis;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  width: 100%;
 }
 
 .pts-field input:focus,

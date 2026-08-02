@@ -51,7 +51,7 @@ export default function EventParticipantsTab({ eventId, api = defaultApi }: Prop
   if (loading) return <p role="status">Loading Participants…</p>
 
   return (
-    <div className="volunteer-table-card">
+    <div className="volunteer-table-card event-participants-tab">
       <div className="section-heading">
         <h3>Participants</h3>
         <span>
@@ -59,42 +59,60 @@ export default function EventParticipantsTab({ eventId, api = defaultApi }: Prop
         </span>
       </div>
       {error && <p aria-live="polite" className="api-workspace-feedback error" role="alert">{error}</p>}
-      <div className="volunteer-table-wrap">
-        <table className="volunteer-table roster-table">
-          <thead>
-            <tr>
-              <th>Participant</th>
-              <th>Contact</th>
-              <th>RSVP</th>
-              <th>Repeat signup</th>
-              <th>Attendance</th>
-            </tr>
-          </thead>
-          <tbody>
-            {participants.length === 0 ? (
-              <tr>
-                <td className="roster-empty" colSpan={5}>No Participants registered yet.</td>
-              </tr>
-            ) : (
-              participants.map((participant) => (
-                <tr key={participant.participant_id}>
-                  <td>{participant.name}</td>
-                  <td className="roster-muted">{participant.contact_number ?? participant.email ?? "—"}</td>
-                  <td>
-                    {participant.rsvp_status ? (
-                      <span className="roster-att roster-att-yes">RSVP'd</span>
-                    ) : (
-                      <span className="roster-att roster-att-pending">No reply</span>
-                    )}
-                  </td>
-                  <td>{repeatSignupLabel(participant.repeat_signup)}</td>
-                  <td>{attendanceLabel(participant.attendance)}</td>
+      {participants.length === 0 ? (
+        <p className="roster-empty">No Participants registered yet.</p>
+      ) : (
+        <>
+          <ul className="participant-mobile-list">
+            {participants.map((participant) => (
+              <li className="participant-mobile-row" key={participant.participant_id}>
+                <div className="participant-mobile-line">
+                  <strong>{participant.name}</strong>
+                  {participant.rsvp_status ? (
+                    <span className="roster-att roster-att-yes">RSVP'd</span>
+                  ) : (
+                    <span className="roster-att roster-att-pending">No reply</span>
+                  )}
+                </div>
+                <div className="participant-mobile-line">
+                  <span className="roster-muted">{participant.contact_number ?? participant.email ?? "—"}</span>
+                  {attendanceLabel(participant.attendance)}
+                </div>
+              </li>
+            ))}
+          </ul>
+          <div className="volunteer-table-wrap">
+            <table className="volunteer-table roster-table">
+              <thead>
+                <tr>
+                  <th>Participant</th>
+                  <th>Contact</th>
+                  <th>RSVP</th>
+                  <th>Repeat signup</th>
+                  <th>Attendance</th>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+              </thead>
+              <tbody>
+                {participants.map((participant) => (
+                  <tr key={participant.participant_id}>
+                    <td>{participant.name}</td>
+                    <td className="roster-muted">{participant.contact_number ?? participant.email ?? "—"}</td>
+                    <td>
+                      {participant.rsvp_status ? (
+                        <span className="roster-att roster-att-yes">RSVP'd</span>
+                      ) : (
+                        <span className="roster-att roster-att-pending">No reply</span>
+                      )}
+                    </td>
+                    <td>{repeatSignupLabel(participant.repeat_signup)}</td>
+                    <td>{attendanceLabel(participant.attendance)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
     </div>
   )
 }

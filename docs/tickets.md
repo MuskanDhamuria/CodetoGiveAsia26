@@ -1474,3 +1474,186 @@ What's genuinely missing is "has this participant signed up for a similar event 
 - "Similar event" is being defined narrowly as *same `event_template_id`* for this ticket, since that's the only structural relation that exists today. If organizers actually mean something broader (same venue, same beneficiary population, same rough date range), that needs a product decision and likely a schema addition (e.g. a `category` field on `event_templates` or `events`) — flag this rather than guessing if it comes up during implementation.
 - Scratch-built events (`event_template_id IS NULL`) can't participate in repeat-signup detection under this definition; the UI should show "N/A" or omit the column state rather than implying "first time" (which would be a false claim, not just an unknown).
 - No changes to how attendance is *recorded* — this ticket is display-only, layering onto the existing QR check-in flow's data, not adding a new manual toggle that could drift from what the scanner already recorded.
+
+---
+
+~~TICKET-71: Volunteer sign-up form (`/signup`) overflows horizontally on mobile~~
+— **Done.** Added `width: 100%; min-width: 0;` (plus `overflow: hidden;
+text-overflow: ellipsis;`) to `.pts-field input, .pts-field select`, and
+constrained `.pts-signup-card` to `grid-template-columns: minmax(0, 1fr)`
+(`src/index.css`). Verified at 375px: `scrollWidth` now equals `clientWidth`,
+the Event `<select>` truncates its long option text instead of forcing the
+card wider, and "Sign me up" plus the disclaimer text are fully visible.
+
+<details>
+<summary>Original ticket text</summary>
+
+TICKET-71: Volunteer sign-up form (`/signup`) overflows horizontally on mobile
+
+**Priority:** High — this is a public, unauthenticated form (the primary community-facing signup path); a broken layout here is the first thing a new volunteer sees.
+**Area:** `src/index.css` (`.pts-field`, `.pts-field input`/`.pts-field select`, lines ~5178-5202; `.pts-signup-card`, lines ~5167-5176), `src/VolunteerSignup.tsx`
+
+### What's wrong
+
+At a 375px mobile viewport, `/signup?event=<id>` (reached from the "Sign up for this event" button on `/community`) renders with `document.documentElement.scrollWidth` of 467px against a 375px `clientWidth` — a 92px horizontal overflow. Visually, the phone-number input, the "Sign me up" button, and the disclaimer text are all cut off on the right edge, and the page requires horizontal scrolling to use.
+
+Root cause, confirmed via computed styles: `.pts-signup-card` is `display: grid` with an implicit single column and no `grid-template-columns` override, so its one column track sizes to the **widest intrinsic content** among its children (grid's default `auto` track sizing uses each item's max-content width unless constrained). The "Event" field's `<select>` shows the currently-selected option's full text ("Clothes & Essentials Distribution · Sun, 23 Aug 2026"), and because `.pts-field input, .pts-field select` (`src/index.css:5195-5202`) sets border/padding/font-size but never `width: 100%` or `min-width: 0`, that `<select>`'s min-content width (416px, measured) becomes the grid column's width — which every other field (Full name, phone row, email) then inherits, even though the card itself is correctly responsive at `width: min(520px, 100%)` (335px at this viewport).
+
+This is distinct from the working case on `/admin/broadcasts`'s "Send an announcement" event picker, which has the same long-option-text problem but stays within its container — that page's select is constrained by different, non-`.pts-field` CSS.
+
+### What to do
+
+- Add `width: 100%; min-width: 0;` to `.pts-field input, .pts-field select` (and the same to the elements inside `.pts-phone-row`) so they never exceed their grid cell regardless of content.
+- Separately, `.pts-signup-card`'s implicit grid column should be constrained (e.g. `grid-template-columns: minmax(0, 1fr)`) so a future long-content child can't repeat this failure mode.
+- The "Event" `<select>`'s selected-option text will still need to fit somehow at 335px — either truncate the option label (e.g. drop the date suffix, or truncate via a custom-rendered trigger since native `<select>` text can't `text-overflow: ellipsis` on the closed control) or accept that only `min-width: 0` fixes the *layout* break while the native select's own text may still get browser-default-clipped, which is acceptable (unlike breaking the whole page).
+- Verify at 375px width after the fix: `document.documentElement.scrollWidth` must equal `clientWidth` with no horizontal scrollbar, and the "Sign me up" button must be fully visible and tappable.
+
+</details>
+
+---
+
+~~TICKET-72: Calendar views truncate event names to 3-4 unreadable characters on mobile~~
+— **Done.** Went with the compact-dot approach at a new `max-width: 480px`
+breakpoint in both calendar implementations (`src/EventCalendar.tsx` /
+`src/index.css` for admin, `src/participant/components/EventCalendarView.tsx`
+/ `src/participant/participant.css` for the participant portal — they turned
+out to be two separate components sharing an origin, not one shared
+component as originally assumed): each event pill/button becomes a small
+solid-color circle, its name moved into a visually-hidden `<span>` (kept for
+screen readers) plus an `aria-label`, and the day cell switches to
+`flex-wrap` so multiple dots sit side by side. The admin calendar's existing
+tap-to-open-preview-panel behavior and the participant calendar's tap-to-navigate
+`<Link>` both still work unchanged, since only the visual presentation of
+the button/link changed. Follow-up feedback during review: the first pass's
+dot was too faint (used the pill's existing low-opacity tinted background)
+and cells felt loose — fixed by giving dots a solid, darker fill
+(`#0c7a3d`/`#5d6760` admin, `#246b45`/`#9c3b30`/`#7c877e` participant) at
+12px instead of 10px, and tightening `.calendar-grid` gap and cell padding.
+
+<details>
+<summary>Original ticket text</summary>
+
+TICKET-72: Calendar views truncate event names to 3-4 unreadable characters on mobile
+
+**Priority:** Medium — affects both the participant portal (`/participant`, Calendar toggle) and the admin dashboard (`/admin/dashboard`), both of which render the same underlying calendar component.
+**Area:** `src/EventCalendar.tsx` (shared calendar component, per `git log`/grep), its day-cell event pill markup (`.event-calendar-pill`), associated CSS in `src/index.css`.
+
+### What's wrong
+
+On a 375px viewport, the calendar's day cells are ~44-50px wide (7 columns across the viewport minus padding). Each day's event is rendered as a pill/link filling that cell, with `overflow: hidden; text-overflow: ellipsis; white-space: nowrap` — confirmed via computed style: pill width 38.6px, font-size 10.9px. For "Clothes & Essentials Distribution," this renders as literally "Clo…" — three legible characters. A user cannot identify which event is on a given day without tapping into it, defeating the point of a calendar overview.
+
+This reproduces identically on `/admin/dashboard`'s calendar widget (same truncation pattern observed for the same event on 23 Aug), confirming it's the shared component, not a participant-portal-only issue.
+
+### What to do
+
+- On narrow viewports, prefer a compact non-text indicator per day with an event (e.g. a colored dot or count badge) over trying to fit truncated event-name text, and surface the actual name only on tap/expand (e.g. a day-detail popover or falling back to the List view) — matching how most calendar UIs handle mobile (Google Calendar, Apple Calendar mobile month views use dots, not truncated titles).
+- Alternatively, if per-day event names must stay visible, switch the mobile rendering to a taller day cell with wrapped (not `nowrap`/ellipsis) text limited to 2 lines via `-webkit-line-clamp`, which at least surfaces the first couple of real words ("Clothes &…") instead of 3 characters.
+- Whichever approach is chosen, apply it once in the shared component so both `/participant` and `/admin/dashboard` inherit the fix — don't patch call sites separately.
+
+</details>
+
+---
+
+~~TICKET-73: Tab bars and horizontally-scrolling tables have no visual affordance on mobile, and the Event Workspace's 4th tab is unreachable~~
+— **Done**, but the shipped fix diverged from the ticket's original
+"shared scroll-affordance" plan based on review feedback (the plain
+scrollbar looked unpolished — "what's with the shadow on the navbar").
+Final approach, all at a new `max-width: 480px`/`810px` breakpoint:
+- **Admin top nav** (`.navbar`/`.nav-links` in `src/App.tsx` + `src/index.css`):
+  replaced the horizontally-scrolling pill with a `useState`-backed toggle
+  button ("Menu") that opens a proper dropdown panel (`position: absolute`,
+  `box-shadow`, one item per row) listing all 8 items including the
+  previously-hidden Broadcasts/Scan Attendance/Sign out — fully discoverable,
+  no swipe required. Closes on selection.
+- **Event Workspace tab bar** (`.api-event-workspace-tabs` in
+  `src/AdminEventsPage.tsx` + `src/EventOperationsMvp.css`): same
+  toggle+dropdown pattern, reusing the existing tab `<button>`s as the
+  panel's contents rather than introducing a native `<select>` (tried first,
+  rejected on review as visually inconsistent with the nav dropdown).
+  `!important` was needed on a few properties to beat an unrelated,
+  identically-named `.api-event-workspace-tabs { display: flex }` rule in
+  `InventoryLogistics.css` that wins on source order.
+- **Participants table** (item 3's Participants-specific case): rather than
+  a scroll-affordance fade, added a mobile-only two-line card list
+  (`.participant-mobile-list`/`.participant-mobile-row` in
+  `EventParticipantsTab.tsx`/`index.css`, shown below 640px) — line 1 is
+  name + RSVP badge, line 2 is contact + attendance badge, per explicit
+  design direction; the full table (all 5 columns) remains for desktop.
+  The other systemic table cases (Logistics requirements, Inventory stock,
+  Volunteer directory) were **not** changed — still `overflow-x: auto` with
+  no affordance; only the Participants tab (this session's new surface) got
+  the redesign.
+
+<details>
+<summary>Original ticket text</summary>
+
+TICKET-73: Tab bars and horizontally-scrolling tables have no visual affordance on mobile, and the Event Workspace's 4th tab is unreachable
+
+**Priority:** High for the Event Workspace regression (introduced this session by TICKET-70's new "Participants" tab); Medium for the systemic nav/table pattern.
+**Area:** `src/index.css` (`.nav-links`, lines 971-976 and the `max-width` breakpoint override at ~4647-4661; `.api-event-workspace-tabs`; `.volunteer-table-wrap`, `.inventory-table-scroll`), `src/AdminEventsPage.tsx` (workspace tab bar).
+
+### What's wrong
+
+Three related but distinct instances of the same root problem — content that requires horizontal scrolling with no visual signal that more content exists:
+
+1. **Admin top nav (`.nav-links`), systemic:** at mobile widths this is deliberately made `overflow-x: auto` (`src/index.css:4647-4661`) rather than wrapping — a reasonable choice — but there's no fade/gradient/arrow affordance, and the visible tabs are cut exactly at the container edge with no partial next-item peek. On `/admin/dashboard` at 375px, only "Dashboard / Events / Inventory / Volunteers" (the last one already half-cut) are visible; "Post-event," "Broadcasts," "Scan Attendance," and "Sign out" are completely hidden, reachable only by an undiscoverable horizontal swipe. The same pattern repeats on `/admin/inventory`'s sub-tabs (Stock / Storage Locations / Orders & Deliveries — the last one shown as "Orders & D…").
+
+2. **Event Workspace tab bar — a regression, not pre-existing:** `.api-event-workspace-tabs` uses `overflow-x: visible` (i.e., no scroll mechanism at all, not even the nav-links pattern). With the original 3 tabs (Tasks/Volunteers/Logistics) this fit; after TICKET-70 added a 4th "Participants" tab, the bar's required width (331px, measured) exceeds its available box (285px) at 375px viewport width. Because there's no scroll or wrap, the last tab ("Logistics") renders extending ~21px past the workspace card's own right edge, into the page's background — visually broken and only barely tappable (its clickable box technically still mostly on-screen, but visually detached from the card it belongs to).
+
+3. **Data tables, systemic:** the Logistics tab's "Requirements & readiness" table (11 columns), the Inventory "Stock" table, the Volunteer directory table, and the new Participants tab's table (from TICKET-70) all wrap their `<table>` in an `overflow-x: auto` div with no scroll affordance. Measured on the new Participants tab: only 239px of 640px content (37%) is visible by default — Participant and Contact columns show, but RSVP, Repeat signup, and Attendance (the three columns this feature exists to show) are all off-screen, undiscoverable without an accidental horizontal swipe inside a small card.
+
+### What to do
+
+- For (1) and (3): add a scroll-affordance treatment shared across these containers — the common pattern is a `mask-image`/`box-shadow` fade on whichever edge(s) have more content to scroll toward, recalculated on scroll. Since this affects several unrelated components (`.nav-links`, `.volunteer-table-wrap`, `.inventory-table-scroll`), implement it once as a small reusable pattern (e.g. a `useScrollAffordance` hook or a shared CSS-only `scroll-timeline`/gradient-mask approach) rather than four one-off fixes.
+- For (2), the regression: give `.api-event-workspace-tabs` the same `overflow-x: auto` treatment as `.nav-links` already has at mobile widths (it currently has none at all), so a 4th (or 5th, if TICKET-70's design changes) tab degrades to horizontally scrollable instead of visually escaping the card. This should ship before or alongside TICKET-70's Participants tab, since it's the thing that turned a previously-fine 3-tab layout into a broken 4-tab one.
+- Consider, for the Participants table specifically, whether Contact could be dropped or abbreviated on narrow viewports in favor of surfacing RSVP/Attendance (the two organizer-relevant-at-a-glance columns) without scrolling at all — a layout decision, not just a CSS fix, worth raising with whoever owns the Participants tab design.
+
+</details>
+
+Also done in the same pass, requested during review rather than pre-ticketed:
+- `/admin`'s "Event portfolio" list rows: reduced `.portfolio-index time strong`
+  (the big day number) and the event-title `strong` font size, and narrowed
+  the date column's grid track (`56px` → `38px`) at `max-width: 640px`, so
+  the now-smaller date text isn't sitting in an oversized column
+  (`src/index.css`).
+
+---
+
+~~TICKET-74: New-event wizard's "Review the copied plan" step is unreadable on mobile~~
+— **Done**, but scoped down from the ticket's suggested full breakpoint
+relayout — direction on review was "reduce the padding... so the card has
+more width" rather than restructuring into a stacked layout. Reduced
+`.event-creation-body`'s horizontal padding (18px → 10px) and added
+`.event-creation-plan-task { padding: 13px 6px }` inside the existing
+`max-width: 640px` block in `src/EventOperationsMvp.css`, giving the
+flexible task-name column more of the row's width without changing the
+4-column grid structure. Verified at 375px: task titles wrap across
+multiple lines of several words each instead of one word per line, and the
+dialog still has no horizontal overflow.
+
+<details>
+<summary>Original ticket text</summary>
+
+TICKET-74: New-event wizard's "Review the copied plan" step is unreadable on mobile
+
+**Priority:** Medium — part of the primary event-creation flow, not a peripheral page.
+**Area:** `src/EventOperationsMvp.css:59` (`.event-creation-plan-task`, `.event-creation-plan-task.editing`), `src/AdminEventsPage.tsx` (Step 3 "Review plan" render path).
+
+### What's wrong
+
+`.event-creation-plan-task` is a 4-column CSS grid with **fixed pixel tracks** for three of its four columns: `grid-template-columns: 76px minmax(0, 1fr) 125px 48px` (phase tag / task name+date / assignee select / Edit button). The 125px assignee-select and 48px Edit-button columns don't shrink, so at a 375px viewport the flexible task-name column is squeezed to roughly 20-50px wide (measured). Task titles like "Align the team on holding the event" wrap one or two words per line down the full height of the card, producing an unreadable vertical stack, while the phase tag, assignee dropdown, and Edit button stay crammed on one cramped row.
+
+### What to do
+
+- Add a mobile breakpoint (matching the app's existing `680px` convention used elsewhere, e.g. `src/index.css:5460`) that switches `.event-creation-plan-task` to a single-column stacked layout: phase tag and date on one line, task name below it, assignee select and Edit button on their own row beneath — mirroring how `.event-creation-plan-fields` already goes to `grid-template-columns: repeat(2, minmax(0, 1fr))` for its own mobile case rather than keeping fixed pixel tracks.
+- Apply the same fix to `.event-creation-plan-task.editing`'s variant (`grid-template-columns: 76px minmax(0, 1fr) 125px 75px`), which has the identical problem.
+- This is the same root cause category as TICKET-73 (fixed pixel grid/flex tracks that don't reflow), but distinct enough in fix shape (needs an actual breakpoint-driven relayout, not a scroll affordance) to track separately.
+
+</details>
+
+---
+
+Minor / non-blocking notes from this audit, not tracked as separate tickets:
+
+- `public/pts-logo.png` is a 130-byte placeholder text file, not a real PNG (`file` reports "ASCII text"), so the header logo renders as a broken-image icon on every page that uses it (`/community`, `/signup`, `/volunteer-register`, `/volunteer-login`, `/volunteer-dashboard`). Not mobile-specific — worth a quick fix (swap in a real asset) whenever someone's touching that area, but not a mobile-friendliness bug.
+- The shared header on `/volunteer-register` and `/volunteer-login` (brand name + "Events" / "Chat on WhatsApp" / "Sign in"/"Create account" links) doesn't actually overflow at 375px, but wraps the brand text to two lines and squeezes the nav links tightly with no hamburger/collapse — cosmetically cramped rather than broken. Worth revisiting if this area gets other mobile-nav work (e.g. alongside TICKET-73's `.nav-links` affordance work), but didn't rise to a standalone ticket on its own.

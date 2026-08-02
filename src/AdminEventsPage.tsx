@@ -168,6 +168,7 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
   const [creating, setCreating] = useState(false)
   const [openEventId, setOpenEventId] = useState<number | null>(initialEventId)
   const [workspaceTab, setWorkspaceTab] = useState<"tasks" | "volunteers" | "participants" | "logistics">("tasks")
+  const [workspaceTabMenuOpen, setWorkspaceTabMenuOpen] = useState(false)
   const [mobileTaskStatus, setMobileTaskStatus] = useState<"incomplete" | "ongoing" | "done">("incomplete")
   const [draggedTaskId, setDraggedTaskId] = useState<number | null>(null)
   const [dragOverStatus, setDragOverStatus] = useState<string | null>(null)
@@ -835,7 +836,7 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
           {message || error}
         </p>
         {openEvent ? (<>
-          <button aria-label="Back to Events" className="event-workspace-back api-event-workspace-back" type="button" onClick={() => { setWorkspaceTab("tasks"); setOpenEventId(null) }}>← Back to Events</button>
+          <button aria-label="Back to Events" className="event-workspace-back api-event-workspace-back" type="button" onClick={() => { setWorkspaceTab("tasks"); setWorkspaceTabMenuOpen(false); setOpenEventId(null) }}>← Back to Events</button>
           <section aria-label={openEvent.name} className="event-operations-workspace api-event-workspace">
             <header className="api-event-workspace-header">
               <div>
@@ -866,7 +867,22 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
                   : "Closed Events are read-only. The Task history is kept for reference."}
               </p>
             )}
-            <div className="api-event-workspace-tabs" role="tablist" aria-label="Event workspace sections">
+            <div className="api-event-workspace-tab-menu">
+            <button
+              aria-controls="event-workspace-tab-panel"
+              aria-expanded={workspaceTabMenuOpen}
+              className="api-event-workspace-tab-toggle"
+              type="button"
+              onClick={() => setWorkspaceTabMenuOpen((open) => !open)}
+            >
+              {workspaceTab === "tasks" ? "Tasks" : workspaceTab === "volunteers" ? "Volunteers" : workspaceTab === "participants" ? "Participants" : "Logistics"}
+            </button>
+            <div
+              aria-label="Event workspace sections"
+              className={`api-event-workspace-tabs${workspaceTabMenuOpen ? " open" : ""}`}
+              id="event-workspace-tab-panel"
+              role="tablist"
+            >
               <button
                 aria-controls="event-task-workspace"
                 aria-selected={workspaceTab === "tasks"}
@@ -874,7 +890,7 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
                 id="event-tasks-tab"
                 role="tab"
                 type="button"
-                onClick={() => setWorkspaceTab("tasks")}
+                onClick={() => { setWorkspaceTab("tasks"); setWorkspaceTabMenuOpen(false) }}
               >Tasks</button>
               <button
                 aria-controls="event-volunteer-workspace"
@@ -883,7 +899,7 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
                 id="event-volunteers-tab"
                 role="tab"
                 type="button"
-                onClick={() => setWorkspaceTab("volunteers")}
+                onClick={() => { setWorkspaceTab("volunteers"); setWorkspaceTabMenuOpen(false) }}
               >Volunteers</button>
               <button
                 aria-controls="event-participants-workspace"
@@ -892,7 +908,7 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
                 id="event-participants-tab"
                 role="tab"
                 type="button"
-                onClick={() => setWorkspaceTab("participants")}
+                onClick={() => { setWorkspaceTab("participants"); setWorkspaceTabMenuOpen(false) }}
               >Participants</button>
               <button
                 aria-controls="event-logistics-workspace"
@@ -901,8 +917,9 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
                 id="event-logistics-tab"
                 role="tab"
                 type="button"
-                onClick={() => setWorkspaceTab("logistics")}
+                onClick={() => { setWorkspaceTab("logistics"); setWorkspaceTabMenuOpen(false) }}
               >Logistics</button>
+            </div>
             </div>
             {workspaceTab === "tasks" ? <div
               aria-labelledby="event-tasks-tab"

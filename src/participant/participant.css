@@ -94,3 +94,50 @@
   .event-calendar-grid > div { min-height: 70px; padding: 4px; }
   .event-calendar-pill { font-size: .68rem; }
 }
+
+/* TICKET-72: at phone widths a day cell is too narrow to show a truncated
+   event name legibly (e.g. "Clo…") — show a compact status dot instead and
+   keep the full name for screen readers via the visually-hidden span. */
+@media (max-width: 480px) {
+  .event-calendar-grid > div {
+    align-content: flex-start;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    min-height: 48px;
+    padding: 4px;
+  }
+
+  .event-calendar-grid > div > span {
+    flex-basis: 100%;
+  }
+
+  .event-calendar-pill {
+    background: #246b45;
+    border-radius: 50%;
+    height: 12px;
+    margin-top: 0;
+    padding: 0;
+    width: 12px;
+  }
+
+  .event-calendar-pill-closed {
+    background: #9c3b30;
+  }
+
+  .event-calendar-pill-past {
+    background: #7c877e;
+  }
+
+  .event-calendar-pill span {
+    border: 0;
+    clip: rect(0, 0, 0, 0);
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    padding: 0;
+    position: absolute;
+    white-space: nowrap;
+    width: 1px;
+  }
+}

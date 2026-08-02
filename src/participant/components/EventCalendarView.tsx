@@ -62,8 +62,13 @@ export default function EventCalendarView({
             <div key={index} className={dayEvents.length ? "has-events" : ""}>
               {day > 0 && day <= daysInMonth && <span>{day}</span>}
               {dayEvents.map((event) => (
-                <Link key={event.id} to={`events/${event.id}`} className={pillClassName(event, today)}>
-                  {event.name}
+                <Link
+                  key={event.id}
+                  to={`events/${event.id}`}
+                  className={pillClassName(event, today)}
+                  aria-label={event.name}
+                >
+                  <span>{event.name}</span>
                 </Link>
               ))}
             </div>

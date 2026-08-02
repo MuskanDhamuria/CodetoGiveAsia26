@@ -479,6 +479,13 @@ function Navbar({
   onNavigate: (page: Page) => void;
   onSignOut: () => void;
 }) {
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  function navigate(page: Page) {
+    setMenuOpen(false);
+    onNavigate(page);
+  }
+
   return (
     <nav className="navbar" aria-label="Primary navigation">
       <div className="navbar-inner">
@@ -490,13 +497,23 @@ function Navbar({
         >
           Passion to Serve
         </button>
-        <div className="nav-links">
+        <button
+          aria-controls="primary-nav-links"
+          aria-expanded={menuOpen}
+          aria-label="Toggle navigation menu"
+          className="nav-menu-toggle"
+          type="button"
+          onClick={() => setMenuOpen((open) => !open)}
+        >
+          Menu
+        </button>
+        <div className={`nav-links${menuOpen ? " open" : ""}`} id="primary-nav-links">
           {navLinks.map((link) => (
             <button
               className={activePage === link.page ? "active" : ""}
               key={link.label}
               type="button"
-              onClick={() => onNavigate(link.page)}
+              onClick={() => navigate(link.page)}
             >
               {link.label}
             </button>

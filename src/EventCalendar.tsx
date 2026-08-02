@@ -77,7 +77,7 @@ export function EventCalendar({
                     type="button"
                     onClick={() => setSelectedEventId(event.id)}
                   >
-                    {event.name}
+                    <span>{event.name}</span>
                   </button>
                 ))}
               </>

@@ -139,7 +139,7 @@
 @media (max-width: 760px) { .api-event-metadata { grid-template-columns: 1fr; }.api-event-workspace-header { align-items: flex-start; flex-direction: column; }.api-event-workspace .event-operations-kanban > section { min-height: 220px; } }
 .event-operations-confirmation { background: #fff8ef; border: 1px solid #e7c995; border-radius: 10px; display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; padding: 16px; }.event-operations-confirmation strong { flex-basis: 100%; }.event-operations-confirmation p { color: #5e6961; flex-basis: 100%; margin: 0; }.event-operations-confirmation button { background: #edf2ed; border: 0; border-radius: 7px; cursor: pointer; font-weight: 700; padding: 9px 12px; }.event-operations-confirmation button:last-child { background: #8f2d24; color: #fff; }
 .event-creation-dialog > footer, .event-creation-confirm { border-top: 1px solid #e4e8e4; display: flex; gap: 10px; justify-content: flex-end; padding: 18px 32px; }.event-creation-dialog > footer button, .event-creation-confirm button { background: #edf2ed; border: 0; border-radius: 7px; cursor: pointer; font-weight: 700; padding: 10px 14px; }.event-creation-dialog > footer button:last-child, .event-creation-confirm button:last-child { background: #246b45; color: #fff; }.event-creation-dialog > footer button:disabled { cursor: not-allowed; opacity: .45; }.event-creation-confirm { align-items: center; flex-wrap: wrap; justify-content: flex-start; }.event-creation-confirm strong { flex-basis: 100%; }.event-creation-confirm p { color: #5e6961; flex: 1; margin: 0; }
-@media (max-width: 640px) { .event-creation-overlay { padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom); }.product-app .event-creation-overlay { right: 0; }.event-creation-dialog { border-radius: 0; height: 100dvh; max-height: 100dvh; min-height: 0; }.event-creation-dialog > header { flex-shrink: 0; padding: max(16px, env(safe-area-inset-top)) 18px 14px; }.event-creation-steps { flex-shrink: 0; gap: 8px; padding: 12px 18px; }.event-creation-steps li { flex: 1; font-size: .68rem; gap: 5px; min-width: 0; }.event-creation-steps li > span { flex-shrink: 0; height: 21px; width: 21px; }.event-creation-body { padding: 20px 18px; }.event-creation-task { grid-template-columns: 1fr; }.event-creation-dialog > footer, .event-creation-confirm { flex-shrink: 0; padding: 14px 18px max(14px, env(safe-area-inset-bottom)); }.event-creation-dialog > footer button { flex: 1; } }
+@media (max-width: 640px) { .event-creation-overlay { padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom); }.product-app .event-creation-overlay { right: 0; }.event-creation-dialog { border-radius: 0; height: 100dvh; max-height: 100dvh; min-height: 0; }.event-creation-dialog > header { flex-shrink: 0; padding: max(16px, env(safe-area-inset-top)) 18px 14px; }.event-creation-steps { flex-shrink: 0; gap: 8px; padding: 12px 18px; }.event-creation-steps li { flex: 1; font-size: .68rem; gap: 5px; min-width: 0; }.event-creation-steps li > span { flex-shrink: 0; height: 21px; width: 21px; }.event-creation-body { padding: 20px 10px; }.event-creation-task { grid-template-columns: 1fr; }.event-creation-plan-task { padding: 13px 6px; }.event-creation-dialog > footer, .event-creation-confirm { flex-shrink: 0; padding: 14px 18px max(14px, env(safe-area-inset-bottom)); }.event-creation-dialog > footer button { flex: 1; } }
 .event-operations-page.workspace-open > .event-creation-overlay { display: grid; }
 .api-event-header-actions { align-items: center; display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
 .api-event-header-actions button, .api-task-workspace-heading button { background: #edf4ee; border: 1px solid #c9d8cb; border-radius: 7px; color: #215d3a; cursor: pointer; font-weight: 700; padding: 8px 10px; }
@@ -299,6 +299,71 @@
 .api-event-workspace-tabs button:hover { color: #285c3d; }
 .api-event-workspace-tabs button.active { border-bottom-color: #2f6f47; color: #214f34; }
 .api-event-workspace-tabs button:focus-visible { border-radius: 4px; outline: 2px solid #35724c; outline-offset: 3px; }
+
+.api-event-workspace-tab-toggle {
+  display: none;
+}
+
+/* TICKET-73/74: with 4 tabs (Tasks/Volunteers/Participants/Logistics) the
+   button bar no longer fits at phone widths without either scrolling with
+   no affordance or breaking out of the workspace card. Collapse it into the
+   same toggle-button + dropdown-panel pattern as the site nav (.nav-menu-toggle
+   / .nav-links.open in src/index.css) instead of a plain native <select>.
+   !important defeats InventoryLogistics.css's unrelated, unconditional
+   `.api-event-workspace-tabs { display: flex }` (same class name, loaded
+   later in the bundle via EventLogistics.tsx's import) at this breakpoint. */
+@media (max-width: 480px) {
+  .api-event-workspace-tab-menu {
+    position: relative;
+  }
+
+  .api-event-workspace-tab-toggle {
+    background: rgba(255, 255, 255, 0.9);
+    border: 1px solid #cbd6cb;
+    border-radius: 9999px;
+    cursor: pointer;
+    display: inline-flex;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 800;
+    margin-bottom: 12px;
+    padding: 10px 16px;
+  }
+
+  .api-event-workspace-tabs {
+    background: #fff !important;
+    border: 1px solid #e3e8e4;
+    border-radius: 14px;
+    box-shadow: 0 14px 34px rgba(0, 0, 0, 0.12);
+    display: none !important;
+    flex-direction: column;
+    gap: 2px !important;
+    left: 0;
+    margin-top: 8px !important;
+    min-width: 200px;
+    padding: 8px;
+    position: absolute;
+    top: 100%;
+    z-index: 101;
+  }
+
+  .api-event-workspace-tabs.open {
+    display: flex !important;
+  }
+
+  .api-event-workspace-tabs button {
+    border-bottom: 0;
+    border-radius: 8px;
+    margin-bottom: 0;
+    padding: 12px 14px;
+    text-align: left;
+  }
+
+  .api-event-workspace-tabs button.active {
+    background: rgba(23, 201, 100, 0.1);
+    border-bottom-color: transparent;
+  }
+}
 
 .event-volunteer-workspace { display: grid; gap: 18px; }
 .event-volunteer-loading { color: #637068; margin: 6px 0; }

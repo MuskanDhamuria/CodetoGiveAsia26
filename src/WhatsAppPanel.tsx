@@ -402,6 +402,19 @@ export default function WhatsAppPanel({ api = adminApi }: { api?: AdminApi }) {
               <h2>Certificates</h2>
               <p>Generate for everyone who attended, or pick specific people</p>
             </div>
+            <label className="search-field">
+              <span>Event</span>
+              <select
+                value={selectedEventId ?? ""}
+                onChange={(event) => setSelectedEventId(Number(event.target.value))}
+              >
+                {events.map((event) => (
+                  <option key={event.id} value={event.id}>
+                    {event.name} · {event.event_date}
+                  </option>
+                ))}
+              </select>
+            </label>
             <div className="whatsapp-panel-actions">
               <button
                 type="button"

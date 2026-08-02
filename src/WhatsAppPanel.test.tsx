@@ -62,13 +62,18 @@ function buildApi(overrides: Partial<AdminApi> = {}): AdminApi {
 }
 
 describe("WhatsAppPanel", () => {
-  it("shows a single shared event selector that isn't nested inside the announcement card", async () => {
+  it("shows a shared event filter plus an event selector directly on the Certificates card", async () => {
     const api = buildApi()
     render(<WhatsAppPanel api={api} />)
 
     await screen.findByText("Jia Yu")
-    expect(screen.getAllByLabelText("Event")).toHaveLength(1)
     expect(screen.getByText("Filtering by event")).toBeTruthy()
+    // One selector in the shared "Filtering by event" section, one inside
+    // the Certificates card itself, both kept in sync via selectedEventId.
+    const eventSelectors = screen.getAllByLabelText("Event")
+    expect(eventSelectors).toHaveLength(2)
+    const certificatesCard = screen.getByText("Certificates").closest("section")!
+    expect(within(certificatesCard).getByLabelText("Event")).toBeTruthy()
   })
 
   it("filters the certificate recipient list by delivery status", async () => {

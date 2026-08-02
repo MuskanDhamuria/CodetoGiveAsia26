@@ -37,6 +37,52 @@ npm run dev
 
 Then open <http://localhost:8443>.
 
+## WhatsApp bot
+
+The WhatsApp bot integrates with the Meta WhatsApp Cloud API. Follow these
+steps in order to get it running for a local demo.
+
+**1. Create `backend/.env`** with:
+
+```
+WHATSAPP_TOKEN=<permanent token from a Meta System User>
+WHATSAPP_PHONE_NUMBER_ID=<from Meta app dashboard > WhatsApp > API Setup>
+WHATSAPP_DISPLAY_NUMBER=<your WhatsApp number, digits only>
+WHATSAPP_VERIFY_TOKEN=<any string you invent, entered in Meta's webhook config too>
+WHATSAPP_APP_SECRET=<optional, from Meta app dashboard > Settings > Basic>
+PASSION_PUBLIC_BASE_URL=http://localhost:8000
+PASSION_CORS_ORIGINS=http://localhost:5173
+```
+
+Refresh `WHATSAPP_TOKEN` if it's more than a day old — temporary tokens from
+the Meta dashboard expire in 24h.
+
+**2. Start the backend** (terminal 1): `python3 -m uvicorn backend.main:app --reload`
+(runs on `localhost:8000`).
+
+**3. Start the tunnel** (terminal 2): `ngrok http 8000`. Copy the fresh
+`https://...ngrok-free.dev` URL it gives you — it's different every time
+ngrok restarts.
+
+**4. Update `PASSION_PUBLIC_BASE_URL`** in `backend/.env` to that ngrok URL,
+then restart the backend so certificate links pick it up.
+
+**5. Point Meta at the tunnel**: in the Meta dashboard (WhatsApp product →
+Configuration → Webhook), set the Callback URL to
+`{ngrok-url}/api/v1/integrations/whatsapp/webhook`, re-enter
+`WHATSAPP_VERIFY_TOKEN`, click **Verify and Save**.
+
+**6. Start the frontend** (terminal 3): `npm run dev`. Confirm
+`PASSION_CORS_ORIGINS` in `backend/.env` matches its local URL (e.g.
+`http://localhost:5173`).
+
+**7. Send yourself a real WhatsApp message** and confirm the bot replies,
+before anyone's watching.
+
+While demoing: don't restart ngrok once it's running (the URL changes and
+steps 4–5 have to be redone), and keep all three terminals visible so you
+notice immediately if one of them dies.
+
 ## Testing
 
 ```sh

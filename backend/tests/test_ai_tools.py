@@ -332,6 +332,29 @@ class AiToolsTest(unittest.TestCase):
             result, {"success": False, "reason": "Unknown tool 'delete_event'"}
         )
 
+    def test_unexpected_executor_exception_becomes_a_structured_error(self) -> None:
+        # TICKET-53: an unexpected failure inside an executor (e.g. a raw
+        # sqlite3.OperationalError) must not propagate out of
+        # dispatch_tool_call — it would otherwise kill the SSE stream
+        # mid-turn with no error event at all.
+        from backend.ai_tools import tools as ai_tools_module
+
+        def boom(db, args):
+            raise RuntimeError("simulated database failure")
+
+        with patch.dict(ai_tools_module.TOOL_EXECUTORS, {"list_event_templates": boom}):
+            result = dispatch_tool_call(self.db, "list_event_templates", {})
+
+        self.assertFalse(result["success"])
+        self.assertIn("simulated database failure", result["reason"])
+
+        audit_row = self.db.execute(
+            "SELECT tool_name, success, reason FROM ai_audit_log ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+        self.assertEqual(audit_row["tool_name"], "list_event_templates")
+        self.assertEqual(audit_row["success"], 0)
+        self.assertIn("simulated database failure", audit_row["reason"])
+
     # -- list_event_templates (TICKET-12) ----------------------------------
 
     def test_list_event_templates_returns_id_and_name(self) -> None:
@@ -1022,6 +1045,48 @@ class AiToolsBroadcastAndReportsTest(AiToolsTest):
         names = {item["name"] for item in result["result"]["items"]}
         self.assertIn("Wrapped Up", names)
         self.assertNotIn("Still Open", names)
+
+    def test_list_completed_event_reports_omits_real_names_by_default(self) -> None:
+        # TICKET-50: real participant/volunteer names must not be sent to
+        # OpenRouter by default — only counts.
+        template_id = self.create_template()
+        event = self._publish(event_template_id=template_id)
+        participant_id = self.create_participant(name="Aisha Rahman")
+        self.db.execute(
+            "INSERT INTO participations (event_id, participant_id, rsvp_status, attendance) "
+            "VALUES (?, ?, 1, 1)",
+            (event["id"], participant_id),
+        )
+        self.db.execute("UPDATE events SET status = 'closed' WHERE id = ?", (event["id"],))
+        self.db.commit()
+
+        result = dispatch_tool_call(self.db, "list_completed_event_reports", {})
+
+        self.assertTrue(result["success"])
+        item = result["result"]["items"][0]
+        self.assertNotIn("participant_names", item)
+        self.assertNotIn("volunteer_names", item)
+        self.assertEqual(item["attendees"], 1)
+
+    def test_list_completed_event_reports_returns_names_when_explicitly_requested(self) -> None:
+        template_id = self.create_template()
+        event = self._publish(event_template_id=template_id)
+        participant_id = self.create_participant(name="Aisha Rahman")
+        self.db.execute(
+            "INSERT INTO participations (event_id, participant_id, rsvp_status, attendance) "
+            "VALUES (?, ?, 1, 1)",
+            (event["id"], participant_id),
+        )
+        self.db.execute("UPDATE events SET status = 'closed' WHERE id = ?", (event["id"],))
+        self.db.commit()
+
+        result = dispatch_tool_call(
+            self.db, "list_completed_event_reports", {"include_names": True}
+        )
+
+        self.assertTrue(result["success"])
+        item = result["result"]["items"][0]
+        self.assertIn("Aisha Rahman", item["participant_names"])
 
     # -- preview_certificate_generation / generate_event_certificates -------
 

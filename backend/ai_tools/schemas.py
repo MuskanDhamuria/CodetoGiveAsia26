@@ -259,9 +259,28 @@ class SendShiftReminderArgs(BaseModel):
 
 
 class ListCompletedEventReportsArgs(BaseModel):
-    """TICKET-41."""
+    """TICKET-41.
+
+    `include_names` defaults to False — see docs/tickets.md TICKET-50: real
+    participant/volunteer names for this migrant-worker beneficiary
+    population shouldn't leave the system to OpenRouter on every "how did
+    the food drive go"-style query when a headcount already answers it. Set
+    True only when the organizer's question actually needs the name list
+    (e.g. "who attended the food drive").
+    """
 
     model_config = ConfigDict(extra="forbid")
+
+    include_names: bool = Field(
+        default=False,
+        description=(
+            "Set True only when the organizer's question needs the actual "
+            "participant/volunteer name list (e.g. 'who attended'). Leave "
+            "False for headcount/status questions ('how did it go', 'is the "
+            "report done') — attendee/volunteer counts already answer those "
+            "without sending real names."
+        ),
+    )
 
 
 class ListEventCertificatesArgs(BaseModel):

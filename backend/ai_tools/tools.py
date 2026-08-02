@@ -325,17 +325,38 @@ def send_shift_reminder(db: sqlite3.Connection, args: SendShiftReminderArgs) -> 
 
 
 def list_completed_event_reports(db: sqlite3.Connection, args: ListCompletedEventReportsArgs) -> dict:
-    """TICKET-41."""
+    """TICKET-41.
+
+    Drops participant_names/volunteer_names by default (see TICKET-50) —
+    attendees/volunteers counts already answer most organizer questions
+    without sending real names to OpenRouter. Pass include_names=True to get
+    the name lists back when the organizer's question actually needs them.
+    """
 
     reports = reports_routes.completed_event_reports(db)
-    return {"items": [report.model_dump(mode="json") for report in reports]}
+    items = [report.model_dump(mode="json") for report in reports]
+    if not args.include_names:
+        for item in items:
+            item.pop("participant_names", None)
+            item.pop("volunteer_names", None)
+    return {"items": items}
 
 
 def list_event_certificates(db: sqlite3.Connection, args: ListEventCertificatesArgs) -> dict:
-    """TICKET-41."""
+    """TICKET-41.
+
+    Drops download_token (see TICKET-50) — it's a bearer-style secret
+    (GET /public/certificates/{token} needs no other auth) that the model
+    never needs to answer any question this tool exists to answer, only
+    counts/status.
+    """
 
     certificates = whatsapp_routes.list_certificates(args.event_id, db)
-    return {"items": [certificate.model_dump(mode="json") for certificate in certificates]}
+    items = [certificate.model_dump(mode="json") for certificate in certificates]
+    for item in items:
+        item.pop("download_token", None)
+        item.pop("link", None)
+    return {"items": items}
 
 
 def preview_certificate_generation(

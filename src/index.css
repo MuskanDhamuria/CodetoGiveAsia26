@@ -661,51 +661,27 @@
   width: 100%;
 }
 
-.portfolio-preview-overlay {
-  background: rgba(18, 35, 24, 0.48);
-  display: none;
+.portfolio-mobile-actions {
   align-items: center;
-  inset: 0;
-  justify-content: center;
-  padding: 24px;
-  position: fixed;
-  z-index: 120;
-}
-
-.portfolio-preview-dialog {
-  box-shadow: 0 24px 70px rgba(20, 40, 27, 0.28);
-  max-width: 560px;
-  position: relative;
-  width: 100%;
-}
-
-.portfolio-preview-dialog > header {
-  align-items: flex-start;
-  display: flex;
+  background: #fff;
+  border-top: 1px solid #e4e8e4;
+  bottom: 0;
+  display: none;
+  gap: 12px;
   justify-content: space-between;
+  padding: 12px 16px;
+  position: sticky;
+  z-index: 20;
 }
 
-.portfolio-preview-dialog > header p {
-  margin: 0;
-}
-
-.portfolio-preview-dialog > header .collection-status {
-  float: none;
-  margin-left: auto;
-}
-
-.portfolio-preview-dialog > header button {
-  background: transparent;
+.portfolio-mobile-actions button {
+  background: #246b45;
   border: 0;
-  color: #506058;
+  border-radius: 8px;
+  color: #fff;
   cursor: pointer;
-  font-size: 28px;
-  line-height: 1;
-  padding: 0;
-}
-
-.portfolio-preview-dialog h2 {
-  margin-top: 20px;
+  font-weight: 700;
+  padding: 10px 16px;
 }
 
 .prototype-switcher {
@@ -817,16 +793,8 @@
     display: none;
   }
 
-  .portfolio-preview-overlay {
-    align-items: flex-end;
+  .portfolio-mobile-actions {
     display: flex;
-    padding: 0;
-  }
-
-  .portfolio-preview-dialog {
-    border-radius: 16px 16px 0 0;
-    max-height: calc(100dvh - 20px);
-    overflow-y: auto;
   }
 }
 

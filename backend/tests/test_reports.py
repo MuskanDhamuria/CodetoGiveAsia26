@@ -74,9 +74,13 @@ class ReportsEndpointTest(unittest.TestCase):
                 "name": "Health Fair",
                 "date": "2026-07-18",
                 "venue": "Tampines Hub",
+                "template_name": "Community",
+                "is_skills_workshop": False,
                 "report_status": "Incomplete",
                 "attendees": 1,
                 "volunteers": 1,
+                "participant_names": ["Jamie"],
+                "volunteer_names": ["Alex"],
                 "partners": ["CareWell Clinic"],
                 "generated_caption": (
                     "Health Fair welcomed 1 attendees with the support of "

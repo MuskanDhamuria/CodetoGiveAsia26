@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, Security, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from backend.api.routes._common import Connection
+from backend.phone import InvalidPhoneNumberError, normalize_phone_number
 from backend.schema.volunteer_auth import (
     VolunteerAccountOut,
     VolunteerDashboardEvent,
@@ -31,8 +32,14 @@ PASSWORD_R = 8
 PASSWORD_P = 1
 
 
-def normalise_phone(value: str) -> str:
-    return "+" + "".join(character for character in value if character.isdigit())
+def normalized_phone(value: str) -> str:
+    try:
+        return normalize_phone_number(value)
+    except InvalidPhoneNumberError as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Enter a valid phone number",
+        ) from error
 
 
 def validate_password(password: str) -> None:
@@ -143,9 +150,7 @@ def current_account(
 @router.post("/register", response_model=VolunteerAuthResult, status_code=201)
 def register(payload: VolunteerRegister, db: Connection) -> VolunteerAuthResult:
     validate_password(payload.password)
-    phone = normalise_phone(payload.contact_number)
-    if len(phone) < 7:
-        raise HTTPException(status_code=422, detail="Enter a valid phone number")
+    phone = normalized_phone(payload.contact_number)
 
     existing_account = find_account_by_phone(db, phone)
     if existing_account is not None:
@@ -189,7 +194,7 @@ def register(payload: VolunteerRegister, db: Connection) -> VolunteerAuthResult:
 
 @router.post("/login", response_model=VolunteerAuthResult)
 def login(payload: VolunteerLogin, db: Connection) -> VolunteerAuthResult:
-    phone = normalise_phone(payload.contact_number)
+    phone = normalized_phone(payload.contact_number)
     account = find_account_by_phone(db, phone)
     if account is None or not verify_password(payload.password, account["password_hash"]):
         raise HTTPException(status_code=401, detail="Phone number or password is incorrect")

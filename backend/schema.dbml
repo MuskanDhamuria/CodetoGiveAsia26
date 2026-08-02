@@ -76,6 +76,16 @@ Table template_roles {
   }
 }
 
+Table event_roles {
+  event_id integer [not null, ref: > events.id]
+  role_id integer [not null, ref: > roles.id]
+  created_at varchar [not null]
+
+  indexes {
+    (event_id, role_id) [pk]
+  }
+}
+
 Table template_tasks {
   id integer [pk]
   event_template_id integer [not null, ref: > event_templates.id]

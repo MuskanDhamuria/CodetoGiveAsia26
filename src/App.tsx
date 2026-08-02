@@ -866,7 +866,7 @@ function VolunteerAvailabilityCalendar() {
   );
 }
 
-function VolunteersPage() {
+function VolunteersPage({ onOpenEvent }: { onOpenEvent: (eventId: number) => void }) {
   return (
     <section className="volunteers-page">
       <div className="dashboard-shell">
@@ -878,7 +878,7 @@ function VolunteersPage() {
             taking part.
           </span>
         </header>
-        <VolunteerDirectory />
+        <VolunteerDirectory onOpenEvent={onOpenEvent} />
       </div>
     </section>
   );
@@ -1013,7 +1013,7 @@ function AdminPanel() {
                 initialEventIndex={openEventIndex}
               />
             )}
-            {activePage === "volunteers" && <VolunteersPage />}
+            {activePage === "volunteers" && <VolunteersPage onOpenEvent={openEventWorkspace} />}
             {activePage === "ai" && <PlaceholderPage title="AI Copilot" />}
           </div>
           <AiCopilot activePage={activePage} />

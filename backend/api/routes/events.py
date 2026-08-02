@@ -150,6 +150,15 @@ def create_event(payload: EventCreate, db: Connection) -> EventDetail:
             if payload.event_template_id is not None
             else []
         )
+        if payload.event_template_id is not None:
+            db.execute(
+                """
+                INSERT INTO event_roles (event_id, role_id)
+                SELECT ?, role_id FROM template_roles
+                WHERE event_template_id = ?
+                """,
+                (event["id"], payload.event_template_id),
+            )
         for template_task in template_tasks:
             due_at = (
                 payload.event_date + timedelta(days=template_task["relative_due_days"])

@@ -9,6 +9,7 @@ import {
   type TeamMember,
 } from "./admin-api"
 import EventCollectionPrototype, { type EventCollectionItem } from "./EventCollectionPrototype"
+import EventVolunteerTab from "./EventVolunteerTab"
 import "./EventOperationsMvp.css"
 
 
@@ -100,6 +101,7 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
   const [reviewPage, setReviewPage] = useState(0)
   const [creating, setCreating] = useState(false)
   const [openEventId, setOpenEventId] = useState<number | null>(initialEventId)
+  const [workspaceTab, setWorkspaceTab] = useState<"tasks" | "volunteers">("tasks")
   const [draggedTaskId, setDraggedTaskId] = useState<number | null>(null)
   const [dragOverStatus, setDragOverStatus] = useState<string | null>(null)
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
@@ -174,6 +176,7 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
     : 0
 
   function openCollectionEvent(event: EventDetail) {
+    setWorkspaceTab("tasks")
     setOpenEventId(event.id)
   }
 
@@ -554,7 +557,7 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
           {message || error}
         </p>
         {openEvent ? (<>
-          <button aria-label="Back to Events" className="event-workspace-back api-event-workspace-back" type="button" onClick={() => setOpenEventId(null)}>← Back to Events</button>
+          <button aria-label="Back to Events" className="event-workspace-back api-event-workspace-back" type="button" onClick={() => { setWorkspaceTab("tasks"); setOpenEventId(null) }}>← Back to Events</button>
           <section aria-label={openEvent.name} className="event-operations-workspace api-event-workspace">
             <header className="api-event-workspace-header">
               <div>
@@ -578,7 +581,32 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
               <div><dt>Tasks</dt><dd>{openEvent.tasks.length}</dd></div>
             </dl>
             {openEvent.status === "closed" && <p className="event-operations-closed-notice">Closed Events are read-only. The Task history is kept for reference.</p>}
-            <div className="api-event-workspace-body">
+            <div className="api-event-workspace-tabs" role="tablist" aria-label="Event workspace sections">
+              <button
+                aria-controls="event-task-workspace"
+                aria-selected={workspaceTab === "tasks"}
+                className={workspaceTab === "tasks" ? "active" : ""}
+                id="event-tasks-tab"
+                role="tab"
+                type="button"
+                onClick={() => setWorkspaceTab("tasks")}
+              >Tasks</button>
+              <button
+                aria-controls="event-volunteer-workspace"
+                aria-selected={workspaceTab === "volunteers"}
+                className={workspaceTab === "volunteers" ? "active" : ""}
+                id="event-volunteers-tab"
+                role="tab"
+                type="button"
+                onClick={() => setWorkspaceTab("volunteers")}
+              >Volunteers</button>
+            </div>
+            {workspaceTab === "tasks" ? <div
+              aria-labelledby="event-tasks-tab"
+              className="api-event-workspace-body"
+              id="event-task-workspace"
+              role="tabpanel"
+            >
               <div className="api-event-workspace-main">
                 <div className="api-task-workspace-heading">
                   <h3>Task workspace</h3>
@@ -685,7 +713,9 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
                 </dl>
                 {openEvent.status === "open" && <p className="api-event-progress-help">Use <strong>Edit</strong> on a Task to update its details and Subtasks.</p>}
               </aside>
-            </div>
+            </div> : <div aria-labelledby="event-volunteers-tab" id="event-volunteer-workspace" role="tabpanel">
+              <EventVolunteerTab eventId={openEvent.id} readOnly={openEvent.status === "closed"} />
+            </div>}
           </section>
         </>
         ) : <>

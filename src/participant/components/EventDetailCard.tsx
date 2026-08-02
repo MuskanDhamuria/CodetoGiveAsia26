@@ -5,6 +5,7 @@ import {
   cancelRegistration,
   getEvent,
   getMyEvents,
+  getParticipantCertificate,
   registerForEvent,
   type EventSummary,
 } from "../api/client";
@@ -49,6 +50,8 @@ export default function EventDetailCard() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionPending, setActionPending] = useState(false);
   const [showQr, setShowQr] = useState(false);
+  const [attendance, setAttendance] = useState<boolean | null>(null);
+  const [certificateLink, setCertificateLink] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -78,7 +81,9 @@ export default function EventDetailCard() {
     getMyEvents(participant.participantId)
       .then((response) => {
         if (cancelled) return;
-        setIsSignedUp(response.items.some((item) => item.id === numericEventId));
+        const item = response.items.find((entry) => entry.id === numericEventId);
+        setIsSignedUp(Boolean(item?.rsvp_status));
+        setAttendance(item?.attendance ?? null);
         setSignupCheckStatus("ready");
       })
       .catch((error) => {
@@ -99,6 +104,26 @@ export default function EventDetailCard() {
       cancelled = true;
     };
   }, [participant, numericEventId, onIdentityInvalid]);
+
+  useEffect(() => {
+    if (!participant || attendance !== true) {
+      setCertificateLink(null);
+      return;
+    }
+    let cancelled = false;
+    getParticipantCertificate(participant.participantId, numericEventId)
+      .then((result) => {
+        if (!cancelled) setCertificateLink(result.link);
+      })
+      .catch(() => {
+        // No certificate issued yet (organizer hasn't generated them for
+        // this event) — nothing to show, not an error state.
+        if (!cancelled) setCertificateLink(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [participant, numericEventId, attendance]);
 
   async function handleSignup(participantId: number) {
     setActionPending(true);
@@ -218,6 +243,14 @@ export default function EventDetailCard() {
         ) : isSignedUp ? (
           <>
             <p className="event-detail-confirmed">You're signed up for this event.</p>
+            {attendance === true && (
+              <p className="event-detail-confirmed">You were marked present at this event.</p>
+            )}
+            {certificateLink && (
+              <a href={certificateLink} target="_blank" rel="noreferrer">
+                Download your certificate
+              </a>
+            )}
             <button type="button" onClick={() => setShowQr((current) => !current)}>
               {showQr ? "Hide my QR code" : "Show my QR code"}
             </button>

@@ -207,6 +207,67 @@ describe("Cancelled events (TICKET-9)", () => {
   })
 })
 
+describe("Attendance and certificates (TICKET-46)", () => {
+  it("shows an Attended message and certificate download link once attendance and a certificate exist", async () => {
+    signInAs(KNOWN_PARTICIPANT)
+    mockRoutes({
+      "GET /api/v1/events/1": () => jsonResponse(OPEN_EVENT),
+      "GET /api/v1/participants/42/events?limit=100": () =>
+        jsonResponse({
+          items: [{ ...OPEN_EVENT, rsvp_status: true, attendance: true }],
+          total: 1,
+          limit: 100,
+          offset: 0,
+        }),
+      "GET /api/v1/participants/42/events/1/certificate": () =>
+        jsonResponse({ link: "https://example.com/api/v1/public/certificates/tok123" }),
+    })
+
+    renderEvent("/participant/events/1")
+
+    expect(await screen.findByText("You were marked present at this event.")).toBeTruthy()
+    const link = (await screen.findByText("Download your certificate")) as HTMLAnchorElement
+    expect(link.getAttribute("href")).toBe("https://example.com/api/v1/public/certificates/tok123")
+  })
+
+  it("doesn't show a certificate link when none has been issued yet", async () => {
+    signInAs(KNOWN_PARTICIPANT)
+    mockRoutes({
+      "GET /api/v1/events/1": () => jsonResponse(OPEN_EVENT),
+      "GET /api/v1/participants/42/events?limit=100": () =>
+        jsonResponse({
+          items: [{ ...OPEN_EVENT, rsvp_status: true, attendance: true }],
+          total: 1,
+          limit: 100,
+          offset: 0,
+        }),
+      "GET /api/v1/participants/42/events/1/certificate": () =>
+        jsonResponse({ detail: "No certificate has been issued for this participant yet" }, 404),
+    })
+
+    renderEvent("/participant/events/1")
+
+    expect(await screen.findByText("You were marked present at this event.")).toBeTruthy()
+    expect(screen.queryByText("Download your certificate")).toBeNull()
+  })
+})
+
+describe("Stale saved identity recovery (TICKET-45)", () => {
+  it("clears a saved identity whose participant no longer exists and falls back to the signup form", async () => {
+    signInAs(KNOWN_PARTICIPANT)
+    mockRoutes({
+      "GET /api/v1/events/1": () => jsonResponse(OPEN_EVENT),
+      "GET /api/v1/participants/42/events?limit=100": () =>
+        jsonResponse({ detail: "Participant 42 was not found" }, 404),
+    })
+
+    renderEvent("/participant/events/1")
+
+    expect(await screen.findByLabelText("Name")).toBeTruthy()
+    expect(localStorage.getItem("p2s.participant")).toBeNull()
+  })
+})
+
 describe("Signup-check failures surface an error instead of hiding as 'not signed up' (TICKET-16 / TICKET-11)", () => {
   it("shows an error state instead of the Sign up button on a non-404 failure", async () => {
     signInAs(KNOWN_PARTICIPANT)

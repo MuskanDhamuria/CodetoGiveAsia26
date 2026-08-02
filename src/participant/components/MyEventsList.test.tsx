@@ -116,4 +116,42 @@ describe("MyEventsList", () => {
       expect(screen.getByText("Cancelled")).toBeTruthy()
     })
   })
+
+  describe("Cancelled RSVPs leave a trace (TICKET-46)", () => {
+    it("still shows an event the participant cancelled their own RSVP for, flagged accordingly", async () => {
+      signInAs(KNOWN_PARTICIPANT)
+      mockRoutes({
+        "GET /api/v1/participants/42/events?limit=100": () =>
+          jsonResponse({
+            items: [{ ...OPEN_EVENT, rsvp_status: false, attendance: null }],
+            total: 1,
+            limit: 100,
+            offset: 0,
+          }),
+      })
+
+      renderMyEvents()
+
+      expect(await screen.findByText("Wellness Morning")).toBeTruthy()
+      expect(screen.getByText("You cancelled this")).toBeTruthy()
+    })
+
+    it("shows an Attended badge when attendance was recorded", async () => {
+      signInAs(KNOWN_PARTICIPANT)
+      mockRoutes({
+        "GET /api/v1/participants/42/events?limit=100": () =>
+          jsonResponse({
+            items: [{ ...OPEN_EVENT, rsvp_status: true, attendance: true }],
+            total: 1,
+            limit: 100,
+            offset: 0,
+          }),
+      })
+
+      renderMyEvents()
+
+      expect(await screen.findByText("Wellness Morning")).toBeTruthy()
+      expect(screen.getByText("Attended")).toBeTruthy()
+    })
+  })
 })

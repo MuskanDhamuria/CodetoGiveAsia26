@@ -32,9 +32,10 @@ export default function MyEventsList() {
     getMyEvents(participant.participantId)
       .then((data) => {
         if (!cancelled) {
-          // The endpoint returns full RSVP/attendance history; only show
-          // events the participant is currently signed up for.
-          setEvents(data.items.filter((event) => event.rsvp_status));
+          // Show the full RSVP/attendance history, including RSVPs the
+          // participant has since cancelled, rather than making a
+          // cancelled signup vanish with no trace. See TICKET-46.
+          setEvents(data.items);
           setStatus("ready");
         }
       })
@@ -86,6 +87,12 @@ export default function MyEventsList() {
                     {time && <> · {time}</>}
                   </span>
                   {event.is_cancelled && <span className="event-status status-cancelled">Cancelled</span>}
+                  {!event.rsvp_status && (
+                    <span className="event-status status-cancelled">You cancelled this</span>
+                  )}
+                  {event.rsvp_status && event.attendance === true && (
+                    <span className="event-status status-confirmed">Attended</span>
+                  )}
                 </div>
               </Link>
             </li>

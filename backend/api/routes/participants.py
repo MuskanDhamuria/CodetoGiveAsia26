@@ -229,6 +229,27 @@ def get_participant_attendance_qr_token(
     return {"token": generate_token(PARTICIPANT_KIND, participant_id, event_id)}
 
 
+@router.get("/participants/{participant_id}/events/{event_id}/certificate")
+def get_participant_certificate(participant_id: int, event_id: int, db: Connection) -> dict:
+    """The participant's own certificate link for one event, if one has been
+
+    issued (admin generates certificates in bulk per event — see
+    whatsapp.py's generate_certificates). Scoped to this participant/event
+    pair rather than exposing the admin-only list-all-certificates route to
+    the portal. See docs/tickets.md TICKET-46.
+    """
+    from backend.bot.commands import certificate_link
+
+    require_participant(db, participant_id)
+    row = db.execute(
+        "SELECT download_token FROM certificates WHERE event_id = ? AND participant_id = ?",
+        (event_id, participant_id),
+    ).fetchone()
+    if row is None:
+        raise HTTPException(404, "No certificate has been issued for this participant yet")
+    return {"link": certificate_link(row["download_token"])}
+
+
 @router.post(
     "/events/{event_id}/participants",
     response_model=ParticipationOut,

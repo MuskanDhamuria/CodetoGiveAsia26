@@ -148,3 +148,29 @@ export function getAttendanceQrToken(
 ): Promise<{ token: string }> {
   return request(`/participants/${participantId}/events/${eventId}/qr-token`);
 }
+
+export type ParticipantProfileUpdate = {
+  name?: string;
+  contact_number?: string | null;
+  email?: string | null;
+};
+
+export function updateParticipant(
+  participantId: number,
+  input: ParticipantProfileUpdate,
+): Promise<ParticipantRecord> {
+  return request(`/participants/${participantId}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+// Throws ApiError(404) if no certificate has been issued for this
+// participant/event yet — admin generates certificates in bulk per event,
+// this doesn't create one.
+export function getParticipantCertificate(
+  participantId: number,
+  eventId: number,
+): Promise<{ link: string }> {
+  return request(`/participants/${participantId}/events/${eventId}/certificate`);
+}

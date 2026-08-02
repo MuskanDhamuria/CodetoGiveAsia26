@@ -9,6 +9,7 @@ import {
 import EventBrowseList from "./components/EventBrowseList";
 import EventDetailCard from "./components/EventDetailCard";
 import MyEventsList from "./components/MyEventsList";
+import ProfileEditForm from "./components/ProfileEditForm";
 import SignInPage from "./components/SignInPage";
 import "./participant.css";
 
@@ -21,6 +22,7 @@ export type ParticipantOutletContext = {
 function ParticipantMenu({ participant, onSignOut }: { participant: StoredParticipant; onSignOut: () => void }) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
     if (!open) return;
@@ -44,6 +46,16 @@ function ParticipantMenu({ participant, onSignOut }: { participant: StoredPartic
       </button>
       {open && (
         <div className="participant-menu-dropdown" role="menu">
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setOpen(false);
+              navigate("/participant/profile");
+            }}
+          >
+            Edit profile
+          </button>
           <button
             type="button"
             role="menuitem"
@@ -116,6 +128,7 @@ export default function ParticipantApp() {
         <Route index element={<EventBrowseList />} />
         <Route path="events/:eventId" element={<EventDetailCard />} />
         <Route path="my-events" element={<MyEventsList />} />
+        <Route path="profile" element={<ProfileEditForm />} />
         <Route path="sign-in" element={<SignInPage />} />
       </Route>
     </Routes>

@@ -244,6 +244,76 @@ class ParticipantsEndpointTest(unittest.TestCase):
         self.assertEqual(item["status"], "closed")
         self.assertNotIn("cancelled_at", item)
 
+    def test_update_participant_edits_profile_fields(self) -> None:
+        # TICKET-46: the participant portal's self-service profile edit
+        # form goes through this existing PATCH endpoint.
+        participant = self.client.post(
+            "/api/v1/participants", json={"name": "Alice", "contact_number": "+6591234567"}
+        ).json()
+
+        response = self.client.patch(
+            f"/api/v1/participants/{participant['id']}",
+            json={"name": "Alice Tan", "email": "alice.tan@example.com"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["name"], "Alice Tan")
+        self.assertEqual(body["email"], "alice.tan@example.com")
+        self.assertEqual(body["contact_number"], "+6591234567")
+
+    def test_update_participant_not_found(self) -> None:
+        response = self.client.patch("/api/v1/participants/999", json={"name": "Ghost"})
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_get_participant_certificate_not_yet_issued(self) -> None:
+        event_id = self.insert_template_and_event()
+        participant = self.client.post(
+            "/api/v1/participants", json={"name": "Bob", "contact_number": "+6598765432"}
+        ).json()
+        self.client.post(
+            f"/api/v1/events/{event_id}/participants",
+            json={"participant_id": participant["id"]},
+        )
+
+        response = self.client.get(
+            f"/api/v1/participants/{participant['id']}/events/{event_id}/certificate"
+        )
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_get_participant_certificate_returns_link_once_issued(self) -> None:
+        event_id = self.insert_template_and_event()
+        participant = self.client.post(
+            "/api/v1/participants", json={"name": "Bob", "contact_number": "+6598765432"}
+        ).json()
+        self.client.post(
+            f"/api/v1/events/{event_id}/participants",
+            json={"participant_id": participant["id"]},
+        )
+        self.client.patch(
+            f"/api/v1/events/{event_id}/participants/{participant['id']}",
+            json={"attendance": True},
+        )
+        generated = self.client.post(f"/api/v1/events/{event_id}/certificates/generate")
+        self.assertEqual(generated.status_code, 200)
+
+        response = self.client.get(
+            f"/api/v1/participants/{participant['id']}/events/{event_id}/certificate"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("link", response.json())
+        self.assertIn(f"/public/certificates/", response.json()["link"])
+
+    def test_get_participant_certificate_requires_existing_participant(self) -> None:
+        event_id = self.insert_template_and_event()
+
+        response = self.client.get(f"/api/v1/participants/999/events/{event_id}/certificate")
+
+        self.assertEqual(response.status_code, 404)
+
 
 if __name__ == "__main__":
     unittest.main()

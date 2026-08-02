@@ -52,11 +52,11 @@ function draftResponse(overrides: Partial<typeof DRAFT_EVENT> = {}) {
   ])
 }
 
-async function openPanelWithDraft() {
+async function openPanelWithDraft(onDataChanged?: () => void) {
   vi.mocked(fetch).mockImplementationOnce(async () => draftResponse())
 
   const user = userEvent.setup()
-  render(<AiCopilot activePage="dashboard" />)
+  render(<AiCopilot activePage="dashboard" onDataChanged={onDataChanged} />)
   await user.click(screen.getByRole("button", { name: /Ask Passion AI/ }))
   await user.type(screen.getByLabelText("Message Passion AI"), "Create a yoga event")
   await user.click(screen.getByRole("button", { name: "Send message" }))
@@ -136,5 +136,35 @@ describe("AiCopilot draft preview + approval (TICKET-6)", () => {
     )
     // Still there so the organizer can fix the draft and retry.
     expect(screen.getByRole("button", { name: "Create Event" })).toBeTruthy()
+  })
+
+  it("calls onDataChanged once publish_event succeeds (TICKET-35)", async () => {
+    const onDataChanged = vi.fn()
+    const user = await openPanelWithDraft(onDataChanged)
+
+    vi.mocked(fetch).mockResolvedValueOnce(
+      jsonResponse({ success: true, result: { id: 5, name: "Yoga at Tampines Hub" } }),
+    )
+    await user.click(screen.getByRole("button", { name: "Create Event" }))
+
+    await waitFor(() => expect(screen.getByText("publish_event succeeded.")).toBeTruthy())
+    expect(onDataChanged).toHaveBeenCalledTimes(1)
+  })
+
+  it("does not call onDataChanged when publish_event fails (TICKET-35)", async () => {
+    const onDataChanged = vi.fn()
+    const user = await openPanelWithDraft(onDataChanged)
+
+    vi.mocked(fetch).mockResolvedValueOnce(
+      jsonResponse({ success: false, reason: "Event template 999 was not found" }),
+    )
+    await user.click(screen.getByRole("button", { name: "Create Event" }))
+
+    await waitFor(() =>
+      expect(
+        screen.getByText("publish_event failed: Event template 999 was not found"),
+      ).toBeTruthy(),
+    )
+    expect(onDataChanged).not.toHaveBeenCalled()
   })
 })

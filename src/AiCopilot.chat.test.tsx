@@ -19,9 +19,9 @@ function sseResponse(events: { event: string; data: unknown }[]): Response {
   return new Response(stream, { status: 200, headers: { "Content-Type": "text/event-stream" } })
 }
 
-async function openPanel() {
+async function openPanel(onDataChanged?: () => void) {
   const user = userEvent.setup()
-  render(<AiCopilot activePage="dashboard" />)
+  render(<AiCopilot activePage="dashboard" onDataChanged={onDataChanged} />)
   await user.click(screen.getByRole("button", { name: /Ask Passion AI/ }))
   return user
 }
@@ -319,5 +319,100 @@ describe("AiCopilot chat (TICKET-5)", () => {
       expect(screen.getByText("String should have at least 1 character")).toBeTruthy(),
     )
     expect(screen.queryByText("[object Object]")).toBeNull()
+  })
+})
+
+describe("AiCopilot recommended actions (TICKET-34)", () => {
+  it("shows starter prompts on an empty conversation and sends one on click", async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      sseResponse([{ event: "token", data: { delta: "Sure." } }, { event: "done", data: {} }]),
+    )
+
+    const user = await openPanel()
+    expect(screen.getByText("List my upcoming events")).toBeTruthy()
+
+    await user.click(screen.getByRole("button", { name: "List my upcoming events" }))
+
+    await waitFor(() => expect(screen.getByText("Sure.")).toBeTruthy())
+    // The suggestions were an empty-conversation affordance, not a menu —
+    // the chip itself (not the now-sent user message of the same text)
+    // must not linger once the conversation has content.
+    expect(screen.queryByRole("button", { name: "List my upcoming events" })).toBeNull()
+
+    const [url, init] = vi.mocked(fetch).mock.calls[0]
+    expect(url).toBe("/api/v1/ai/chat")
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({
+      messages: [{ role: "user", content: "List my upcoming events" }],
+    })
+  })
+})
+
+describe("AiCopilot data refresh callback (TICKET-35)", () => {
+  it("calls onDataChanged once a mutating tool call succeeds", async () => {
+    const onDataChanged = vi.fn()
+    vi.mocked(fetch).mockResolvedValue(
+      sseResponse([
+        { event: "tool_call", data: { tool: "cancel_event", arguments: { event_id: 1 } } },
+        {
+          event: "tool_result",
+          data: { tool: "cancel_event", result: { success: true, result: { id: 1 } } },
+        },
+        { event: "done", data: {} },
+      ]),
+    )
+
+    const user = await openPanel(onDataChanged)
+    await user.type(screen.getByLabelText("Message Passion AI"), "Cancel event 1")
+    await user.click(screen.getByRole("button", { name: "Send message" }))
+
+    await waitFor(() => expect(screen.getByText("cancel_event succeeded.")).toBeTruthy())
+    expect(onDataChanged).toHaveBeenCalledTimes(1)
+  })
+
+  it("does not call onDataChanged for a read-only tool result", async () => {
+    const onDataChanged = vi.fn()
+    vi.mocked(fetch).mockResolvedValue(
+      sseResponse([
+        { event: "tool_call", data: { tool: "list_events", arguments: {} } },
+        {
+          event: "tool_result",
+          data: { tool: "list_events", result: { success: true, result: { items: [] } } },
+        },
+        { event: "done", data: {} },
+      ]),
+    )
+
+    const user = await openPanel(onDataChanged)
+    await user.type(screen.getByLabelText("Message Passion AI"), "List events")
+    await user.click(screen.getByRole("button", { name: "Send message" }))
+
+    await waitFor(() => expect(screen.getByText("list_events succeeded.")).toBeTruthy())
+    expect(onDataChanged).not.toHaveBeenCalled()
+  })
+
+  it("does not call onDataChanged when a mutating tool call fails", async () => {
+    const onDataChanged = vi.fn()
+    vi.mocked(fetch).mockResolvedValue(
+      sseResponse([
+        { event: "tool_call", data: { tool: "cancel_event", arguments: { event_id: 999 } } },
+        {
+          event: "tool_result",
+          data: {
+            tool: "cancel_event",
+            result: { success: false, reason: "Event 999 was not found" },
+          },
+        },
+        { event: "done", data: {} },
+      ]),
+    )
+
+    const user = await openPanel(onDataChanged)
+    await user.type(screen.getByLabelText("Message Passion AI"), "Cancel event 999")
+    await user.click(screen.getByRole("button", { name: "Send message" }))
+
+    await waitFor(() =>
+      expect(screen.getByText("cancel_event failed: Event 999 was not found")).toBeTruthy(),
+    )
+    expect(onDataChanged).not.toHaveBeenCalled()
   })
 })

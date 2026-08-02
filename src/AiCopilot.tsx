@@ -30,6 +30,32 @@ type EventTemplateSummary = {
   description: string;
 };
 
+// TICKET-34: starter prompts shown on an empty conversation, so a
+// first-time organizer sees the range of things the panel can do instead
+// of a blank composer. Kept to read/list-style requests — clicking one
+// still goes through the model and the normal tool-call/draft-confirm
+// gates, but a first click can't itself fire something destructive.
+const RECOMMENDED_ACTIONS = [
+  "Create an event for me using one of my templates",
+  "List upcoming tasks across all events",
+  "List my upcoming events",
+  "Which volunteer signups need approval?",
+];
+
+// TICKET-35: tools that actually write to the database — a successful
+// result from one of these means whatever admin page is open behind the
+// panel now has stale data. Read/list/preview tools (including
+// create_event_draft, which never writes) are deliberately excluded.
+// Mirrors the "mutating" set TICKET-29 identifies for its own purposes.
+const MUTATING_TOOLS = new Set([
+  "publish_event",
+  "update_event",
+  "cancel_event",
+  "assign_event_task",
+  "update_task_status",
+  "approve_event_signup",
+]);
+
 // Mirrors backend/schema/events.py's EventCreate — the shape
 // create_event_draft returns and publish_event accepts unchanged.
 type EventDraftFields = {
@@ -43,7 +69,13 @@ type EventDraftFields = {
   beneficiary_id: number | null;
 };
 
-export default function AiCopilot({ activePage }: { activePage: Page }) {
+export default function AiCopilot({
+  activePage,
+  onDataChanged,
+}: {
+  activePage: Page;
+  onDataChanged?: () => void;
+}) {
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState("");
   const [conversation, setConversation] = useState<ChatMessage[]>([]);
@@ -91,8 +123,8 @@ export default function AiCopilot({ activePage }: { activePage: Page }) {
     setOpen(false);
   }
 
-  async function sendMessage() {
-    const trimmed = input.trim();
+  async function sendMessage(overrideText?: string) {
+    const trimmed = (overrideText ?? input).trim();
     if (!trimmed || isStreaming) return;
 
     const userMessage: ChatMessage = { role: "user", content: trimmed };
@@ -147,6 +179,9 @@ export default function AiCopilot({ activePage }: { activePage: Page }) {
                   : activity,
               ),
             );
+            if (event.result.success && MUTATING_TOOLS.has(event.tool)) {
+              onDataChanged?.();
+            }
           }
         } else if (event.type === "error") {
           setErrorMessage(event.reason);
@@ -191,6 +226,7 @@ export default function AiCopilot({ activePage }: { activePage: Page }) {
     if (result.success) {
       setDraftPreview(null);
       setIsEditingDraft(false);
+      onDataChanged?.();
     }
   }
 
@@ -240,6 +276,18 @@ export default function AiCopilot({ activePage }: { activePage: Page }) {
           {conversation.length === 0 && !isStreaming && (
             <div className="copilot-message copilot-message-assistant">
               <p>Ask me to help manage an event — I'll show you a draft before creating anything.</p>
+              <div className="copilot-suggestions">
+                {RECOMMENDED_ACTIONS.map((action) => (
+                  <button
+                    key={action}
+                    type="button"
+                    className="copilot-suggestion-chip"
+                    onClick={() => sendMessage(action)}
+                  >
+                    {action}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
 

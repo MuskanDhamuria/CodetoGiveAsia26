@@ -2719,6 +2719,31 @@ button {
   color: #a11a1a;
 }
 
+.copilot-suggestions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.copilot-suggestion-chip {
+  background: #f6f7f9;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 8px;
+  color: #2b2b2b;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  padding: 10px 12px;
+  text-align: left;
+  transition: background-color 0.15s ease;
+}
+
+.copilot-suggestion-chip:hover {
+  background: #ececee;
+}
+
 .suggestion-card {
   background: #ffffff;
   border: 1px solid rgba(0, 0, 0, 0.08);

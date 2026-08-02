@@ -55,7 +55,7 @@ const pageLabels: Record<Page, string> = {
   reports: "Post-event",
   broadcasts: "Broadcasts",
   "scan-attendance": "Scan Attendance",
-  ai: "AI Copilot",
+  ai: "Passion AI",
   signup: "Volunteer Sign-Up",
   community: "Community Events",
   "volunteer-register": "Volunteer Registration",
@@ -2052,7 +2052,7 @@ function AdminPanel() {
             {activePage === "reports" && <ReportsPage />}
             {activePage === "broadcasts" && <WhatsAppPanel />}
             {activePage === "scan-attendance" && <AttendanceScannerPage />}
-            {activePage === "ai" && <PlaceholderPage title="AI Copilot" />}
+            {activePage === "ai" && <PlaceholderPage title="Passion AI" />}
           </div>
           <AiCopilot
             activePage={activePage}

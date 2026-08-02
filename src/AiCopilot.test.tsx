@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
+import { readFileSync } from "node:fs"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import AiCopilot from "./AiCopilot"
 import { mockChatFetch, setMobileViewport } from "./AiCopilot.testFetch"
@@ -25,6 +26,14 @@ function getPanel() {
 }
 
 describe("AiCopilot collapsible panel (TICKET-10)", () => {
+  it("keeps the mobile composer input at 16px to prevent browser zoom", () => {
+    const styles = readFileSync("src/index.css", "utf8")
+
+    expect(styles).toMatch(
+      /@media\s*\(max-width:\s*810px\)[\s\S]*\.copilot-composer input\s*\{[^}]*font-size:\s*16px/s,
+    )
+  })
+
   it("is collapsed by default, showing only the FAB", () => {
     render(<AiCopilot activePage="dashboard" />)
 
@@ -46,7 +55,7 @@ describe("AiCopilot collapsible panel (TICKET-10)", () => {
     expect(panel.getAttribute("aria-modal")).toBe("true")
     expect(panel.className).toMatch(/\bopen\b/)
     expect(screen.queryByRole("button", { name: /Ask Passion AI/ })).toBeNull()
-    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Close AI Copilot" }))
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Close Passion AI" }))
   })
 
   it("closes on Escape and returns focus to the FAB", async () => {
@@ -67,7 +76,7 @@ describe("AiCopilot collapsible panel (TICKET-10)", () => {
     render(<AiCopilot activePage="events" />)
 
     await user.click(screen.getByRole("button", { name: /Ask Passion AI/ }))
-    await user.click(screen.getByRole("button", { name: "Close AI Copilot" }))
+    await user.click(screen.getByRole("button", { name: "Close Passion AI" }))
 
     expect(getPanel().getAttribute("aria-hidden")).toBe("true")
     expect(document.activeElement).toBe(screen.getByRole("button", { name: /Ask Passion AI/ }))

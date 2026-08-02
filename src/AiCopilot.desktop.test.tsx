@@ -36,7 +36,7 @@ describe("AiCopilot permanent desktop sidebar (TICKET-68)", () => {
   it("has no close button and isn't a modal dialog", () => {
     render(<AiCopilot activePage="dashboard" />)
 
-    expect(screen.queryByRole("button", { name: "Close AI Copilot" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "Close Passion AI" })).toBeNull()
     expect(getPanel().getAttribute("aria-modal")).toBe("false")
   })
 

@@ -15,7 +15,7 @@ const pageContext: Record<Page, string> = {
   dashboard: "Dashboard",
   events: "Events",
   volunteers: "Volunteers",
-  ai: "AI Copilot",
+  ai: "Passion AI",
 };
 
 type ToolActivity = {
@@ -343,13 +343,13 @@ export default function AiCopilot({
         role="dialog"
         aria-modal={open && !isDesktop}
         aria-hidden={!open}
-        aria-label="AI Copilot"
+        aria-label="Passion AI"
         className={`copilot-panel${open ? " open" : ""}`}
       >
         <header className="copilot-header">
           <div>
             <p>{pageContext[activePage]}</p>
-            <h2>AI Copilot</h2>
+            <h2>Passion AI</h2>
           </div>
           <div className="copilot-header-actions">
             {conversation.length > 0 && (
@@ -358,7 +358,7 @@ export default function AiCopilot({
               </button>
             )}
             {!isDesktop && (
-              <button ref={closeButtonRef} type="button" onClick={close} aria-label="Close AI Copilot">
+              <button ref={closeButtonRef} type="button" onClick={close} aria-label="Close Passion AI">
                 Close
               </button>
             )}

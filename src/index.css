@@ -4527,6 +4527,13 @@ main:has(.copilot-panel.open) .navbar {
   padding: 0 16px;
 }
 
+@media (max-width: 810px) {
+  /* iOS Safari zooms the viewport when a focused form control is under 16px. */
+  .copilot-composer input {
+    font-size: 16px;
+  }
+}
+
 /* Superseded workflow-wizard and sidebar-brief copilot designs removed —
    see TICKET-10 in docs/tickets.md. The collapsible FAB + overlay panel
    design above (.copilot-fab / .copilot-panel / .copilot-header /

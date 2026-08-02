@@ -84,6 +84,7 @@ def issue_and_send_otp(db: sqlite3.Connection, account_id: int, phone: str) -> N
             language_code=os.environ.get("WHATSAPP_OTP_TEMPLATE_LANG", "en_US"),
             body_params=[code],
             button_param=code,
+            button_sub_type=os.environ.get("WHATSAPP_OTP_TEMPLATE_BUTTON_TYPE", "url"),
         )
     except Exception:
         # Registration/resend already succeeded and committed above; a failed

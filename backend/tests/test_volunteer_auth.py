@@ -29,7 +29,9 @@ class FakeWhatsAppClient:
         self.texts.append((to, body))
         return FakeSentMessage(to, body)
 
-    def send_template(self, to, template_name, language_code, body_params=None, button_param=None):
+    def send_template(
+        self, to, template_name, language_code, body_params=None, button_param=None, button_sub_type="url"
+    ):
         self.templates.append(
             {
                 "to": to,
@@ -37,6 +39,7 @@ class FakeWhatsAppClient:
                 "language_code": language_code,
                 "body_params": body_params or [],
                 "button_param": button_param,
+                "button_sub_type": button_sub_type,
             }
         )
         return FakeSentMessage(to, f"[template:{template_name}]")

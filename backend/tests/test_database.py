@@ -160,6 +160,30 @@ class DatabaseMigrationTest(unittest.TestCase):
             self.assertIn("whatsapp_contacts", tables)
             self.assertIn("inventory_items", tables)
 
+    def test_existing_otp_version_is_moved_before_phone_migration(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            database_path = Path(directory) / "otp-collision.sqlite3"
+            initialize_database(database_path)
+            with connect(database_path) as connection:
+                connection.execute(
+                    "DELETE FROM schema_migrations WHERE version = 12"
+                )
+                connection.execute(
+                    "UPDATE schema_migrations SET version = 12, name = ? WHERE version = 18",
+                    ("012_volunteer_otp.sql",),
+                )
+                connection.commit()
+
+            initialize_database(database_path)
+
+            with connect(database_path) as connection:
+                migrations = dict(connection.execute(
+                    "SELECT version, name FROM schema_migrations WHERE version IN (12, 18)"
+                ).fetchall())
+
+            self.assertEqual(migrations[12], "012_normalize_volunteer_phone_numbers.sql")
+            self.assertEqual(migrations[18], "018_volunteer_otp.sql")
+
     def test_skill_enhancement_is_created_once_and_seed_does_not_duplicate_it(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             database_path = Path(directory) / "test.sqlite3"

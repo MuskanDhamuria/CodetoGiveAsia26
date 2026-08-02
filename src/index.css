@@ -5246,6 +5246,10 @@ button {
 .pts-dashboard-event aside { display: grid; gap: 5px; text-align: right; }
 .pts-dashboard-event small { color: #9aa4a8; font-size: 11px; }
 .pts-dashboard-empty, .pts-dashboard-state { color: #7b898e; font-size: 14px; padding: 16px 0; }
+.pts-dashboard-qr-toggle { background: none; border: 1px solid #1aa3c4; border-radius: 8px; color: #1aa3c4; cursor: pointer; font-size: 12px; font-weight: 700; margin-top: 4px; padding: 6px 12px; }
+.pts-attendance-qr { align-items: center; background: #f6f7f9; border-radius: 12px; display: flex; flex-direction: column; gap: 8px; margin-top: 10px; padding: 14px; }
+.pts-attendance-qr p { color: #718187; font-size: 12px; margin: 0; text-align: center; }
+.pts-attendance-qr-status { color: #718187; font-size: 12px; margin-top: 8px; }
 .pts-dashboard-signin { margin-top: 8px; width: min(300px, 100%); }
 .pts-locked-section { align-items: center; background: #f7fafb; border: 1px solid #e4eef0; border-radius: 13px; display: flex; gap: 24px; justify-content: space-between; margin-top: 20px; padding: 25px; }
 .pts-locked-section h2 { color: #1c2b30; font-size: 22px; margin: 0 0 7px; }
@@ -5795,6 +5799,32 @@ button {
   font-size: 13px;
   font-weight: 600;
   margin: 0;
+}
+
+.attendance-scanner-viewport {
+  border-radius: 12px;
+  overflow: hidden;
+  width: 100%;
+}
+
+.attendance-scan-feedback {
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.attendance-scan-success {
+  background: rgba(29, 168, 96, 0.12);
+  color: #1a8f52;
+}
+
+.attendance-scan-already {
+  background: rgba(217, 155, 0, 0.12);
+  color: #a06c00;
+}
+
+.attendance-scan-error {
+  background: rgba(214, 62, 62, 0.12);
+  color: #b23636;
 }
 
 @media (max-width: 900px) {

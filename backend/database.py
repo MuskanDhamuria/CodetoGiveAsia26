@@ -142,6 +142,25 @@ def _repair_volunteer_migration_numbering_collisions(
     if migrations_table is None:
         return
 
+    otp_at_old_version = connection.execute(
+        "SELECT 1 FROM schema_migrations WHERE version = 12 AND name = ?",
+        ("012_volunteer_otp.sql",),
+    ).fetchone()
+    if otp_at_old_version is not None:
+        otp_at_new_version = connection.execute(
+            "SELECT 1 FROM schema_migrations WHERE version = 18"
+        ).fetchone()
+        if otp_at_new_version is None:
+            connection.execute(
+                "UPDATE schema_migrations SET version = 18, name = ? WHERE version = 12 AND name = ?",
+                ("018_volunteer_otp.sql", "012_volunteer_otp.sql"),
+            )
+        else:
+            connection.execute(
+                "DELETE FROM schema_migrations WHERE version = 12 AND name = ?",
+                ("012_volunteer_otp.sql",),
+            )
+
     renumberings = (
         (8, "008_normalize_volunteer_phone_numbers.sql", 12, "012_normalize_volunteer_phone_numbers.sql"),
         (9, "009_event_roles.sql", 13, "013_event_roles.sql"),

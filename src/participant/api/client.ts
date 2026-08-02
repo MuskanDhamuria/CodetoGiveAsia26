@@ -138,3 +138,13 @@ export function getMyEvents(participantId: number): Promise<ListResponse<EventFo
 export function lookupParticipant(contactNumber: string): Promise<ParticipantRecord> {
   return request(`/participants/lookup?contact_number=${encodeURIComponent(contactNumber)}`);
 }
+
+// Signed token an admin's QR scanner reads back to mark this participant
+// present at the event, without either side needing to type an id/phone
+// number by hand.
+export function getAttendanceQrToken(
+  participantId: number,
+  eventId: number,
+): Promise<{ token: string }> {
+  return request(`/participants/${participantId}/events/${eventId}/qr-token`);
+}

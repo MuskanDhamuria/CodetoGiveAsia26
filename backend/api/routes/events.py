@@ -14,6 +14,7 @@ from backend.api.routes.event_organizers import (
     ensure_team_member_event_organizer,
     require_approved_event_volunteer,
 )
+from backend.attendance_qr import PARTICIPANT_KIND, VOLUNTEER_KIND, parse_token
 from backend.schema.events import (
     EventCreate,
     EventDetail,
@@ -1063,3 +1064,66 @@ def cancel_event(event_id: int, db: Connection) -> EventDetail:
         raise HTTPException(404, f"Event {event_id} was not found")
     db.commit()
     return event_detail(db, event_id)
+
+
+@router.post(
+    "/events/{event_id}/attendance/scan",
+    summary="Mark attendance from a scanned participant/volunteer QR code",
+)
+def scan_attendance(event_id: int, payload: dict, db: Connection) -> dict:
+    token = payload.get("token") if isinstance(payload, dict) else None
+    if not token:
+        raise HTTPException(400, "Missing QR token")
+
+    parsed = parse_token(token)
+    if parsed is None:
+        raise HTTPException(400, "This QR code isn't valid or has been tampered with")
+    kind, person_id, token_event_id = parsed
+    if token_event_id != event_id:
+        raise HTTPException(400, "This QR code is for a different event")
+
+    if kind == PARTICIPANT_KIND:
+        person = db.execute(
+            "SELECT id, name FROM participants WHERE id = ?", (person_id,)
+        ).fetchone()
+        if person is None:
+            raise HTTPException(404, "Participant not found")
+        registration = db.execute(
+            "SELECT attendance FROM participations WHERE event_id = ? AND participant_id = ?",
+            (event_id, person_id),
+        ).fetchone()
+        if registration is None:
+            raise HTTPException(404, f"{person['name']} isn't registered for this event")
+        already_marked = bool(registration["attendance"])
+        db.execute(
+            "UPDATE participations SET attendance = 1 WHERE event_id = ? AND participant_id = ?",
+            (event_id, person_id),
+        )
+        role = "participant"
+    elif kind == VOLUNTEER_KIND:
+        person = db.execute(
+            "SELECT id, name FROM volunteers WHERE id = ?", (person_id,)
+        ).fetchone()
+        if person is None:
+            raise HTTPException(404, "Volunteer not found")
+        registration = db.execute(
+            "SELECT attendance FROM volunteer_signups WHERE event_id = ? AND volunteer_id = ?",
+            (event_id, person_id),
+        ).fetchone()
+        if registration is None:
+            raise HTTPException(404, f"{person['name']} isn't signed up to volunteer for this event")
+        already_marked = bool(registration["attendance"])
+        db.execute(
+            "UPDATE volunteer_signups SET attendance = 1 WHERE event_id = ? AND volunteer_id = ?",
+            (event_id, person_id),
+        )
+        role = "volunteer"
+    else:
+        raise HTTPException(400, "Unrecognized QR code")
+
+    db.commit()
+    return {
+        "name": person["name"],
+        "role": role,
+        "already_marked": already_marked,
+    }

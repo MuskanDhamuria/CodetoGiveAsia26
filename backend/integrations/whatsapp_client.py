@@ -89,6 +89,95 @@ class WhatsAppClient:
         logger.info("WhatsApp message sent to %s (id=%s)", to, message_id)
         return SentMessage(to=to, body=body, wa_message_id=message_id)
 
+    def send_template(
+        self,
+        to: str,
+        template_name: str,
+        language_code: str,
+        body_params: list[str] | None = None,
+        button_param: str | None = None,
+        button_sub_type: str = "url",
+    ) -> SentMessage:
+        """Send an approved Meta template message (e.g. an OTP code).
+
+        Unlike ``send_text``, template messages can be sent to a number even
+        outside the 24-hour customer-service window, which is why they're
+        used for OTP delivery right after someone registers on the website
+        (they haven't necessarily messaged the bot first).
+
+        ``button_param`` fills a button component at index 0. Pass ``None``
+        if the template has no button component. ``button_sub_type`` must
+        match how the button was actually configured in Meta's template
+        editor — despite the editor showing it as a "Copy code" button, the
+        Cloud API has been observed to reject anything but ``"url"`` for
+        some authentication templates (error 132018, "Button at index 0 must
+        be of type Url"); Meta's UI label doesn't reliably predict which sub
+        type the API expects, so this is configurable rather than hardcoded.
+        """
+
+        try:
+            import httpx
+        except ImportError as error:  # pragma: no cover - dependency is required in prod
+            logger.error("Cannot send WhatsApp template: httpx is not installed")
+            raise WhatsAppError(
+                "httpx is required to send WhatsApp messages; install backend/requirements.txt"
+            ) from error
+
+        components: list[dict] = []
+        if body_params:
+            components.append(
+                {
+                    "type": "body",
+                    "parameters": [{"type": "text", "text": value} for value in body_params],
+                }
+            )
+        if button_param is not None:
+            components.append(
+                {
+                    "type": "button",
+                    "sub_type": button_sub_type,
+                    "index": "0",
+                    "parameters": [{"type": "text", "text": button_param}],
+                }
+            )
+
+        url = f"https://graph.facebook.com/{self.api_version}/{self.phone_number_id}/messages"
+        logger.info("Sending WhatsApp template %r to %s", template_name, to)
+        try:
+            response = httpx.post(
+                url,
+                headers={"Authorization": f"Bearer {self.token}"},
+                json={
+                    "messaging_product": "whatsapp",
+                    "to": to,
+                    "type": "template",
+                    "template": {
+                        "name": template_name,
+                        "language": {"code": language_code},
+                        "components": components,
+                    },
+                },
+                timeout=10.0,
+            )
+        except httpx.HTTPError as error:
+            logger.error("WhatsApp template send to %s failed: network error: %s", to, error)
+            raise WhatsAppError(f"WhatsApp template send to {to} failed: {error}") from error
+
+        if response.status_code >= 400:
+            logger.error(
+                "WhatsApp template send to %s failed (%d): %s", to, response.status_code, response.text
+            )
+            raise WhatsAppError(
+                f"WhatsApp template send failed ({response.status_code}): {response.text}"
+            )
+        payload = response.json()
+        message_id = None
+        messages = payload.get("messages") or []
+        if messages:
+            message_id = messages[0].get("id")
+        logger.info("WhatsApp template sent to %s (id=%s)", to, message_id)
+        return SentMessage(to=to, body=f"[template:{template_name}]", wa_message_id=message_id)
+
 
 @dataclass
 class LoggingWhatsAppClient:
@@ -101,6 +190,24 @@ class LoggingWhatsAppClient:
     sent: list[SentMessage] = field(default_factory=list)
 
     def send_text(self, to: str, body: str) -> SentMessage:
+        logger.info("WhatsApp (not configured, not sent) -> %s: %s", to, body)
+        message = SentMessage(to=to, body=body, wa_message_id=None)
+        self.sent.append(message)
+        return message
+
+    def send_template(
+        self,
+        to: str,
+        template_name: str,
+        language_code: str,
+        body_params: list[str] | None = None,
+        button_param: str | None = None,
+        button_sub_type: str = "url",
+    ) -> SentMessage:
+        body = (
+            f"[template:{template_name}:{language_code}] params={body_params} "
+            f"button={button_param} button_sub_type={button_sub_type}"
+        )
         logger.info("WhatsApp (not configured, not sent) -> %s: %s", to, body)
         message = SentMessage(to=to, body=body, wa_message_id=None)
         self.sent.append(message)

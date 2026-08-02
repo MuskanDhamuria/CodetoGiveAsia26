@@ -224,6 +224,12 @@ export type TeamMemberWhatsAppLink = {
   phone_number: string
 }
 
+export type AttendanceScanResult = {
+  name: string
+  role: "participant" | "volunteer"
+  already_marked: boolean
+}
+
 type ListResponse<T> = {
   items: T[]
   total: number
@@ -269,6 +275,7 @@ export interface AdminApi {
   getTeamMemberWhatsAppLink(memberId: number): Promise<TeamMemberWhatsAppLink | null>
   linkTeamMemberWhatsApp(memberId: number, phoneNumber: string): Promise<TeamMemberWhatsAppLink>
   unlinkTeamMemberWhatsApp(memberId: number): Promise<void>
+  scanAttendance(eventId: number, token: string): Promise<AttendanceScanResult>
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -449,5 +456,12 @@ export const adminApi: AdminApi = {
 
   unlinkTeamMemberWhatsApp(memberId) {
     return request<void>(`/team-members/${memberId}/whatsapp-link`, { method: "DELETE" })
+  },
+
+  scanAttendance(eventId, token) {
+    return request<AttendanceScanResult>(`/events/${eventId}/attendance/scan`, {
+      method: "POST",
+      body: JSON.stringify({ token }),
+    })
   },
 }

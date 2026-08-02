@@ -6,7 +6,7 @@ import {
   toInternationalPhone,
 } from "./phone"
 import { loginVolunteer, setVolunteerToken } from "./volunteer-api"
-import { AccountHeader } from "./VolunteerRegister"
+import { AccountHeader, VolunteerOtpVerification } from "./VolunteerRegister"
 
 export default function VolunteerLogin({ onLoggedIn, onRegister }: { onLoggedIn: () => void; onRegister: () => void }) {
   const [countryCode, setCountryCode] = useState("+65")
@@ -14,6 +14,7 @@ export default function VolunteerLogin({ onLoggedIn, onRegister }: { onLoggedIn:
   const [password, setPassword] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [awaitingOtp, setAwaitingOtp] = useState(false)
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault()
@@ -26,12 +27,23 @@ export default function VolunteerLogin({ onLoggedIn, onRegister }: { onLoggedIn:
     try {
       const result = await loginVolunteer({ contact_number: toInternationalPhone(countryCode, phone), password })
       setVolunteerToken(result.access_token)
-      onLoggedIn()
+      if (result.volunteer.phone_verified) {
+        onLoggedIn()
+      } else {
+        // Signed in fine, but never finished WhatsApp verification (e.g. the
+        // OTP screen was missed right after registering) — send them there
+        // instead of straight to the dashboard.
+        setAwaitingOtp(true)
+      }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Could not sign you in.")
     } finally {
       setSubmitting(false)
     }
+  }
+
+  if (awaitingOtp) {
+    return <VolunteerOtpVerification onVerified={onLoggedIn} onSkip={onLoggedIn} />
   }
 
   return (

@@ -5,7 +5,7 @@ import {
   PHONE_COUNTRIES,
   toInternationalPhone,
 } from "./phone"
-import { registerVolunteer, setVolunteerToken } from "./volunteer-api"
+import { registerVolunteer, resendVolunteerOtp, setVolunteerToken, verifyVolunteerOtp } from "./volunteer-api"
 import { useWhatsAppChatLink } from "./whatsapp-link"
 
 function passwordScore(password: string) {
@@ -31,6 +31,7 @@ export default function VolunteerRegister({
   const [confirmPassword, setConfirmPassword] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [awaitingOtp, setAwaitingOtp] = useState(false)
   const score = useMemo(() => passwordScore(password), [password])
 
   async function handleSubmit(event: React.FormEvent) {
@@ -48,12 +49,16 @@ export default function VolunteerRegister({
         password,
       })
       setVolunteerToken(result.access_token)
-      onRegistered()
+      setAwaitingOtp(true)
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Could not create your account.")
     } finally {
       setSubmitting(false)
     }
+  }
+
+  if (awaitingOtp) {
+    return <VolunteerOtpVerification onVerified={onRegistered} onSkip={onRegistered} />
   }
 
   return (
@@ -108,6 +113,87 @@ export default function VolunteerRegister({
           {error && <p className="pts-signup-error">{error}</p>}
           <button className="pts-signup-submit" type="submit" disabled={submitting}>{submitting ? "Creating account…" : "Create account"}</button>
           <p className="pts-account-switch">Already have an account? <button type="button" onClick={onLogin}>Sign in</button></p>
+        </form>
+      </main>
+    </div>
+  )
+}
+
+export function VolunteerOtpVerification({ onVerified, onSkip }: { onVerified: () => void; onSkip: () => void }) {
+  const [code, setCode] = useState("")
+  const [error, setError] = useState<string | null>(null)
+  const [verifying, setVerifying] = useState(false)
+  const [resent, setResent] = useState(false)
+  const [resending, setResending] = useState(false)
+
+  async function handleVerify(event: React.FormEvent) {
+    event.preventDefault()
+    if (!code.trim()) return setError("Enter the 6-digit code we sent you on WhatsApp.")
+    setVerifying(true)
+    setError(null)
+    try {
+      await verifyVolunteerOtp(code.trim())
+      onVerified()
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "That code didn't work.")
+    } finally {
+      setVerifying(false)
+    }
+  }
+
+  async function handleResend() {
+    setResending(true)
+    setError(null)
+    setResent(false)
+    try {
+      await resendVolunteerOtp()
+      setResent(true)
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not resend the code.")
+    } finally {
+      setResending(false)
+    }
+  }
+
+  return (
+    <div className="pts-account-page">
+      <AccountHeader label="Verify your number" />
+      <section className="pts-account-hero">
+        <p>Almost there</p>
+        <h1>Verify your WhatsApp number</h1>
+        <span>We sent a 6-digit code to your WhatsApp — enter it below to finish setting up your account.</span>
+      </section>
+      <main className="pts-account-main">
+        <form className="pts-account-card" onSubmit={handleVerify}>
+          <div className="pts-account-card-heading">
+            <p className="pts-account-eyebrow">Enter your code</p>
+            <h2>WhatsApp verification</h2>
+          </div>
+          <label className="pts-field">
+            <span>6-digit code</span>
+            <input
+              value={code}
+              onChange={(event) => setCode(event.target.value)}
+              placeholder="123456"
+              inputMode="numeric"
+              maxLength={8}
+              autoFocus
+            />
+          </label>
+          {error && <p className="pts-signup-error">{error}</p>}
+          {resent && !error && <p className="pts-account-switch">A new code is on its way.</p>}
+          <button className="pts-signup-submit" type="submit" disabled={verifying}>
+            {verifying ? "Verifying…" : "Verify"}
+          </button>
+          <p className="pts-account-switch">
+            Didn't get a code?{" "}
+            <button type="button" onClick={handleResend} disabled={resending}>
+              {resending ? "Resending…" : "Resend code"}
+            </button>
+          </p>
+          <p className="pts-account-switch">
+            <button type="button" onClick={onSkip}>I'll verify later</button>
+          </p>
         </form>
       </main>
     </div>

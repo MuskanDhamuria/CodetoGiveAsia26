@@ -72,6 +72,10 @@
 .event-detail-error { color: #b3261e; font-weight: 700; margin-top: 10px; }
 .event-detail-status { color: #5e6961; padding: 40px 0; text-align: center; }
 
+.attendance-qr { align-items: center; display: flex; flex-direction: column; gap: 10px; margin: 14px 0; padding: 16px; background: #f6f7f9; border-radius: 12px; }
+.attendance-qr p { color: #5e6961; font-size: 13px; margin: 0; text-align: center; }
+.attendance-qr-status { color: #5e6961; font-size: 13px; margin: 10px 0; }
+
 .signup-form { display: grid; gap: 12px; max-width: 360px; }
 .signup-form > p { color: #5e6961; margin: 0 0 4px; }
 .signup-form label { color: #28362d; display: grid; font-weight: 700; gap: 6px; }

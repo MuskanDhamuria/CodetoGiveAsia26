@@ -22,11 +22,20 @@ class VolunteerAccountOut(BaseModel):
     name: str
     contact_number: str | None
     email: str | None
+    phone_verified: bool
 
 
 class VolunteerAuthResult(BaseModel):
     access_token: str
     volunteer: VolunteerAccountOut
+
+
+class VolunteerVerifyOtp(BaseModel):
+    code: str = Field(min_length=4, max_length=8)
+
+
+class VolunteerOtpResult(BaseModel):
+    phone_verified: bool
 
 
 class VolunteerDashboardEvent(BaseModel):

@@ -13,6 +13,7 @@ from backend.api.routes._common import (
     as_bool,
     list_envelope,
 )
+from backend.attendance_qr import PARTICIPANT_KIND, generate_token
 from backend.phone import InvalidPhoneNumberError, normalize_phone_number
 from backend.schema.participants import (
     ParticipantCreate,
@@ -212,6 +213,20 @@ def list_participant_events(
         for row in rows
     ]
     return list_envelope(items, total, pagination)
+
+
+@router.get("/participants/{participant_id}/events/{event_id}/qr-token")
+def get_participant_attendance_qr_token(
+    participant_id: int, event_id: int, db: Connection
+) -> dict:
+    require_participant(db, participant_id)
+    registered = db.execute(
+        "SELECT 1 FROM participations WHERE event_id = ? AND participant_id = ?",
+        (event_id, participant_id),
+    ).fetchone()
+    if registered is None:
+        raise HTTPException(404, "This participant isn't registered for that event")
+    return {"token": generate_token(PARTICIPANT_KIND, participant_id, event_id)}
 
 
 @router.post(

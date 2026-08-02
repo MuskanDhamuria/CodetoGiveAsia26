@@ -1,10 +1,15 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { afterEach, describe, expect, it } from "vitest"
+import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import AiCopilot from "./AiCopilot"
+import { mockChatFetch } from "./AiCopilot.testFetch"
 
 afterEach(cleanup)
+
+beforeEach(() => {
+  mockChatFetch()
+})
 
 // `getByRole` excludes aria-hidden elements from the accessibility tree
 // entirely, so the panel (which is aria-hidden while closed) has to be

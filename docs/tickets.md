@@ -1284,3 +1284,95 @@ a template, and managing its task blueprint, are separate asks from "create/upda
 and deserve their own ticket if wanted, not a silent bundle-in here.
 
 </details>
+
+---
+
+~~TICKET-66: On desktop, the AI panel should dock as a fixed sidebar that reflows the page instead of overlaying it~~
+— **Done.** Below the existing `max-width: 810px` mobile breakpoint,
+behavior is unchanged (full-width overlay, no reflow). Above it,
+`.product-frame:has(.copilot-panel.open) .product-page-content` picks up
+`margin-right: 440px` while the panel is open, and `.copilot-backdrop` no
+longer renders (`display: none`) since the page reflows instead of being
+dimmed — the element still mounts so its `onClick` keeps working as a
+click-outside-to-close affordance. No JS/layout changes to `AiCopilot.tsx`
+were needed; this was purely a CSS addition keyed off the panel's existing
+`.open` class via `:has()`, the same pattern already used elsewhere in this
+file (`.product-app:has(...)`). Verified in-browser at 1400px and 375px
+viewports.
+
+<details>
+<summary>Original ticket text</summary>
+
+TICKET-66: On desktop, the AI panel should dock as a fixed sidebar that reflows the page instead of overlaying it
+
+**Priority:** Medium — requested UX change, not a bug.
+**Area:** `src/AiCopilot.tsx`, `src/index.css` (`.copilot-panel`, `.copilot-backdrop`, `.copilot-fab`, lines ~4062-4655), every page's own CSS that would need a reflow offset (e.g. `InventoryLogistics.css`, `EventOperationsMvp.css`, and any other top-level page containers)
+
+### What's wrong
+
+Since TICKET-10, the AI panel is a right-docked `position: fixed` overlay (`.copilot-panel`, `src/index.css:4112-4132`) shown on top of a full-screen scrim (`.copilot-backdrop`, lines 4102-4110) — opening it never changes page layout, it just floats above the current page. That was the right call for mobile (no room to reflow), but on wider viewports it means the panel obscures content the organizer likely wants to see side-by-side with the chat (e.g. the events list while asking about an event).
+
+Two now-vestigial `--copilot-sidebar-width` CSS var references in `InventoryLogistics.css:47-48` and `EventOperationsMvp.css:47` are left over from an older always-open sidebar design that TICKET-10 replaced — evidence this reflow behavior existed before and was deliberately dropped for the overlay+FAB pattern, not that it was never considered.
+
+### What to do
+
+Reintroduce a reflow layout, but scoped to non-mobile viewports only, on top of the current overlay behavior rather than reverting TICKET-10 wholesale:
+
+- Below the existing mobile breakpoint (where `.copilot-backdrop { display: none }` already kicks in), keep today's overlay+scrim exactly as-is — there's no room to reflow on a phone.
+- At wider viewports, when the panel is open, give the page's root layout container a right margin/width reduction equal to the panel's width (reintroducing something like the old `--copilot-sidebar-width` var, now scoped correctly) instead of rendering the scrim, so the panel behaves as a fixed-position sidebar and the rest of the page visibly narrows to make room rather than being covered.
+- Keep the FAB toggle and open/close state exactly as they are today — this is a layout change for the open state, not a rework of how the panel is triggered.
+- Audit page-level containers for hardcoded full-width assumptions (grids, tables) that would need a min-width/overflow fallback once the viewport is effectively narrower with the panel open.
+
+</details>
+
+---
+
+~~TICKET-67: AI panel should open with data-driven suggested actions, not just static suggested prompts~~
+— **Done**, scoped to what's actually derivable from the current schema.
+Added `GET /dashboard/brief` (`backend/api/routes/dashboard.py`), reshaping
+`dashboard_summary`'s own counts (no new SQL) into a ranked list of
+`{id, label, count, prompt}` items: pending volunteer confirmations,
+overdue tasks, and tasks due in the next 14 days, each omitted when its
+count is zero. "Events with a registration shortfall" from the original
+ask was dropped — there's no capacity/target field anywhere in the events
+schema to measure a shortfall against, so it isn't derivable without a
+schema change, which the ticket didn't request.
+`AiCopilot.tsx` fetches this once per panel-open-on-empty-conversation
+(alongside, not instead of, `RECOMMENDED_ACTIONS`) via a new
+`getDashboardBrief` client (`src/ai-api.ts`), and renders it as a "Needs
+your attention" section above the static prompt chips; each item's
+`prompt` is sent as a chat message on click, same mechanism the static
+chips already use. A failed/unreachable brief request is swallowed
+silently — the static chips are a fully usable fallback on their own.
+Covered by `backend/tests/test_admin_api.py`
+(`test_dashboard_brief_surfaces_pending_signups_and_overdue_tasks`,
+`test_dashboard_brief_is_empty_when_nothing_needs_attention`) and
+`src/AiCopilot.brief.test.tsx`. Verified in-browser against live seed data.
+
+<details>
+<summary>Original ticket text</summary>
+
+TICKET-67: AI panel should open with data-driven suggested actions, not just static suggested prompts
+
+**Priority:** Medium — requested UX change; makes the panel's empty state proactive instead of purely reactive.
+**Area:** `src/AiCopilot.tsx` (`RECOMMENDED_ACTIONS`, empty-conversation render path), `backend/api/routes/dashboard.py` (`dashboard_summary`, `upcoming_deadlines`), `backend/ai_tools/tools.py` (`get_event_logistics`, `list_pending_signups`/`list_event_signups`)
+
+### What's wrong
+
+`AiCopilot.tsx`'s empty-conversation state today shows only `RECOMMENDED_ACTIONS` — four hardcoded, always-identical prompt chips ("Create an event using one of my templates", "List upcoming tasks across all events", etc., TICKET-34). They never reflect what's actually happening in the account: an event genuinely short on volunteer signups, tasks past due, or signups sitting in the approval queue produce the exact same four chips as a quiet day with nothing outstanding.
+
+The data to make these dynamic mostly already exists:
+- `GET /dashboard/summary` (`dashboard.py:99`) — pending volunteer-signup count (`status = 'requested'`), task counts.
+- `GET /dashboard/upcoming-deadlines` (`dashboard.py:140`) — tasks with `due_at`, filterable.
+- `list_pending_signups`/`list_event_signups` and `get_event_logistics` (`backend/ai_tools/tools.py`) — per-event registration/logistics shortfall signals.
+
+There is currently no single endpoint that turns these into a ranked "needs attention" list (e.g. "event X registration is short by N volunteers"), and nothing on the frontend fetches or renders one before the first message is sent.
+
+### What to do
+
+- Add a lightweight backend read (either a new `GET /dashboard/brief`-style endpoint, or a few parallel calls the frontend already has client wrappers for) that surfaces the top few actionable items: nearest upcoming deadlines, events with a registration shortfall, and the current approval-queue size — reusing `dashboard_summary`/`upcoming_deadlines`'s existing queries rather than duplicating their SQL.
+- On `AiCopilot.tsx` panel open with an empty conversation, fetch this alongside (not instead of) `RECOMMENDED_ACTIONS`, and render it as a distinct "suggested actions" section above or alongside the static prompt chips — each item should be clickable and either deep-link to the relevant page or seed a chat message that lets the AI act on it (e.g. clicking "3 signups need review" sends a message that triggers `list_pending_signups`).
+- Keep `RECOMMENDED_ACTIONS`'s static prompts as a fallback/complement for when there's nothing urgent to surface — don't remove them.
+- No new mutating capability is implied here — this is a read/summary surface, not a new AI tool.
+
+</details>

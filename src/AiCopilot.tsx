@@ -1,7 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import type { Page } from "./App";
-import { invokeTool, streamChat, type ChatMessage, type ToolResult } from "./ai-api";
+import {
+  getDashboardBrief,
+  invokeTool,
+  streamChat,
+  type ChatMessage,
+  type DashboardBriefItem,
+  type ToolResult,
+} from "./ai-api";
 
 const pageContext: Record<Page, string> = {
   home: "Landing",
@@ -83,6 +90,10 @@ export default function AiCopilot({
   const [isStreaming, setIsStreaming] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [draftPreview, setDraftPreview] = useState<EventDraftFields | null>(null);
+  // TICKET-67: data-driven suggested actions, fetched fresh each time the
+  // panel opens on an empty conversation. Failure is silent — RECOMMENDED_ACTIONS
+  // below is a perfectly usable fallback if /dashboard/brief is unreachable.
+  const [suggestedActions, setSuggestedActions] = useState<DashboardBriefItem[]>([]);
   const [isEditingDraft, setIsEditingDraft] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
   const fabRef = useRef<HTMLButtonElement>(null);
@@ -119,6 +130,23 @@ export default function AiCopilot({
     const chat = chatRef.current;
     if (chat) chat.scrollTop = chat.scrollHeight;
   }, [conversation, toolActivity, errorMessage]);
+
+  useEffect(() => {
+    if (!open || conversation.length > 0) return;
+
+    let cancelled = false;
+    getDashboardBrief()
+      .then((brief) => {
+        if (!cancelled) setSuggestedActions(brief.items);
+      })
+      .catch(() => {
+        // Static RECOMMENDED_ACTIONS chips still render either way.
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, conversation.length]);
 
   function close() {
     setOpen(false);
@@ -299,6 +327,24 @@ export default function AiCopilot({
           {conversation.length === 0 && !isStreaming && (
             <div className="copilot-message copilot-message-assistant">
               <p>Ask me to help manage an event — I'll show you a draft before creating anything.</p>
+              {suggestedActions.length > 0 && (
+                <div className="copilot-brief">
+                  <p className="copilot-brief-heading">Needs your attention</p>
+                  <ul className="copilot-brief-list">
+                    {suggestedActions.map((item) => (
+                      <li key={item.id}>
+                        <button
+                          type="button"
+                          className="copilot-brief-item"
+                          onClick={() => sendMessage(item.prompt)}
+                        >
+                          {item.label}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               <div className="copilot-suggestions">
                 {RECOMMENDED_ACTIONS.map((action) => (
                   <button

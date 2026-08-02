@@ -3,8 +3,11 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import AiCopilot from "./AiCopilot"
+import { mockChatFetch } from "./AiCopilot.testFetch"
 
 afterEach(cleanup)
+
+let fetch: ReturnType<typeof mockChatFetch>
 
 const DRAFT_EVENT = {
   event_template_id: null,
@@ -66,7 +69,7 @@ async function openPanelWithDraft(onDataChanged?: () => void) {
 }
 
 beforeEach(() => {
-  vi.stubGlobal("fetch", vi.fn())
+  fetch = mockChatFetch()
 })
 
 describe("AiCopilot draft preview + approval (TICKET-6)", () => {

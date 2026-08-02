@@ -137,6 +137,48 @@ def dashboard_summary(
     }
 
 
+@router.get("/dashboard/brief")
+def dashboard_brief(db: Connection) -> dict:
+    """Ranked, actionable items for the AI panel's suggested-actions surface
+    (TICKET-67). Reshapes dashboard_summary's own counts rather than
+    duplicating its SQL — this endpoint adds no new queries.
+    """
+    summary = dashboard_summary(db)
+
+    items: list[dict] = []
+    pending = summary["pending_volunteer_confirmations"]
+    if pending > 0:
+        items.append(
+            {
+                "id": "pending_volunteer_confirmations",
+                "label": f"{pending} volunteer signup{'s' if pending != 1 else ''} need review",
+                "count": pending,
+                "prompt": "Which volunteer signups need approval?",
+            }
+        )
+    overdue = summary["overdue_tasks"]
+    if overdue > 0:
+        items.append(
+            {
+                "id": "overdue_tasks",
+                "label": f"{overdue} task{'s are' if overdue != 1 else ' is'} overdue",
+                "count": overdue,
+                "prompt": "Which tasks are overdue?",
+            }
+        )
+    due_soon = summary["tasks_due_soon"]
+    if due_soon > 0:
+        items.append(
+            {
+                "id": "tasks_due_soon",
+                "label": f"{due_soon} task{'s' if due_soon != 1 else ''} due in the next 14 days",
+                "count": due_soon,
+                "prompt": "List upcoming tasks across all events",
+            }
+        )
+    return {"items": items}
+
+
 @router.get("/dashboard/upcoming-deadlines")
 def upcoming_deadlines(
     db: Connection,

@@ -4303,6 +4303,49 @@ button {
   color: #a11a1a;
 }
 
+/* TICKET-67: data-driven suggested actions (GET /dashboard/brief), shown
+   above the static RECOMMENDED_ACTIONS chips on an empty conversation. */
+.copilot-brief {
+  margin-top: 12px;
+}
+
+.copilot-brief-heading {
+  color: #6b6b6b;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  margin: 0 0 8px;
+  text-transform: uppercase;
+}
+
+.copilot-brief-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.copilot-brief-item {
+  background: #10241c;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 8px;
+  color: #ffffff;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  padding: 10px 12px;
+  text-align: left;
+  transition: background-color 0.15s ease;
+  width: 100%;
+}
+
+.copilot-brief-item:hover {
+  background: #17352a;
+}
+
 .copilot-suggestions {
   display: flex;
   flex-direction: column;

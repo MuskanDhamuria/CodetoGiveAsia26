@@ -3,8 +3,11 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import AiCopilot from "./AiCopilot"
+import { mockChatFetch } from "./AiCopilot.testFetch"
 
 afterEach(cleanup)
+
+let fetch: ReturnType<typeof mockChatFetch>
 
 function sseResponse(events: { event: string; data: unknown }[]): Response {
   const body = events
@@ -27,7 +30,7 @@ async function openPanel(onDataChanged?: () => void) {
 }
 
 beforeEach(() => {
-  vi.stubGlobal("fetch", vi.fn())
+  fetch = mockChatFetch()
 })
 
 describe("AiCopilot chat (TICKET-5)", () => {

@@ -194,6 +194,32 @@ class AdminApiTest(unittest.TestCase):
         ).json()
         self.assertEqual(calendar["items"], [])
 
+    def test_dashboard_brief_surfaces_pending_signups_and_overdue_tasks(self) -> None:
+        event = self.create_event()  # ships with one task already overdue
+
+        signup = self.client.post(
+            f"/api/v1/public/events/{event['id']}/volunteer-signups",
+            json={"name": "Priya", "contact_number": "91234567"},
+        )
+        self.assertEqual(signup.status_code, 200)
+
+        brief = self.client.get("/api/v1/dashboard/brief").json()
+        by_id = {item["id"]: item for item in brief["items"]}
+
+        self.assertIn("pending_volunteer_confirmations", by_id)
+        self.assertEqual(by_id["pending_volunteer_confirmations"]["count"], 1)
+        self.assertEqual(
+            by_id["pending_volunteer_confirmations"]["prompt"],
+            "Which volunteer signups need approval?",
+        )
+
+        self.assertIn("overdue_tasks", by_id)
+        self.assertGreaterEqual(by_id["overdue_tasks"]["count"], 1)
+
+    def test_dashboard_brief_is_empty_when_nothing_needs_attention(self) -> None:
+        brief = self.client.get("/api/v1/dashboard/brief").json()
+        self.assertEqual(brief["items"], [])
+
     def test_cancelling_a_missing_event_is_a_404(self) -> None:
         response = self.client.post("/api/v1/events/999/cancel")
         self.assertEqual(response.status_code, 404)

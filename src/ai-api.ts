@@ -27,7 +27,11 @@ function formatErrorDetail(detail: unknown, status: number): string {
   if (typeof detail === "string") return detail
   if (Array.isArray(detail)) {
     const messages = detail
-      .map((issue) => (issue && typeof issue === "object" && "msg" in issue ? String(issue.msg) : null))
+      .map((issue) =>
+        issue && typeof issue === "object" && "msg" in issue
+          ? String(issue.msg)
+          : null,
+      )
       .filter((msg): msg is string => msg !== null)
     if (messages.length > 0) return messages.join("; ")
   }
@@ -108,6 +112,29 @@ export async function invokeTool(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ arguments: args }),
   })
+
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null)
+    throw new Error(formatErrorDetail(payload?.detail, response.status))
+  }
+
+  return response.json()
+}
+
+// TICKET-67: ranked, actionable items (pending signup approvals, overdue
+// tasks, tasks due soon) for the AI panel's suggested-actions section.
+export type DashboardBriefItem = {
+  id: string
+  label: string
+  count: number
+  prompt: string
+}
+
+export async function getDashboardBrief(): Promise<{
+  items: DashboardBriefItem[]
+}> {
+  const baseUrl = import.meta.env.VITE_API_BASE_URL ?? "/api/v1"
+  const response = await fetch(`${baseUrl}/dashboard/brief`)
 
   if (!response.ok) {
     const payload = await response.json().catch(() => null)

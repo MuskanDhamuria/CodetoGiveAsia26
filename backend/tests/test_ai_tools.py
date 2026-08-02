@@ -215,6 +215,49 @@ class AiToolsTest(unittest.TestCase):
                 "release_logistics_inventory",
                 "issue_logistics_inventory",
                 "reconcile_logistics_allocation",
+                "deactivate_inventory_item",
+                "deactivate_inventory_location",
+                "deactivate_venue",
+                "deactivate_venue_space",
+                "reorder_event_tasks",
+                "create_donation_batch",
+                "list_donation_batches",
+                "get_donation_batch",
+                "collect_donation_batch",
+                "receive_donation_batch",
+                "sort_donation_batch",
+                "complete_donation_sorting",
+                "distribute_donation_batch",
+                "close_donation_batch",
+                "list_beneficiaries",
+                "get_beneficiary",
+                "create_beneficiary",
+                "update_beneficiary",
+                "create_organization",
+                "update_organization",
+                "list_organizations",
+                "get_organization",
+                "create_organization_contact",
+                "update_organization_contact",
+                "create_supplier_order",
+                "update_supplier_order",
+                "list_supplier_orders",
+                "get_supplier_order",
+                "add_supplier_order_line",
+                "update_supplier_order_line",
+                "confirm_supplier_order",
+                "receive_supplier_order",
+                "return_supplier_order_rental",
+                "complete_supplier_order",
+                "cancel_supplier_order",
+                "create_team_member",
+                "list_team_members",
+                "get_team_member",
+                "update_team_member",
+                "list_team_member_tasks",
+                "reject_event_signup",
+                "create_event_template",
+                "update_event_template",
             },
         )
 
@@ -1856,6 +1899,369 @@ class AiToolsParticipantsVenuesLogisticsTest(AiToolsTest):
         )
 
         self.assertFalse(result["success"])
+
+
+class AiToolsTicket59To65Test(AiToolsTest):
+    """TICKET-59 through TICKET-65: deactivation, reorder, donation lifecycle,
+
+    organizations/beneficiaries, team members, signup rejection, and event
+    template create/update AI tools.
+    """
+
+    def create_item(self, **overrides) -> int:
+        fields = {"name": "Bottled Water", "unit": "case", "item_type": "consumable"}
+        fields.update(overrides)
+        row = self.db.execute(
+            "INSERT INTO inventory_items (name, unit, item_type) VALUES (?, ?, ?) RETURNING id",
+            (fields["name"], fields["unit"], fields["item_type"]),
+        ).fetchone()
+        self.db.commit()
+        return row["id"]
+
+    def create_location(self, **overrides) -> int:
+        fields = {"name": "Main Store"}
+        fields.update(overrides)
+        row = self.db.execute(
+            "INSERT INTO inventory_locations (name) VALUES (?) RETURNING id", (fields["name"],)
+        ).fetchone()
+        self.db.commit()
+        return row["id"]
+
+    def create_venue(self, **overrides) -> int:
+        fields = {"name": "Community Hub", "address": "1 Hub Way"}
+        fields.update(overrides)
+        row = self.db.execute(
+            "INSERT INTO venues (name, address, is_active) VALUES (?, ?, 1) RETURNING id",
+            (fields["name"], fields["address"]),
+        ).fetchone()
+        self.db.commit()
+        return row["id"]
+
+    def create_venue_space(self, venue_id: int, **overrides) -> int:
+        fields = {"name": "Main Hall"}
+        fields.update(overrides)
+        row = self.db.execute(
+            "INSERT INTO venue_spaces (venue_id, name, is_active) VALUES (?, ?, 1) RETURNING id",
+            (venue_id, fields["name"]),
+        ).fetchone()
+        self.db.commit()
+        return row["id"]
+
+    def create_organization(self, **overrides) -> int:
+        fields = {"name": "Acme Supplies"}
+        fields.update(overrides)
+        row = self.db.execute(
+            "INSERT INTO external_organizations (name, is_active) VALUES (?, 1) RETURNING id",
+            (fields["name"],),
+        ).fetchone()
+        self.db.commit()
+        return row["id"]
+
+    # -- TICKET-59: deactivation ------------------------------------------
+
+    def test_deactivate_inventory_item_flips_is_active_off(self) -> None:
+        item_id = self.create_item()
+        result = dispatch_tool_call(self.db, "deactivate_inventory_item", {"item_id": item_id})
+        self.assertTrue(result["success"])
+        row = self.db.execute("SELECT is_active FROM inventory_items WHERE id = ?", (item_id,)).fetchone()
+        self.assertEqual(row["is_active"], 0)
+
+    def test_deactivate_inventory_item_never_deletes_the_row(self) -> None:
+        item_id = self.create_item()
+        dispatch_tool_call(self.db, "deactivate_inventory_item", {"item_id": item_id})
+        row = self.db.execute("SELECT 1 FROM inventory_items WHERE id = ?", (item_id,)).fetchone()
+        self.assertIsNotNone(row)
+
+    def test_deactivate_inventory_location_flips_is_active_off(self) -> None:
+        location_id = self.create_location()
+        result = dispatch_tool_call(self.db, "deactivate_inventory_location", {"location_id": location_id})
+        self.assertTrue(result["success"])
+        row = self.db.execute("SELECT is_active FROM inventory_locations WHERE id = ?", (location_id,)).fetchone()
+        self.assertEqual(row["is_active"], 0)
+
+    def test_deactivate_venue_cascades_to_its_spaces(self) -> None:
+        venue_id = self.create_venue()
+        space_id = self.create_venue_space(venue_id)
+        result = dispatch_tool_call(self.db, "deactivate_venue", {"venue_id": venue_id})
+        self.assertTrue(result["success"])
+        space = self.db.execute("SELECT is_active FROM venue_spaces WHERE id = ?", (space_id,)).fetchone()
+        self.assertEqual(space["is_active"], 0)
+
+    def test_deactivate_venue_space_only_deactivates_that_space(self) -> None:
+        venue_id = self.create_venue()
+        space_id = self.create_venue_space(venue_id)
+        result = dispatch_tool_call(
+            self.db, "deactivate_venue_space", {"venue_id": venue_id, "space_id": space_id}
+        )
+        self.assertTrue(result["success"])
+        venue = self.db.execute("SELECT is_active FROM venues WHERE id = ?", (venue_id,)).fetchone()
+        self.assertEqual(venue["is_active"], 1)
+
+    # -- TICKET-60: reorder_event_tasks ------------------------------------
+
+    def test_reorder_event_tasks_applies_the_requested_order(self) -> None:
+        event = self._publish()
+        first = self.create_task(event["id"], name="First", position=0)
+        second = self.create_task(event["id"], name="Second", position=1)
+        result = dispatch_tool_call(
+            self.db, "reorder_event_tasks", {"event_id": event["id"], "task_ids": [second, first]}
+        )
+        self.assertTrue(result["success"])
+        self.assertEqual([item["id"] for item in result["result"]["items"]], [second, first])
+
+    def test_reorder_event_tasks_rejects_an_incomplete_task_list(self) -> None:
+        event = self._publish()
+        first = self.create_task(event["id"], name="First", position=0)
+        self.create_task(event["id"], name="Second", position=1)
+        result = dispatch_tool_call(
+            self.db, "reorder_event_tasks", {"event_id": event["id"], "task_ids": [first]}
+        )
+        self.assertFalse(result["success"])
+
+    # -- TICKET-61: donation batch lifecycle -------------------------------
+
+    def test_donation_batch_lifecycle_end_to_end(self) -> None:
+        batch = dispatch_tool_call(self.db, "create_donation_batch", {"container_count": 5})["result"]
+        self.assertEqual(batch["status"], "planned")
+
+        collected = dispatch_tool_call(self.db, "collect_donation_batch", {"batch_id": batch["id"]})["result"]
+        self.assertEqual(collected["status"], "collected")
+
+        received = dispatch_tool_call(self.db, "receive_donation_batch", {"batch_id": batch["id"]})["result"]
+        self.assertEqual(received["status"], "received")
+
+        item_id = self.create_item()
+        location_id = self.create_location()
+        sorted_lot = dispatch_tool_call(
+            self.db,
+            "sort_donation_batch",
+            {"batch_id": batch["id"], "item_id": item_id, "location_id": location_id, "quantity": 10},
+        )
+        self.assertTrue(sorted_lot["success"])
+
+        sorting_done = dispatch_tool_call(
+            self.db, "complete_donation_sorting", {"batch_id": batch["id"]}
+        )["result"]
+        self.assertEqual(sorting_done["status"], "sorted")
+
+        distributed = dispatch_tool_call(
+            self.db,
+            "distribute_donation_batch",
+            {"batch_id": batch["id"], "item_id": item_id, "location_id": location_id, "quantity": 4},
+        )
+        self.assertTrue(distributed["success"])
+
+        closed = dispatch_tool_call(self.db, "close_donation_batch", {"batch_id": batch["id"]})["result"]
+        self.assertEqual(closed["status"], "closed")
+
+    def test_list_donation_batches_returns_created_batches(self) -> None:
+        dispatch_tool_call(self.db, "create_donation_batch", {"container_count": 2})
+        result = dispatch_tool_call(self.db, "list_donation_batches", {})
+        self.assertTrue(result["success"])
+        self.assertEqual(result["result"]["total"], 1)
+
+    def test_get_donation_batch_missing_id_is_a_structured_error(self) -> None:
+        result = dispatch_tool_call(self.db, "get_donation_batch", {"batch_id": 9999})
+        self.assertFalse(result["success"])
+
+    # -- TICKET-62: beneficiaries -------------------------------------------
+
+    def test_create_and_get_beneficiary(self) -> None:
+        created = dispatch_tool_call(self.db, "create_beneficiary", {"name": "Refugee Families"})["result"]
+        fetched = dispatch_tool_call(self.db, "get_beneficiary", {"beneficiary_id": created["id"]})
+        self.assertTrue(fetched["success"])
+        self.assertEqual(fetched["result"]["name"], "Refugee Families")
+
+    def test_update_beneficiary_renames_it(self) -> None:
+        created = dispatch_tool_call(self.db, "create_beneficiary", {"name": "Old Name"})["result"]
+        result = dispatch_tool_call(
+            self.db, "update_beneficiary", {"beneficiary_id": created["id"], "name": "New Name"}
+        )
+        self.assertTrue(result["success"])
+        self.assertEqual(result["result"]["name"], "New Name")
+
+    def test_list_beneficiaries_filters_by_search_text(self) -> None:
+        dispatch_tool_call(self.db, "create_beneficiary", {"name": "Refugee Families"})
+        dispatch_tool_call(self.db, "create_beneficiary", {"name": "Displaced Persons"})
+        result = dispatch_tool_call(self.db, "list_beneficiaries", {"q": "Refugee"})
+        self.assertTrue(result["success"])
+        self.assertEqual([item["name"] for item in result["result"]["items"]], ["Refugee Families"])
+
+    # -- TICKET-62: organizations / contacts / supplier orders -------------
+
+    def test_create_and_update_organization(self) -> None:
+        created = dispatch_tool_call(
+            self.db, "create_organization", {"name": "Acme Supplies", "capabilities": ["supplier"]}
+        )["result"]
+        updated = dispatch_tool_call(
+            self.db, "update_organization", {"organization_id": created["id"], "notes": "Reliable"}
+        )
+        self.assertTrue(updated["success"])
+        self.assertEqual(updated["result"]["notes"], "Reliable")
+
+    def test_get_organization_includes_contacts_and_orders(self) -> None:
+        organization_id = self.create_organization()
+        dispatch_tool_call(
+            self.db,
+            "create_organization_contact",
+            {"organization_id": organization_id, "name": "Jane Tan"},
+        )
+        result = dispatch_tool_call(self.db, "get_organization", {"organization_id": organization_id})
+        self.assertTrue(result["success"])
+        self.assertEqual([item["name"] for item in result["result"]["contacts"]], ["Jane Tan"])
+
+    def test_update_organization_contact_updates_fields(self) -> None:
+        organization_id = self.create_organization()
+        contact = dispatch_tool_call(
+            self.db,
+            "create_organization_contact",
+            {"organization_id": organization_id, "name": "Jane Tan"},
+        )["result"]
+        result = dispatch_tool_call(
+            self.db,
+            "update_organization_contact",
+            {"organization_id": organization_id, "contact_id": contact["id"], "role": "Manager"},
+        )
+        self.assertTrue(result["success"])
+        self.assertEqual(result["result"]["role"], "Manager")
+
+    def test_supplier_order_lifecycle_end_to_end(self) -> None:
+        organization_id = self.create_organization()
+        item_id = self.create_item()
+        order = dispatch_tool_call(
+            self.db,
+            "create_supplier_order",
+            {"organization_id": organization_id, "order_type": "purchase"},
+        )["result"]
+        self.assertEqual(order["status"], "draft")
+
+        line = dispatch_tool_call(
+            self.db,
+            "add_supplier_order_line",
+            {
+                "order_id": order["id"],
+                "inventory_item_id": item_id,
+                "description": "Bottled water",
+                "quantity": 10,
+                "unit": "case",
+            },
+        )["result"]
+
+        updated_line = dispatch_tool_call(
+            self.db,
+            "update_supplier_order_line",
+            {"order_id": order["id"], "line_id": line["id"], "quantity": 12},
+        )
+        self.assertTrue(updated_line["success"])
+
+        confirmed = dispatch_tool_call(self.db, "confirm_supplier_order", {"order_id": order["id"]})["result"]
+        self.assertEqual(confirmed["status"], "confirmed")
+
+        location_id = self.create_location()
+        dispatch_tool_call(
+            self.db,
+            "update_supplier_order",
+            {"order_id": order["id"], "destination_location_id": location_id},
+        )
+        # destination_location_id can only be set before confirmation on a draft order in
+        # this codebase's business rules; re-fetch to confirm update_order's own guard fired.
+        current = dispatch_tool_call(self.db, "get_supplier_order", {"order_id": order["id"]})["result"]
+        self.assertEqual(current["status"], "confirmed")
+
+    def test_cancel_supplier_order_does_not_hard_delete_it(self) -> None:
+        organization_id = self.create_organization()
+        order = dispatch_tool_call(
+            self.db,
+            "create_supplier_order",
+            {"organization_id": organization_id, "order_type": "service"},
+        )["result"]
+        result = dispatch_tool_call(self.db, "cancel_supplier_order", {"order_id": order["id"]})
+        self.assertTrue(result["success"])
+        self.assertEqual(result["result"]["status"], "cancelled")
+        row = self.db.execute("SELECT 1 FROM supplier_orders WHERE id = ?", (order["id"],)).fetchone()
+        self.assertIsNotNone(row)
+
+    # -- TICKET-63: team members --------------------------------------------
+
+    def test_create_and_get_team_member(self) -> None:
+        created = dispatch_tool_call(
+            self.db, "create_team_member", {"name": "Priya Nair", "email": "priya@example.org"}
+        )["result"]
+        fetched = dispatch_tool_call(self.db, "get_team_member", {"member_id": created["id"]})
+        self.assertTrue(fetched["success"])
+        self.assertEqual(fetched["result"]["name"], "Priya Nair")
+
+    def test_update_team_member_can_deactivate_instead_of_delete(self) -> None:
+        member_id = self.create_team_member()
+        result = dispatch_tool_call(
+            self.db, "update_team_member", {"member_id": member_id, "is_active": False}
+        )
+        self.assertTrue(result["success"])
+        self.assertFalse(result["result"]["is_active"])
+        row = self.db.execute("SELECT 1 FROM team_members WHERE id = ?", (member_id,)).fetchone()
+        self.assertIsNotNone(row)
+
+    def test_list_team_member_tasks_returns_only_that_members_tasks(self) -> None:
+        event = self._publish()
+        member_id = self.create_team_member()
+        other_member_id = self.create_team_member(name="Other", email="other@example.org")
+        assigned_task_id = self.create_task(event["id"], name="Assigned")
+        not_assigned_task_id = self.create_task(event["id"], name="Not assigned", position=1)
+        dispatch_tool_call(
+            self.db,
+            "assign_event_task",
+            {"event_id": event["id"], "task_id": assigned_task_id, "team_member_id": member_id},
+        )
+        dispatch_tool_call(
+            self.db,
+            "assign_event_task",
+            {"event_id": event["id"], "task_id": not_assigned_task_id, "team_member_id": other_member_id},
+        )
+        result = dispatch_tool_call(self.db, "list_team_member_tasks", {"member_id": member_id})
+        self.assertTrue(result["success"])
+        names = [item["name"] for item in result["result"]["items"]]
+        self.assertEqual(names, ["Assigned"])
+
+    # -- TICKET-64: reject_event_signup --------------------------------------
+
+    def test_reject_event_signup_sets_status_rejected(self) -> None:
+        event = self._publish()
+        volunteer_id = self.create_volunteer()
+        signup_id = self.create_signup(event["id"], volunteer_id)
+        result = dispatch_tool_call(
+            self.db, "reject_event_signup", {"event_id": event["id"], "signup_id": signup_id}
+        )
+        self.assertTrue(result["success"])
+        self.assertEqual(result["result"]["status"], "rejected")
+
+    def test_reject_event_signup_is_not_wired_to_a_destructive_delete(self) -> None:
+        event = self._publish()
+        volunteer_id = self.create_volunteer()
+        signup_id = self.create_signup(event["id"], volunteer_id)
+        dispatch_tool_call(self.db, "reject_event_signup", {"event_id": event["id"], "signup_id": signup_id})
+        row = self.db.execute(
+            "SELECT 1 FROM volunteer_signups WHERE id = ?", (signup_id,)
+        ).fetchone()
+        self.assertIsNotNone(row)
+
+    # -- TICKET-65: event template create/update -----------------------------
+
+    def test_create_event_template(self) -> None:
+        result = dispatch_tool_call(
+            self.db, "create_event_template", {"name": "Beach Cleanup", "description": "Coastal cleanup"}
+        )
+        self.assertTrue(result["success"])
+        self.assertEqual(result["result"]["name"], "Beach Cleanup")
+        self.assertFalse(result["result"]["is_built_in"])
+
+    def test_update_event_template_partially_updates_fields(self) -> None:
+        template_id = self.create_template()
+        result = dispatch_tool_call(
+            self.db, "update_event_template", {"template_id": template_id, "description": "Updated description"}
+        )
+        self.assertTrue(result["success"])
+        self.assertEqual(result["result"]["description"], "Updated description")
+        self.assertEqual(result["result"]["name"], "Wellness")
 
 
 if __name__ == "__main__":

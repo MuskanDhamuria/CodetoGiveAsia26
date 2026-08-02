@@ -14,8 +14,10 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from backend.api.routes._common import DEFAULT_LIMIT, MAX_LIMIT
+from backend.schema.beneficiaries import BeneficiaryCreate, BeneficiaryUpdate
 from backend.schema.common import TaskCategory, TaskStatus
-from backend.schema.events import EventCreate, EventTaskCreate, EventTaskUpdate, EventUpdate
+from backend.schema.event_templates import TemplateCreate, TemplateUpdate
+from backend.schema.events import EventCreate, EventTaskCreate, EventTaskUpdate, EventUpdate, TaskOrder
 from backend.schema.inventory import (
     InventoryItemCreate,
     InventoryItemUpdate,
@@ -31,7 +33,21 @@ from backend.schema.logistics import (
     EventRequirementUpdate,
     ReserveAllocation,
 )
+from backend.schema.organizations import (
+    ContactCreate,
+    ContactUpdate,
+    FulfilmentCreate,
+    OrganizationCreate,
+    OrganizationUpdate,
+    SupplierOrderCreate,
+    SupplierOrderLineCreate,
+    SupplierOrderLineUpdate,
+    SupplierOrderUpdate,
+)
+from backend.schema.team_members import TeamMemberCreate, TeamMemberUpdate
 from backend.schema.venues import (
+    DonationBatchCreate,
+    DonationSort,
     VenueBookingCreate,
     VenueBookingUpdate,
     VenueCreate,
@@ -613,6 +629,358 @@ class ReconcileLogisticsAllocationArgs(AllocationReconcile):
     allocation_id: int
 
 
+class DeactivateInventoryItemArgs(BaseModel):
+    """TICKET-59."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    item_id: int
+
+
+class DeactivateInventoryLocationArgs(BaseModel):
+    """TICKET-59."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    location_id: int
+
+
+class DeactivateVenueArgs(BaseModel):
+    """TICKET-59."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    venue_id: int
+
+
+class DeactivateVenueSpaceArgs(BaseModel):
+    """TICKET-59."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    venue_id: int
+    space_id: int
+
+
+class ReorderEventTasksArgs(TaskOrder):
+    """TICKET-60."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    event_id: int
+
+
+class CreateDonationBatchArgs(DonationBatchCreate):
+    """TICKET-61."""
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class ListDonationBatchesArgs(BaseModel):
+    """TICKET-61."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    limit: int = Field(default=DEFAULT_LIMIT, ge=1, le=MAX_LIMIT)
+    offset: int = Field(default=0, ge=0)
+
+
+class GetDonationBatchArgs(BaseModel):
+    """TICKET-61."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    batch_id: int
+
+
+class CollectDonationBatchArgs(BaseModel):
+    """TICKET-61."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    batch_id: int
+
+
+class ReceiveDonationBatchArgs(BaseModel):
+    """TICKET-61."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    batch_id: int
+
+
+class SortDonationBatchArgs(DonationSort):
+    """TICKET-61."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    batch_id: int
+
+
+class CompleteDonationSortingArgs(BaseModel):
+    """TICKET-61."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    batch_id: int
+
+
+class DistributeDonationBatchArgs(DonationSort):
+    """TICKET-61."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    batch_id: int
+
+
+class CloseDonationBatchArgs(BaseModel):
+    """TICKET-61."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    batch_id: int
+
+
+class ListBeneficiariesArgs(BaseModel):
+    """TICKET-62."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    q: str | None = None
+    limit: int = Field(default=DEFAULT_LIMIT, ge=1, le=MAX_LIMIT)
+    offset: int = Field(default=0, ge=0)
+
+
+class GetBeneficiaryArgs(BaseModel):
+    """TICKET-62."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    beneficiary_id: int
+
+
+class CreateBeneficiaryArgs(BeneficiaryCreate):
+    """TICKET-62."""
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class UpdateBeneficiaryArgs(BeneficiaryUpdate):
+    """TICKET-62."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    beneficiary_id: int
+
+
+class CreateOrganizationArgs(OrganizationCreate):
+    """TICKET-62."""
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class UpdateOrganizationArgs(OrganizationUpdate):
+    """TICKET-62."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    organization_id: int
+
+
+class ListOrganizationsArgs(BaseModel):
+    """TICKET-62."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    limit: int = Field(default=DEFAULT_LIMIT, ge=1, le=MAX_LIMIT)
+    offset: int = Field(default=0, ge=0)
+
+
+class GetOrganizationArgs(BaseModel):
+    """TICKET-62."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    organization_id: int
+
+
+class CreateOrganizationContactArgs(ContactCreate):
+    """TICKET-62."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    organization_id: int
+
+
+class UpdateOrganizationContactArgs(ContactUpdate):
+    """TICKET-62."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    organization_id: int
+    contact_id: int
+
+
+class CreateSupplierOrderArgs(SupplierOrderCreate):
+    """TICKET-62."""
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class UpdateSupplierOrderArgs(SupplierOrderUpdate):
+    """TICKET-62."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    order_id: int
+
+
+class ListSupplierOrdersArgs(BaseModel):
+    """TICKET-62."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    limit: int = Field(default=DEFAULT_LIMIT, ge=1, le=MAX_LIMIT)
+    offset: int = Field(default=0, ge=0)
+
+
+class GetSupplierOrderArgs(BaseModel):
+    """TICKET-62."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    order_id: int
+
+
+class AddSupplierOrderLineArgs(SupplierOrderLineCreate):
+    """TICKET-62."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    order_id: int
+
+
+class UpdateSupplierOrderLineArgs(SupplierOrderLineUpdate):
+    """TICKET-62."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    order_id: int
+    line_id: int
+
+
+class ConfirmSupplierOrderArgs(BaseModel):
+    """TICKET-62."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    order_id: int
+
+
+class ReceiveSupplierOrderArgs(FulfilmentCreate):
+    """TICKET-62."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    order_id: int
+
+
+class ReturnSupplierOrderRentalArgs(FulfilmentCreate):
+    """TICKET-62."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    order_id: int
+
+
+class CompleteSupplierOrderArgs(FulfilmentCreate):
+    """TICKET-62."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    order_id: int
+
+
+class CancelSupplierOrderArgs(BaseModel):
+    """TICKET-62."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    order_id: int
+
+
+class CreateTeamMemberArgs(TeamMemberCreate):
+    """TICKET-63."""
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class ListTeamMembersArgs(BaseModel):
+    """TICKET-63."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    is_active: bool | None = None
+    q: str | None = None
+    limit: int = Field(default=DEFAULT_LIMIT, ge=1, le=MAX_LIMIT)
+    offset: int = Field(default=0, ge=0)
+
+
+class GetTeamMemberArgs(BaseModel):
+    """TICKET-63."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    member_id: int
+
+
+class UpdateTeamMemberArgs(TeamMemberUpdate):
+    """TICKET-63."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    member_id: int
+
+
+class ListTeamMemberTasksArgs(BaseModel):
+    """TICKET-63."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    member_id: int
+    status: TaskStatus | None = None
+    event_id: int | None = None
+    due_before: date | None = None
+    limit: int = Field(default=DEFAULT_LIMIT, ge=1, le=MAX_LIMIT)
+    offset: int = Field(default=0, ge=0)
+
+
+class RejectEventSignupArgs(BaseModel):
+    """TICKET-64: only reached after the organizer explicitly confirms which
+
+    volunteer/signup to reject — see SYSTEM_PROMPT in ai_assistant.py.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    event_id: int
+    signup_id: int
+
+
+class CreateEventTemplateArgs(TemplateCreate):
+    """TICKET-65."""
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class UpdateEventTemplateArgs(TemplateUpdate):
+    """TICKET-65."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    template_id: int
+
+
 TOOL_ARG_MODELS: dict[str, type[BaseModel]] = {
     "create_event_draft": CreateEventDraftArgs,
     "publish_event": PublishEventArgs,
@@ -672,4 +1040,47 @@ TOOL_ARG_MODELS: dict[str, type[BaseModel]] = {
     "release_logistics_inventory": ReleaseLogisticsInventoryArgs,
     "issue_logistics_inventory": IssueLogisticsInventoryArgs,
     "reconcile_logistics_allocation": ReconcileLogisticsAllocationArgs,
+    "deactivate_inventory_item": DeactivateInventoryItemArgs,
+    "deactivate_inventory_location": DeactivateInventoryLocationArgs,
+    "deactivate_venue": DeactivateVenueArgs,
+    "deactivate_venue_space": DeactivateVenueSpaceArgs,
+    "reorder_event_tasks": ReorderEventTasksArgs,
+    "create_donation_batch": CreateDonationBatchArgs,
+    "list_donation_batches": ListDonationBatchesArgs,
+    "get_donation_batch": GetDonationBatchArgs,
+    "collect_donation_batch": CollectDonationBatchArgs,
+    "receive_donation_batch": ReceiveDonationBatchArgs,
+    "sort_donation_batch": SortDonationBatchArgs,
+    "complete_donation_sorting": CompleteDonationSortingArgs,
+    "distribute_donation_batch": DistributeDonationBatchArgs,
+    "close_donation_batch": CloseDonationBatchArgs,
+    "list_beneficiaries": ListBeneficiariesArgs,
+    "get_beneficiary": GetBeneficiaryArgs,
+    "create_beneficiary": CreateBeneficiaryArgs,
+    "update_beneficiary": UpdateBeneficiaryArgs,
+    "create_organization": CreateOrganizationArgs,
+    "update_organization": UpdateOrganizationArgs,
+    "list_organizations": ListOrganizationsArgs,
+    "get_organization": GetOrganizationArgs,
+    "create_organization_contact": CreateOrganizationContactArgs,
+    "update_organization_contact": UpdateOrganizationContactArgs,
+    "create_supplier_order": CreateSupplierOrderArgs,
+    "update_supplier_order": UpdateSupplierOrderArgs,
+    "list_supplier_orders": ListSupplierOrdersArgs,
+    "get_supplier_order": GetSupplierOrderArgs,
+    "add_supplier_order_line": AddSupplierOrderLineArgs,
+    "update_supplier_order_line": UpdateSupplierOrderLineArgs,
+    "confirm_supplier_order": ConfirmSupplierOrderArgs,
+    "receive_supplier_order": ReceiveSupplierOrderArgs,
+    "return_supplier_order_rental": ReturnSupplierOrderRentalArgs,
+    "complete_supplier_order": CompleteSupplierOrderArgs,
+    "cancel_supplier_order": CancelSupplierOrderArgs,
+    "create_team_member": CreateTeamMemberArgs,
+    "list_team_members": ListTeamMembersArgs,
+    "get_team_member": GetTeamMemberArgs,
+    "update_team_member": UpdateTeamMemberArgs,
+    "list_team_member_tasks": ListTeamMemberTasksArgs,
+    "reject_event_signup": RejectEventSignupArgs,
+    "create_event_template": CreateEventTemplateArgs,
+    "update_event_template": UpdateEventTemplateArgs,
 }

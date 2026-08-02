@@ -222,6 +222,62 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
         "is closed. The four quantities must sum to exactly the issued "
         "quantity."
     ),
+    "deactivate_inventory_item": "Deactivate an inventory catalogue item. Reversible (update_inventory_item can reactivate it) — not a delete.",
+    "deactivate_inventory_location": "Deactivate an inventory storage location. Reversible — not a delete.",
+    "deactivate_venue": "Deactivate a venue and all of its bookable spaces. Reversible — not a delete.",
+    "deactivate_venue_space": "Deactivate a single bookable space within a venue. Reversible — not a delete.",
+    "reorder_event_tasks": (
+        "Set the display order of an event's tasks. task_ids must contain "
+        "every current task id for the event exactly once."
+    ),
+    "create_donation_batch": "Start a new donation batch (an incoming donation to track through collection, sorting, and distribution).",
+    "list_donation_batches": "List donation batches with their status and quantities by condition.",
+    "get_donation_batch": "Look up a single donation batch, including quantities sorted so far and how much has been distributed.",
+    "collect_donation_batch": "Mark a donation batch as collected.",
+    "receive_donation_batch": "Mark a donation batch as received.",
+    "sort_donation_batch": (
+        "Sort part of a received donation batch into inventory as usable/damaged/expired stock at a location. "
+        "Moves the batch into 'sorting' status."
+    ),
+    "complete_donation_sorting": "Mark a donation batch's sorting as complete.",
+    "distribute_donation_batch": "Distribute sorted donation stock out of inventory (deducts from stock, marks the batch distributed).",
+    "close_donation_batch": "Close a donation batch once its lifecycle is finished.",
+    "list_beneficiaries": "List beneficiary groups, optionally filtered by search text.",
+    "get_beneficiary": "Look up a single beneficiary group by id.",
+    "create_beneficiary": "Add a new beneficiary group.",
+    "update_beneficiary": "Update a beneficiary group's name.",
+    "create_organization": "Add a new external organization (supplier, donor, venue partner, etc.).",
+    "update_organization": "Update an external organization's fields, including its capabilities list.",
+    "list_organizations": "List external organizations.",
+    "get_organization": "Look up a single external organization, its contacts, linked events, and supplier orders.",
+    "create_organization_contact": "Add a contact person to an external organization.",
+    "update_organization_contact": "Update an external organization contact's fields.",
+    "create_supplier_order": "Create a new supplier order (purchase, rental, or service) with an external organization.",
+    "update_supplier_order": "Update a draft supplier order's fields. Only draft orders can be edited.",
+    "list_supplier_orders": "List supplier orders.",
+    "get_supplier_order": "Look up a single supplier order, its lines, and fulfilment history.",
+    "add_supplier_order_line": "Add a line item to a draft supplier order.",
+    "update_supplier_order_line": "Update a line item on a draft supplier order.",
+    "confirm_supplier_order": "Confirm a draft supplier order. Requires at least one line.",
+    "receive_supplier_order": "Record a receipt/delivery against a confirmed or in-progress supplier order line.",
+    "return_supplier_order_rental": "Record a rental return against an active rental supplier order line.",
+    "complete_supplier_order": "Mark a supplier order complete. All delivered/purchased quantities must be accounted for first.",
+    "cancel_supplier_order": "Cancel a draft, confirmed, or in-progress supplier order.",
+    "create_team_member": "Add a new team member (internal organizer/staff).",
+    "list_team_members": "List team members, optionally filtered by active status or search text.",
+    "get_team_member": "Look up a single team member by id.",
+    "update_team_member": (
+        "Update a team member's fields. To retire a team member, pass "
+        "is_active: false rather than deleting them."
+    ),
+    "list_team_member_tasks": "List the event tasks assigned to a single team member.",
+    "reject_event_signup": (
+        "Reject a volunteer's signup for an event. Only call this after "
+        "the organizer has explicitly confirmed which volunteer/signup to "
+        "reject — never decide this on your own recommendation alone."
+    ),
+    "create_event_template": "Create a new event template.",
+    "update_event_template": "Update an existing event template's fields.",
 }
 
 

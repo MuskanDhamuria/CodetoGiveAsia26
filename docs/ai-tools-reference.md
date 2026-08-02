@@ -1,6 +1,6 @@
 # AI tool reference
 
-Technical reference for the 37 tools the AI side panel's model can call. For
+Technical reference for the 101 tools the AI side panel's model can call. For
 the "why" behind the architecture (dispatch pipeline, confirmation
 conventions, prompt design), see [`ai-panel-handover.md`](ai-panel-handover.md)
 and [`tickets.md`](tickets.md). This doc is the "what" — exact input/output
@@ -136,6 +136,24 @@ Cross-event: tasks due soon, not scoped to one event.
 - **Output:** `{"items": [{id, event_id, event_name, name, due_at, category,
   status, team_member_id}], "total": int}`.
 
+### `create_event_task`
+- **Input:** `event_id` (int, required) + `EventTaskCreate` fields (`name`,
+  `body`, `due_at`, `category`, `status`, `position`, assignee fields).
+- **Output:** `EventTaskOut`.
+
+### `update_event_task`
+Partial update. Use `assign_event_task` instead if only the assignee is
+changing.
+- **Input:** `event_id`, `task_id` (int, required) + any subset of
+  `EventTaskUpdate` fields.
+- **Output:** `EventTaskOut`.
+
+### `reorder_event_tasks`
+- **Input:** `event_id` (int, required), `task_ids` (int[], required — must
+  contain every current task id for the event exactly once, or the route
+  rejects it with 400).
+- **Output:** `{"items": [EventTaskOut]}` in the requested order.
+
 ---
 
 ## Volunteers
@@ -176,9 +194,15 @@ recommendation — never auto-approved by the model.
   (int, required), `is_leader` (bool, default false).
 - **Output:** `SignupOut`.
 
+### `reject_event_signup`
+Mirrors `approve_event_signup`'s guidance — only call after the organizer
+explicitly confirms which volunteer/signup to reject.
+- **Input:** `event_id`, `signup_id` (int, required).
+- **Output:** `SignupOut` with `status: "rejected"`.
+
 ---
 
-## Inventory (read-only — writes deliberately out of scope, no organizer use case identified yet)
+## Inventory
 
 ### `list_inventory_items`
 - **Input (optional):** `limit`, `offset`.
@@ -200,6 +224,39 @@ No filters — mirrors the unfiltered `GET /inventory/stock`.
 - **Input (optional):** `limit`, `offset`.
 - **Output:** envelope of stock-movement rows joined with item/location
   names.
+
+### `create_inventory_item` / `update_inventory_item`
+- **Input:** `InventoryItemCreate`/`InventoryItemUpdate` fields (`name`,
+  `sku`, `description`, `unit`, `item_type`, `reorder_level`, `is_active`);
+  update also takes `item_id` (int, required).
+- **Output:** item row (see `list_inventory_items`).
+
+### `create_inventory_location` / `update_inventory_location`
+- **Input:** `InventoryLocationCreate`/`InventoryLocationUpdate` fields
+  (`name`, `address`, `event_id`, `venue_space_id`, `is_temporary`,
+  `is_active`); update also takes `location_id` (int, required).
+- **Output:** location row (see `list_inventory_locations`).
+
+### `deactivate_inventory_item` / `deactivate_inventory_location`
+Reversible `is_active = 0` flip, not a delete — `update_inventory_item`/
+`update_inventory_location` can reactivate.
+- **Input:** `item_id` / `location_id` (int, required).
+- **Output:** `{"item_id"|"location_id", "is_active": false}`.
+
+### `adjust_stock`
+Record a correction/receipt/write-off for one item at one location.
+- **Input:** `StockAdjustment` fields — `item_id`, `location_id` (int,
+  required), `quantity_delta` (float, required — positive to add, negative to
+  remove), `reason` (str, required), `expiry_date`/`condition` (optional,
+  only used when adding stock).
+- **Output:** the created `stock_movements` row.
+
+### `transfer_stock`
+- **Input:** `StockTransfer` fields — `item_id`, `source_location_id`,
+  `destination_location_id` (int, required, source ≠ destination),
+  `quantity` (float, required), `reason` (str, required).
+- **Output:** `{"group_reference", "outgoing_movement_id",
+  "incoming_movement_id", "quantity"}`.
 
 ---
 
@@ -294,7 +351,7 @@ Cross-event participant search (not scoped to one event) — use
 
 ---
 
-## Venues (TICKET-54, read-only)
+## Venues
 
 ### `list_venues`
 - **Input (optional):** `limit`, `offset`.
@@ -309,6 +366,29 @@ Cross-event participant search (not scoped to one event) — use
   [{...booking row, event_name, space_name}]` (all bookings for this venue,
   most recent first).
 
+### `create_venue` / `update_venue`
+- **Input:** `VenueCreate`/`VenueUpdate` fields (`name`, `address`,
+  `managing_organization_id`, `notes`, `is_active`); update also takes
+  `venue_id` (int, required).
+- **Output:** venue object (see `get_venue`).
+
+### `deactivate_venue`
+Reversible — also cascades to deactivate all of the venue's spaces, same as
+the human `DELETE /venues/{id}` route.
+- **Input:** `venue_id` (int, required).
+- **Output:** `{"venue_id", "is_active": false}`.
+
+### `create_venue_space` / `update_venue_space`
+- **Input:** `VenueSpaceCreate`/`VenueSpaceUpdate` fields (`name`,
+  `pax_capacity`, `accessibility_information`, `is_active`) + `venue_id` (int,
+  required); update also takes `space_id` (int, required).
+- **Output:** space row.
+
+### `deactivate_venue_space`
+Reversible; only the one space, not the whole venue.
+- **Input:** `venue_id`, `space_id` (int, required).
+- **Output:** `{"venue_id", "space_id", "is_active": false}`.
+
 ### `list_venue_bookings`
 Venue-space bookings for one event.
 - **Input:** `event_id` (int, required).
@@ -317,9 +397,145 @@ Venue-space bookings for one event.
   pax_capacity, venue_id, venue_name, expected_attendance,
   capacity_warning: bool}], "total": int}`.
 
+### `create_venue_booking` / `update_venue_booking`
+Book (or update) a venue space for an event. A `"confirmed"` result runs
+through the exact same `ensure_no_overlap` check the human route uses —
+rejected with a 409-shaped failure if another confirmed booking on the same
+space overlaps.
+- **Input:** `create`: `event_id` (int, required) + `VenueBookingCreate`
+  fields (`venue_space_id`, `is_primary`, `status`, `start_at`, `end_at`,
+  `cost_sgd_cents`, `contact_id`, `notes`). `update`: `event_id`,
+  `booking_id` (int, required) + any subset of `VenueBookingUpdate` fields.
+- **Output:** booking row (see `list_venue_bookings`).
+
 ---
 
-## Logistics (TICKET-54, read-only)
+## Donation batches
+
+Collect → receive → sort into inventory → distribute → close. Each step is
+a state transition (not a one-way irreversible action — mis-steps are
+visible via `get_donation_batch`), so every tool here is a direct mutating
+call with no preview step.
+
+### `create_donation_batch`
+- **Input:** `DonationBatchCreate` fields — `event_id`,
+  `source_organization_id` (int|null), `collection_at` (datetime|null),
+  `container_count` (float|null), `container_unit`, `notes`.
+- **Output:** donation batch object — `{...row, source_organization_name,
+  event_name, quantities_by_condition: {condition: quantity},
+  distributed_quantity}`.
+
+### `list_donation_batches`
+- **Input (optional):** `limit`, `offset`.
+- **Output:** envelope of donation batch objects (see `create_donation_batch`).
+
+### `get_donation_batch`
+- **Input:** `batch_id` (int, required).
+- **Output:** donation batch object.
+
+### `collect_donation_batch` / `receive_donation_batch` / `complete_donation_sorting` / `close_donation_batch`
+Status transitions with no extra fields beyond the batch id.
+- **Input:** `batch_id` (int, required).
+- **Output:** donation batch object, with `status` set to `collected` /
+  `received` / `sorted` / `closed` respectively.
+
+### `sort_donation_batch`
+Sorts part of a received batch into inventory as usable/damaged/expired
+stock at a location; moves the batch to `"sorting"` status.
+- **Input:** `batch_id` (int, required) + `DonationSort` fields (`item_id`,
+  `location_id` (int, required), `quantity` (float > 0, required),
+  `condition` (default `"usable"`), `expiry_date`).
+- **Output:** the created inventory lot.
+
+### `distribute_donation_batch`
+Deducts sorted stock from inventory and marks the batch `"distributed"`.
+- **Input:** same shape as `sort_donation_batch`.
+- **Output:** the created `stock_movements` row.
+
+---
+
+## Organizations, contacts, and supplier orders
+
+### `create_organization` / `update_organization`
+- **Input:** `OrganizationCreate`/`OrganizationUpdate` fields (`name`,
+  `notes`, `capabilities` — list of
+  `supplier|donor|transport_provider|venue_partner|ngo|government_agency|
+  dormitory|education_provider`, `is_active`); update also takes
+  `organization_id` (int, required).
+- **Output:** organization object — `{...row, is_active, capabilities:
+  string[], contacts: [ContactOut], event_count, order_count}`.
+
+### `list_organizations` / `get_organization`
+- **Input:** list takes optional `limit`/`offset`; get takes
+  `organization_id` (int, required).
+- **Output:** list: envelope of organization objects. get: organization
+  object plus `events: [{id, name, event_date}]`, `orders: [{id, order_type,
+  status, event_id, delivery_start}]`.
+
+### `create_organization_contact` / `update_organization_contact`
+No redaction applied to contact email/phone — consistent with this
+codebase's existing precedent for participant/team-member contact fields
+(`get_participant` etc. also send contact details as-is); this is
+lower-sensitivity external-partner contact info, not beneficiary PII.
+- **Input:** `organization_id` (int, required) + `ContactCreate`/
+  `ContactUpdate` fields (`name`, `role`, `email`, `phone`, `is_primary`,
+  `is_active`); update also takes `contact_id` (int, required).
+- **Output:** contact row.
+
+### `create_supplier_order` / `update_supplier_order`
+Only draft orders can be edited via `update_supplier_order`.
+- **Input:** create: `SupplierOrderCreate` fields (`organization_id`,
+  `order_type: "purchase"|"rental"|"service"`, `contact_id`, `event_id`,
+  `fees_sgd_cents`, delivery/collection window fields,
+  `destination_location_id`, `destination_text`, `notes`). update: `order_id`
+  (int, required) + any subset of `SupplierOrderUpdate` fields.
+- **Output:** supplier order object — `{...row, lines: [...],
+  fulfilments: [...]}`.
+
+### `list_supplier_orders` / `get_supplier_order`
+- **Input:** list takes optional `limit`/`offset`; get takes `order_id` (int,
+  required).
+- **Output:** list: envelope of supplier order objects. get: single supplier
+  order object.
+
+### `add_supplier_order_line` / `update_supplier_order_line`
+Only on draft orders. A purchase order's line requires an
+`inventory_item_id`; if set, the line's `unit` must match that item's unit
+(same requirement/order-event checks as the human route).
+- **Input:** `order_id` (int, required) + `SupplierOrderLineCreate`/
+  `SupplierOrderLineUpdate` fields (`requirement_id`, `inventory_item_id`,
+  `description`, `quantity`, `unit`, `unit_cost_sgd_cents`); update also
+  takes `line_id` (int, required).
+- **Output:** the line row.
+
+### `confirm_supplier_order` / `cancel_supplier_order`
+Confirm requires at least one line. Cancel is allowed from
+draft/confirmed/in_progress — never a hard delete of the order row.
+- **Input:** `order_id` (int, required).
+- **Output:** supplier order object with the new `status`.
+
+### `receive_supplier_order`
+Records a receipt/delivery against a confirmed or in-progress order line.
+Purchase orders create a matching inventory lot and stock movement.
+- **Input:** `order_id` (int, required) + `FulfilmentCreate` fields
+  (`line_id`, `quantity`, `condition`, `expiry_date`, `notes`).
+- **Output:** the created fulfilment row.
+
+### `return_supplier_order_rental`
+Only for active rental orders; return quantity can't exceed what's been
+delivered and not yet returned.
+- **Input:** same shape as `receive_supplier_order`.
+- **Output:** the created fulfilment row.
+
+### `complete_supplier_order`
+Marks an order complete. Rejects if a rental's deliveries aren't fully
+returned, or a purchase's lines aren't fully received.
+- **Input:** same shape as `receive_supplier_order`.
+- **Output:** supplier order object with `status: "completed"`.
+
+---
+
+## Logistics
 
 ### `get_attendance_forecast`
 Projects expected attendance from historical show-up rates at similar past
@@ -353,21 +569,113 @@ Goods/services logistics requirements for one event.
   not_yet_on_site, status: "uncovered"|"sourced"|"on_site"|"fulfilled"|
   "cancelled"}], "total": int}`.
 
+### `create_event_logistics_requirement` / `update_event_logistics_requirement`
+- **Input:** create: `event_id` (int, required) + `EventRequirementCreate`
+  fields. update: `event_id`, `requirement_id` (int, required) + any subset
+  of `EventRequirementUpdate` fields (quantity, deadline, priority, notes).
+- **Output:** the requirement row.
+
+### `cancel_event_logistics_requirement`
+Any issued inventory must be reconciled first (same rule as the human
+route) — reuses `cancel_event_requirement`, which itself dispatches to
+`update_event_requirement(is_cancelled=True)`.
+- **Input:** `event_id`, `requirement_id` (int, required).
+- **Output:** `{"event_id", "requirement_id", "is_cancelled": true}`.
+
+### `reserve_logistics_inventory`
+Reserves stock against a requirement; fails if available stock is
+insufficient.
+- **Input:** `event_id`, `requirement_id` (int, required) + `ReserveAllocation`
+  fields (`location_id`, `quantity`).
+- **Output:** the created allocation row.
+
+### `release_logistics_inventory` / `issue_logistics_inventory`
+Release returns some/all of a reserved (not yet issued) allocation to
+available stock; issue deducts reserved inventory from stock for actual use
+— only call issue after the organizer confirms the reservation is ready.
+- **Input:** `event_id`, `requirement_id`, `allocation_id` (int, required) +
+  `AllocationQuantity` fields (`quantity`).
+- **Output:** the updated allocation row.
+
+### `reconcile_logistics_allocation`
+Records final returned/consumed/damaged/lost/distributed quantities for an
+issued allocation after the event is closed — the four quantities must sum
+to exactly the issued quantity. `finalize_reconciliation` (the one-way,
+event-closing step after this) intentionally has no AI tool.
+- **Input:** `event_id`, `requirement_id`, `allocation_id` (int, required) +
+  `AllocationReconcile` fields (`returned_quantity`, `consumed_quantity`,
+  `damaged_quantity`, `lost_quantity`, `distributed_quantity`).
+- **Output:** the updated allocation row.
+
+---
+
+## Participants and beneficiaries
+
+### `list_beneficiaries` / `get_beneficiary`
+Beneficiary *group* records (program/group metadata, e.g. "Migrant
+workers") — not individual contact records, so no redaction is applied.
+- **Input:** list takes optional `q`, `limit`, `offset`; get takes
+  `beneficiary_id` (int, required).
+- **Output:** `BeneficiaryOut` — `id, name` (list: envelope of these).
+
+### `create_beneficiary` / `update_beneficiary`
+`delete_beneficiary` (a hard delete) intentionally has no AI tool.
+- **Input:** create: `name` (str, required). update: `beneficiary_id` (int,
+  required) + optional `name`.
+- **Output:** `BeneficiaryOut`.
+
+---
+
+## Team members
+
+### `create_team_member` / `list_team_members` / `get_team_member`
+- **Input:** create: `name`, `email` (str, required), `is_active` (default
+  true). list: optional `is_active` (bool), `q`, `limit`, `offset`. get:
+  `member_id` (int, required).
+- **Output:** `TeamMemberOut` — `id, name, email, is_active, created_at,
+  updated_at` (list: envelope of these).
+
+### `update_team_member`
+`delete_team_member` (a hard delete) intentionally has no AI tool — to
+retire a team member, pass `is_active: false` here instead.
+- **Input:** `member_id` (int, required) + any subset of `name`, `email`,
+  `is_active`.
+- **Output:** `TeamMemberOut`.
+
+### `list_team_member_tasks`
+- **Input:** `member_id` (int, required); optional `status`, `event_id`,
+  `due_before`, `limit`, `offset`.
+- **Output:** envelope of `{id, event_id, event_name, name, body, due_at,
+  category, status, position}`.
+
+---
+
+## Event templates
+
+### `create_event_template` / `update_event_template`
+`delete_template`, `clone_template`, and template-task management
+(`create_template_task`/`update_template_task`/`delete_template_task`/
+`reorder_template_tasks`) intentionally have no AI tool — separate asks from
+create/update, not silently bundled in.
+- **Input:** create: `name` (str, required), `description`, `beneficiary_id`.
+  update: `template_id` (int, required) + any subset of those fields.
+- **Output:** `TemplateOut` — `id, name, description, is_built_in,
+  beneficiary_id, created_at, updated_at`.
+
 ---
 
 ## Deliberately out of scope
 
-- **`organizations.py` / `beneficiaries.py`** — no AI tools. Both hold
-  PII-adjacent data for a vulnerable population (beneficiary contact/group
-  data; external-partner contacts and supplier-order/pricing history) with
-  no redaction pattern worked out yet, the same category of concern
-  TICKET-50 addressed for participant/volunteer names. See TICKET-54 in
-  `tickets.md` for the full reasoning.
-- **Write tools for inventory/venues/logistics** (adjustments, transfers,
-  booking creation, donation-batch transitions, requirement
-  reserve/issue/reconcile) — deferred pending a concrete organizer chat use
-  case, same rationale as inventory's original TICKET-39.
-- **`delete_event`** — the one hard-delete, cascading operation in this
-  area. No tool wraps it, and `dispatch_tool_call` rejects the name outright
-  if a model ever hallucinates it (`{"success": false, "reason": "Unknown
-  tool 'delete_event'"}`).
+- **`organizations.py` contact fields** — email/phone sent to the model
+  as-is, no redaction. Considered under the same lens as TICKET-50's
+  participant-name redaction and judged lower sensitivity (external-partner
+  business contacts, not beneficiary PII) — see TICKET-62 in `tickets.md`.
+- **`deactivate_organization` / `deactivate_contact`** — the same reversible
+  `is_active` pattern as `deactivate_venue`/`deactivate_inventory_item`, just
+  not yet wired up; flagged as a follow-up rather than silently included.
+- **`delete_order_line`** — destructive; no AI tool.
+- **`delete_event_task`, `delete_event`, `delete_beneficiary`,
+  `delete_team_member`, `delete_template`, `finalize_reconciliation`** — hard
+  deletes or one-way event-closing operations. None have an AI tool, and
+  `dispatch_tool_call` rejects any hallucinated call to one of these names
+  outright (`{"success": false, "reason": "Unknown tool '...'"}`).

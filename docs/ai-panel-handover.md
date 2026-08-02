@@ -145,6 +145,35 @@ one-way, event-closing operation in the same category as `cancel_event`;
 see TICKET-58's note on hard deletes/irreversible closes staying
 human-only.
 
+**Deactivation, reorder, donation batches, organizations/beneficiaries,
+team members, signup rejection, and templates (TICKET-59–65).** The tool
+set grew from 58 to 101. `deactivate_inventory_item`/
+`deactivate_inventory_location`/`deactivate_venue`/`deactivate_venue_space`
+fill in the reversible `is_active` toggles TICKET-56/57 left uncovered
+(TICKET-59). `reorder_event_tasks` wraps the one remaining task route with
+no AI path (TICKET-60). The donation-batch lifecycle (create → collect →
+receive → sort → complete-sorting → distribute → close) — previously
+deferred in TICKET-54 as "not yet requested" — is now fully wrapped, each
+step a direct mutating tool since state transitions are visible/correctable
+via `get_donation_batch` rather than one-way (TICKET-61). `organizations.py`
+and `beneficiaries.py` — deliberately left out of TICKET-54 over
+PII/external-partner-data sensitivity — are now covered: beneficiary CRUD
+(group metadata only, no redaction needed), and the full external-organization/
+contact/supplier-order surface, with contact email/phone judged
+lower-sensitivity than beneficiary PII and sent as-is (TICKET-62).
+`team_members.py` (previously "not started" in TICKET-8's old backlog) got
+`create_team_member`/`list_team_members`/`get_team_member`/
+`update_team_member`/`list_team_member_tasks` (TICKET-63).
+`reject_event_signup` mirrors `approve_event_signup` so the model can
+decline a signup, not just approve one (TICKET-64). `create_event_template`/
+`update_event_template` round out event-template coverage, which was
+read-only until now (TICKET-65). Every hard-delete/one-way-close route
+(`delete_event_task`, `delete_event`, `delete_beneficiary`,
+`delete_team_member`, `delete_template`, `delete_order_line`,
+`finalize_reconciliation`) stays without an AI tool, same rule as every
+prior ticket in this area — `deactivate_organization`/`deactivate_contact`
+were deliberately left for a follow-up rather than silently bundled in.
+
 **Correctness/robustness fixes (TICKET-48/50/53).** The chat loop now
 resolves up to 5 rounds of tool-calling per user turn (was exactly 1),
 bounded to avoid runaway loops — the model can now chain
@@ -164,9 +193,11 @@ entirely since the model never needs it.
 a couple of concrete cases worth tuning, like the model over-verifying
 information it already has), TICKET-18 (task-prioritization prompt
 guidance, meant to land as part of TICKET-7), and TICKET-20/21/22 (a
-workload-based team-member recommendation tool, the team-member roster
-tool it depends on, and a dashboard-summary tool — see `tickets.md` for
-scope). TICKET-8's future-tool backlog is otherwise mostly picked up now;
+workload-based team-member recommendation tool, a dashboard-summary tool,
+and whatever else TICKET-21 originally scoped beyond the team-member
+roster tool — see `tickets.md` for scope; note `list_team_members`/
+`get_team_member` now exist as of TICKET-63 above, so re-check TICKET-21's
+original text before assuming its full scope is still open). TICKET-8's future-tool backlog is otherwise mostly picked up now;
 volunteer management has real AI coverage as of TICKET-16/19/23 above.
 A 2026-08-02 code review (TICKET-24–33) also found real gaps in what's
 shipped — most notably no allowlist on the direct tool-invoke endpoint
@@ -236,8 +267,10 @@ prompts, refresh-after-mutation) are all done. What's left: TICKET-7
 (system prompt iteration — now with several concrete cases to test
 against), TICKET-8 (future tool backlog — mostly picked up, see above),
 TICKET-18 (task-prioritization prompt guidance, folds into TICKET-7),
-TICKET-20/21/22 (workload-based team-member recommendation, the
-team-member roster tool, and a dashboard-summary tool), and TICKET-24–33
+TICKET-20/21/22 (workload-based team-member recommendation, whatever
+TICKET-21 scoped beyond the now-shipped `list_team_members`/
+`get_team_member` roster tools, and a dashboard-summary tool), and
+TICKET-24–33
 (the 2026-08-02 review's compatibility audit and nine concrete bug/gap
 findings — see `tickets.md`, none fixed yet).
 

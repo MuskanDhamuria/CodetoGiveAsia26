@@ -10,41 +10,70 @@ from __future__ import annotations
 
 import sqlite3
 
+from backend.api.routes import beneficiaries as beneficiaries_routes
 from backend.api.routes import dashboard as dashboard_routes
 from backend.api.routes import event_templates as event_templates_routes
 from backend.api.routes import events as events_routes
 from backend.api.routes import inventory as inventory_routes
 from backend.api.routes import logistics as logistics_routes
+from backend.api.routes import organizations as organizations_routes
 from backend.api.routes import participants as participants_routes
 from backend.api.routes import reports as reports_routes
+from backend.api.routes import team_members as team_members_routes
 from backend.api.routes import venues as venues_routes
 from backend.api.routes import volunteers as volunteers_routes
 from backend.api.routes import whatsapp as whatsapp_routes
 from backend.api.routes._common import Pagination
 from backend.bot.commands import audience_contacts
 from backend.ai_tools.schemas import (
+    AddSupplierOrderLineArgs,
     AdjustStockArgs,
     ApproveEventSignupArgs,
     AssignEventTaskArgs,
     CancelEventArgs,
     CancelEventLogisticsRequirementArgs,
+    CancelSupplierOrderArgs,
+    CloseDonationBatchArgs,
+    CollectDonationBatchArgs,
+    CompleteDonationSortingArgs,
+    CompleteSupplierOrderArgs,
+    ConfirmSupplierOrderArgs,
+    CreateBeneficiaryArgs,
+    CreateDonationBatchArgs,
     CreateEventDraftArgs,
     CreateEventLogisticsRequirementArgs,
     CreateEventTaskArgs,
+    CreateEventTemplateArgs,
     CreateInventoryItemArgs,
     CreateInventoryLocationArgs,
+    CreateOrganizationArgs,
+    CreateOrganizationContactArgs,
+    CreateSupplierOrderArgs,
+    CreateTeamMemberArgs,
     CreateVenueArgs,
     CreateVenueBookingArgs,
     CreateVenueSpaceArgs,
+    DeactivateInventoryItemArgs,
+    DeactivateInventoryLocationArgs,
+    DeactivateVenueArgs,
+    DeactivateVenueSpaceArgs,
+    DistributeDonationBatchArgs,
     GenerateEventCertificatesArgs,
     GetAttendanceForecastArgs,
+    GetBeneficiaryArgs,
+    GetDonationBatchArgs,
     GetEventArgs,
     GetEventLogisticsArgs,
+    GetOrganizationArgs,
     GetParticipantArgs,
     GetStockLevelsArgs,
+    GetSupplierOrderArgs,
+    GetTeamMemberArgs,
     GetVenueArgs,
     IssueLogisticsInventoryArgs,
+    ListBeneficiariesArgs,
     ListCompletedEventReportsArgs,
+    ListDonationBatchesArgs,
     ListEventCertificatesArgs,
     ListEventLogisticsRequirementsArgs,
     ListEventParticipantsArgs,
@@ -56,8 +85,12 @@ from backend.ai_tools.schemas import (
     ListInventoryItemsArgs,
     ListInventoryLocationsArgs,
     ListInventoryMovementsArgs,
+    ListOrganizationsArgs,
     ListParticipantsArgs,
     ListPendingSignupsArgs,
+    ListSupplierOrdersArgs,
+    ListTeamMemberTasksArgs,
+    ListTeamMembersArgs,
     ListUpcomingDeadlinesArgs,
     ListVenueBookingsArgs,
     ListVenuesArgs,
@@ -66,23 +99,38 @@ from backend.ai_tools.schemas import (
     PreviewCertificateGenerationArgs,
     PreviewShiftReminderArgs,
     PublishEventArgs,
+    ReceiveDonationBatchArgs,
+    ReceiveSupplierOrderArgs,
     ReconcileLogisticsAllocationArgs,
+    RejectEventSignupArgs,
     ReleaseLogisticsInventoryArgs,
+    ReorderEventTasksArgs,
     ReserveLogisticsInventoryArgs,
+    ReturnSupplierOrderRentalArgs,
     SendAnnouncementArgs,
     SendShiftReminderArgs,
+    SortDonationBatchArgs,
     TransferStockArgs,
+    UpdateBeneficiaryArgs,
     UpdateEventArgs,
     UpdateEventLogisticsRequirementArgs,
     UpdateEventTaskArgs,
+    UpdateEventTemplateArgs,
     UpdateInventoryItemArgs,
     UpdateInventoryLocationArgs,
+    UpdateOrganizationArgs,
+    UpdateOrganizationContactArgs,
+    UpdateSupplierOrderArgs,
+    UpdateSupplierOrderLineArgs,
     UpdateTaskStatusArgs,
+    UpdateTeamMemberArgs,
     UpdateVenueArgs,
     UpdateVenueBookingArgs,
     UpdateVenueSpaceArgs,
 )
-from backend.schema.events import EventCreate, EventTaskCreate, EventTaskUpdate, EventUpdate
+from backend.schema.beneficiaries import BeneficiaryCreate, BeneficiaryUpdate
+from backend.schema.event_templates import TemplateCreate, TemplateUpdate
+from backend.schema.events import EventCreate, EventTaskCreate, EventTaskUpdate, EventUpdate, TaskOrder
 from backend.schema.inventory import (
     InventoryItemCreate,
     InventoryItemUpdate,
@@ -98,7 +146,21 @@ from backend.schema.logistics import (
     EventRequirementUpdate,
     ReserveAllocation,
 )
+from backend.schema.organizations import (
+    ContactCreate,
+    ContactUpdate,
+    FulfilmentCreate,
+    OrganizationCreate,
+    OrganizationUpdate,
+    SupplierOrderCreate,
+    SupplierOrderLineCreate,
+    SupplierOrderLineUpdate,
+    SupplierOrderUpdate,
+)
+from backend.schema.team_members import TeamMemberCreate, TeamMemberUpdate
 from backend.schema.venues import (
+    DonationBatchCreate,
+    DonationSort,
     VenueBookingCreate,
     VenueBookingUpdate,
     VenueCreate,
@@ -709,6 +771,333 @@ def reconcile_logistics_allocation(
     )
 
 
+def deactivate_inventory_item(db: sqlite3.Connection, args: DeactivateInventoryItemArgs) -> dict:
+    """TICKET-59: reversible is_active flip, not a delete."""
+
+    inventory_routes.deactivate_item(args.item_id, db)
+    return {"item_id": args.item_id, "is_active": False}
+
+
+def deactivate_inventory_location(db: sqlite3.Connection, args: DeactivateInventoryLocationArgs) -> dict:
+    """TICKET-59."""
+
+    inventory_routes.deactivate_location(args.location_id, db)
+    return {"location_id": args.location_id, "is_active": False}
+
+
+def deactivate_venue(db: sqlite3.Connection, args: DeactivateVenueArgs) -> dict:
+    """TICKET-59: cascades to the venue's spaces, same as the human route."""
+
+    venues_routes.deactivate_venue(args.venue_id, db)
+    return {"venue_id": args.venue_id, "is_active": False}
+
+
+def deactivate_venue_space(db: sqlite3.Connection, args: DeactivateVenueSpaceArgs) -> dict:
+    """TICKET-59."""
+
+    venues_routes.deactivate_space(args.venue_id, args.space_id, db)
+    return {"venue_id": args.venue_id, "space_id": args.space_id, "is_active": False}
+
+
+def reorder_event_tasks(db: sqlite3.Connection, args: ReorderEventTasksArgs) -> dict:
+    """TICKET-60."""
+
+    payload = TaskOrder(task_ids=args.task_ids)
+    tasks = events_routes.reorder_event_tasks(args.event_id, payload, db)
+    return {"items": [task.model_dump(mode="json") for task in tasks]}
+
+
+def create_donation_batch(db: sqlite3.Connection, args: CreateDonationBatchArgs) -> dict:
+    """TICKET-61."""
+
+    payload = DonationBatchCreate(**args.model_dump())
+    return venues_routes.create_donation(payload, db)
+
+
+def list_donation_batches(db: sqlite3.Connection, args: ListDonationBatchesArgs) -> dict:
+    """TICKET-61."""
+
+    pagination = Pagination(limit=args.limit, offset=args.offset)
+    return venues_routes.list_donations(db, pagination)
+
+
+def get_donation_batch(db: sqlite3.Connection, args: GetDonationBatchArgs) -> dict:
+    """TICKET-61."""
+
+    return venues_routes.get_donation(args.batch_id, db)
+
+
+def collect_donation_batch(db: sqlite3.Connection, args: CollectDonationBatchArgs) -> dict:
+    """TICKET-61."""
+
+    return venues_routes.collect_donation(args.batch_id, db)
+
+
+def receive_donation_batch(db: sqlite3.Connection, args: ReceiveDonationBatchArgs) -> dict:
+    """TICKET-61."""
+
+    return venues_routes.receive_donation(args.batch_id, db)
+
+
+def sort_donation_batch(db: sqlite3.Connection, args: SortDonationBatchArgs) -> dict:
+    """TICKET-61."""
+
+    payload = DonationSort(**args.model_dump(exclude={"batch_id"}))
+    return venues_routes.sort_donation(args.batch_id, payload, db)
+
+
+def complete_donation_sorting(db: sqlite3.Connection, args: CompleteDonationSortingArgs) -> dict:
+    """TICKET-61."""
+
+    return venues_routes.complete_sorting(args.batch_id, db)
+
+
+def distribute_donation_batch(db: sqlite3.Connection, args: DistributeDonationBatchArgs) -> dict:
+    """TICKET-61."""
+
+    payload = DonationSort(**args.model_dump(exclude={"batch_id"}))
+    return venues_routes.distribute_donation(args.batch_id, payload, db)
+
+
+def close_donation_batch(db: sqlite3.Connection, args: CloseDonationBatchArgs) -> dict:
+    """TICKET-61."""
+
+    return venues_routes.close_donation(args.batch_id, db)
+
+
+def list_beneficiaries(db: sqlite3.Connection, args: ListBeneficiariesArgs) -> dict:
+    """TICKET-62."""
+
+    pagination = Pagination(limit=args.limit, offset=args.offset)
+    envelope = beneficiaries_routes.list_beneficiaries(db, pagination, q=args.q)
+    return {
+        **envelope,
+        "items": [item.model_dump(mode="json") for item in envelope["items"]],
+    }
+
+
+def get_beneficiary(db: sqlite3.Connection, args: GetBeneficiaryArgs) -> dict:
+    """TICKET-62."""
+
+    beneficiary = beneficiaries_routes.get_beneficiary(args.beneficiary_id, db)
+    return beneficiary.model_dump(mode="json")
+
+
+def create_beneficiary(db: sqlite3.Connection, args: CreateBeneficiaryArgs) -> dict:
+    """TICKET-62."""
+
+    payload = BeneficiaryCreate(**args.model_dump())
+    beneficiary = beneficiaries_routes.create_beneficiary(payload, db)
+    return beneficiary.model_dump(mode="json")
+
+
+def update_beneficiary(db: sqlite3.Connection, args: UpdateBeneficiaryArgs) -> dict:
+    """TICKET-62."""
+
+    fields = args.model_dump(exclude={"beneficiary_id"}, exclude_unset=True)
+    payload = BeneficiaryUpdate(**fields)
+    beneficiary = beneficiaries_routes.update_beneficiary(args.beneficiary_id, payload, db)
+    return beneficiary.model_dump(mode="json")
+
+
+def create_organization(db: sqlite3.Connection, args: CreateOrganizationArgs) -> dict:
+    """TICKET-62."""
+
+    payload = OrganizationCreate(**args.model_dump())
+    return organizations_routes.create_organization(payload, db)
+
+
+def update_organization(db: sqlite3.Connection, args: UpdateOrganizationArgs) -> dict:
+    """TICKET-62."""
+
+    fields = args.model_dump(exclude={"organization_id"}, exclude_unset=True)
+    payload = OrganizationUpdate(**fields)
+    return organizations_routes.update_organization(args.organization_id, payload, db)
+
+
+def list_organizations(db: sqlite3.Connection, args: ListOrganizationsArgs) -> dict:
+    """TICKET-62."""
+
+    pagination = Pagination(limit=args.limit, offset=args.offset)
+    return organizations_routes.list_organizations(db, pagination)
+
+
+def get_organization(db: sqlite3.Connection, args: GetOrganizationArgs) -> dict:
+    """TICKET-62."""
+
+    return organizations_routes.get_organization(args.organization_id, db)
+
+
+def create_organization_contact(db: sqlite3.Connection, args: CreateOrganizationContactArgs) -> dict:
+    """TICKET-62."""
+
+    payload = ContactCreate(**args.model_dump(exclude={"organization_id"}))
+    return organizations_routes.create_contact(args.organization_id, payload, db)
+
+
+def update_organization_contact(db: sqlite3.Connection, args: UpdateOrganizationContactArgs) -> dict:
+    """TICKET-62."""
+
+    fields = args.model_dump(exclude={"organization_id", "contact_id"}, exclude_unset=True)
+    payload = ContactUpdate(**fields)
+    return organizations_routes.update_contact(args.organization_id, args.contact_id, payload, db)
+
+
+def create_supplier_order(db: sqlite3.Connection, args: CreateSupplierOrderArgs) -> dict:
+    """TICKET-62."""
+
+    payload = SupplierOrderCreate(**args.model_dump())
+    return organizations_routes.create_order(payload, db)
+
+
+def update_supplier_order(db: sqlite3.Connection, args: UpdateSupplierOrderArgs) -> dict:
+    """TICKET-62."""
+
+    fields = args.model_dump(exclude={"order_id"}, exclude_unset=True)
+    payload = SupplierOrderUpdate(**fields)
+    return organizations_routes.update_order(args.order_id, payload, db)
+
+
+def list_supplier_orders(db: sqlite3.Connection, args: ListSupplierOrdersArgs) -> dict:
+    """TICKET-62."""
+
+    pagination = Pagination(limit=args.limit, offset=args.offset)
+    return organizations_routes.list_orders(db, pagination)
+
+
+def get_supplier_order(db: sqlite3.Connection, args: GetSupplierOrderArgs) -> dict:
+    """TICKET-62."""
+
+    return organizations_routes.get_order(args.order_id, db)
+
+
+def add_supplier_order_line(db: sqlite3.Connection, args: AddSupplierOrderLineArgs) -> dict:
+    """TICKET-62."""
+
+    payload = SupplierOrderLineCreate(**args.model_dump(exclude={"order_id"}))
+    return organizations_routes.add_order_line(args.order_id, payload, db)
+
+
+def update_supplier_order_line(db: sqlite3.Connection, args: UpdateSupplierOrderLineArgs) -> dict:
+    """TICKET-62."""
+
+    fields = args.model_dump(exclude={"order_id", "line_id"}, exclude_unset=True)
+    payload = SupplierOrderLineUpdate(**fields)
+    return organizations_routes.update_order_line(args.order_id, args.line_id, payload, db)
+
+
+def confirm_supplier_order(db: sqlite3.Connection, args: ConfirmSupplierOrderArgs) -> dict:
+    """TICKET-62."""
+
+    return organizations_routes.confirm_order(args.order_id, db)
+
+
+def receive_supplier_order(db: sqlite3.Connection, args: ReceiveSupplierOrderArgs) -> dict:
+    """TICKET-62."""
+
+    payload = FulfilmentCreate(**args.model_dump(exclude={"order_id"}))
+    return organizations_routes.receive_order(args.order_id, payload, db)
+
+
+def return_supplier_order_rental(db: sqlite3.Connection, args: ReturnSupplierOrderRentalArgs) -> dict:
+    """TICKET-62."""
+
+    payload = FulfilmentCreate(**args.model_dump(exclude={"order_id"}))
+    return organizations_routes.return_rental(args.order_id, payload, db)
+
+
+def complete_supplier_order(db: sqlite3.Connection, args: CompleteSupplierOrderArgs) -> dict:
+    """TICKET-62."""
+
+    payload = FulfilmentCreate(**args.model_dump(exclude={"order_id"}))
+    return organizations_routes.complete_order(args.order_id, payload, db)
+
+
+def cancel_supplier_order(db: sqlite3.Connection, args: CancelSupplierOrderArgs) -> dict:
+    """TICKET-62."""
+
+    return organizations_routes.cancel_order(args.order_id, db)
+
+
+def create_team_member(db: sqlite3.Connection, args: CreateTeamMemberArgs) -> dict:
+    """TICKET-63."""
+
+    payload = TeamMemberCreate(**args.model_dump())
+    member = team_members_routes.create_team_member(payload, db)
+    return member.model_dump(mode="json")
+
+
+def list_team_members(db: sqlite3.Connection, args: ListTeamMembersArgs) -> dict:
+    """TICKET-63."""
+
+    pagination = Pagination(limit=args.limit, offset=args.offset)
+    envelope = team_members_routes.list_team_members(db, pagination, is_active=args.is_active, q=args.q)
+    return {
+        **envelope,
+        "items": [item.model_dump(mode="json") for item in envelope["items"]],
+    }
+
+
+def get_team_member(db: sqlite3.Connection, args: GetTeamMemberArgs) -> dict:
+    """TICKET-63."""
+
+    member = team_members_routes.get_team_member(args.member_id, db)
+    return member.model_dump(mode="json")
+
+
+def update_team_member(db: sqlite3.Connection, args: UpdateTeamMemberArgs) -> dict:
+    """TICKET-63: to retire a team member, pass is_active=False rather than
+
+    deleting — delete_team_member is a hard delete and stays human-only.
+    """
+
+    fields = args.model_dump(exclude={"member_id"}, exclude_unset=True)
+    payload = TeamMemberUpdate(**fields)
+    member = team_members_routes.update_team_member(args.member_id, payload, db)
+    return member.model_dump(mode="json")
+
+
+def list_team_member_tasks(db: sqlite3.Connection, args: ListTeamMemberTasksArgs) -> dict:
+    """TICKET-63."""
+
+    pagination = Pagination(limit=args.limit, offset=args.offset)
+    return team_members_routes.list_team_member_tasks(
+        args.member_id,
+        db,
+        pagination,
+        task_status=args.status,
+        event_id=args.event_id,
+        due_before=args.due_before.isoformat() if args.due_before else None,
+    )
+
+
+def reject_event_signup(db: sqlite3.Connection, args: RejectEventSignupArgs) -> dict:
+    """TICKET-64: only reached after the organizer explicitly confirms which
+
+    volunteer/signup to reject (mirrors approve_event_signup's guidance).
+    """
+
+    detail = volunteers_routes.reject_event_signup(args.event_id, args.signup_id, db)
+    return detail.model_dump(mode="json")
+
+
+def create_event_template(db: sqlite3.Connection, args: CreateEventTemplateArgs) -> dict:
+    """TICKET-65."""
+
+    payload = TemplateCreate(**args.model_dump())
+    template = event_templates_routes.create_template(payload, db)
+    return template.model_dump(mode="json")
+
+
+def update_event_template(db: sqlite3.Connection, args: UpdateEventTemplateArgs) -> dict:
+    """TICKET-65."""
+
+    fields = args.model_dump(exclude={"template_id"}, exclude_unset=True)
+    payload = TemplateUpdate(**fields)
+    template = event_templates_routes.update_template(args.template_id, payload, db)
+    return template.model_dump(mode="json")
+
+
 TOOL_EXECUTORS = {
     "create_event_draft": create_event_draft,
     "publish_event": publish_event,
@@ -768,4 +1157,47 @@ TOOL_EXECUTORS = {
     "release_logistics_inventory": release_logistics_inventory,
     "issue_logistics_inventory": issue_logistics_inventory,
     "reconcile_logistics_allocation": reconcile_logistics_allocation,
+    "deactivate_inventory_item": deactivate_inventory_item,
+    "deactivate_inventory_location": deactivate_inventory_location,
+    "deactivate_venue": deactivate_venue,
+    "deactivate_venue_space": deactivate_venue_space,
+    "reorder_event_tasks": reorder_event_tasks,
+    "create_donation_batch": create_donation_batch,
+    "list_donation_batches": list_donation_batches,
+    "get_donation_batch": get_donation_batch,
+    "collect_donation_batch": collect_donation_batch,
+    "receive_donation_batch": receive_donation_batch,
+    "sort_donation_batch": sort_donation_batch,
+    "complete_donation_sorting": complete_donation_sorting,
+    "distribute_donation_batch": distribute_donation_batch,
+    "close_donation_batch": close_donation_batch,
+    "list_beneficiaries": list_beneficiaries,
+    "get_beneficiary": get_beneficiary,
+    "create_beneficiary": create_beneficiary,
+    "update_beneficiary": update_beneficiary,
+    "create_organization": create_organization,
+    "update_organization": update_organization,
+    "list_organizations": list_organizations,
+    "get_organization": get_organization,
+    "create_organization_contact": create_organization_contact,
+    "update_organization_contact": update_organization_contact,
+    "create_supplier_order": create_supplier_order,
+    "update_supplier_order": update_supplier_order,
+    "list_supplier_orders": list_supplier_orders,
+    "get_supplier_order": get_supplier_order,
+    "add_supplier_order_line": add_supplier_order_line,
+    "update_supplier_order_line": update_supplier_order_line,
+    "confirm_supplier_order": confirm_supplier_order,
+    "receive_supplier_order": receive_supplier_order,
+    "return_supplier_order_rental": return_supplier_order_rental,
+    "complete_supplier_order": complete_supplier_order,
+    "cancel_supplier_order": cancel_supplier_order,
+    "create_team_member": create_team_member,
+    "list_team_members": list_team_members,
+    "get_team_member": get_team_member,
+    "update_team_member": update_team_member,
+    "list_team_member_tasks": list_team_member_tasks,
+    "reject_event_signup": reject_event_signup,
+    "create_event_template": create_event_template,
+    "update_event_template": update_event_template,
 }

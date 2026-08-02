@@ -981,3 +981,306 @@ flagging explicitly rather than silently including or excluding:
 - **`volunteer_auth.py` (password-based login) and anything requiring real authentication**
   can't be given to the AI at all under the current no-auth-system design (TICKET-43/49's
   "won't fix" rationale) — that's a human-only boundary, not a gap to fill.
+
+---
+
+~~TICKET-59: AI tool — soft deactivation for inventory items/locations and venues/spaces~~
+— **Done.** `deactivate_inventory_item`, `deactivate_inventory_location`,
+`deactivate_venue`, and `deactivate_venue_space` AI tools added, each a
+thin wrapper around the matching route handler (`deactivate_venue` reuses
+the handler's own cascade to the venue's spaces, not a separate copy).
+Covered by new tests in `AiToolsTicket59To65Test`
+(`backend/tests/test_ai_tools.py`), including one confirming the row is
+never hard-deleted.
+
+<details>
+<summary>Original ticket text</summary>
+
+TICKET-59: AI tool — soft deactivation for inventory items/locations and venues/spaces
+
+**Priority:** Medium — low risk (these are `is_active = 0` toggles, not deletes) but currently
+has zero AI coverage even though TICKET-56/57 gave the AI full create/update access to the same
+records.
+**Area:** `backend/ai_tools/`, `backend/api/routes/inventory.py` (`deactivate_item`,
+`deactivate_location`), `backend/api/routes/venues.py` (`deactivate_venue`, `deactivate_space`)
+
+### What's wrong
+
+An organizer who asks the AI to retire a discontinued inventory item, close an unused storage
+location, or mark a venue/space inactive has no path to it — despite the AI being able to create
+and update all four of these record types as of TICKET-56/57. Unlike `delete_event`/
+`delete_event_task`, these are reversible flag flips (`is_active`), not `DELETE FROM` statements,
+so they don't carry the same irreversibility concern.
+
+### What to do
+
+Add `deactivate_inventory_item`, `deactivate_inventory_location`, `deactivate_venue`, and
+`deactivate_venue_space` AI tools, each a thin wrapper around the matching route handler. No new
+business logic — these routes already just flip `is_active` (and, for `deactivate_venue`,
+cascade to the venue's spaces) — reuse as-is.
+
+</details>
+
+---
+
+~~TICKET-60: AI tool — reorder event tasks~~
+— **Done.** `reorder_event_tasks` AI tool added, a thin wrapper around
+`events.py`'s existing handler — no separate validation of the
+every-task-exactly-once contract. Covered by
+`test_reorder_event_tasks_applies_the_requested_order` and
+`test_reorder_event_tasks_rejects_an_incomplete_task_list` in
+`backend/tests/test_ai_tools.py`.
+
+<details>
+<summary>Original ticket text</summary>
+
+TICKET-60: AI tool — reorder event tasks
+
+**Priority:** Low-Medium — a real admin action (`PUT /events/{event_id}/tasks/order`) with no AI
+path, but lower-stakes than most of the other gaps since it only changes display order, not any
+task's content or status.
+**Area:** `backend/ai_tools/`, `backend/api/routes/events.py` (`reorder_event_tasks` at
+`events.py:654`)
+
+### What's wrong
+
+An organizer asking the AI to "move the venue setup task to the top of the list" has no tool for
+it — `list_event_tasks`/`create_event_task`/`update_event_task`/`assign_event_task`/
+`update_task_status` exist, but nothing changes task order.
+
+### What to do
+
+Add a `reorder_event_tasks` AI tool wrapping `reorder_event_tasks` in `events.py` directly — the
+argument is the full ordered list of task ids for the event, same contract the human route
+already enforces (`task_ids` must contain every current task exactly once, or the route already
+rejects it with 400). No separate validation copy.
+
+</details>
+
+---
+
+~~TICKET-61: AI tool — donation batch lifecycle~~
+— **Done.** `create_donation_batch`, `list_donation_batches`,
+`get_donation_batch`, `collect_donation_batch`, `receive_donation_batch`,
+`sort_donation_batch`, `complete_donation_sorting`,
+`distribute_donation_batch`, and `close_donation_batch` AI tools added,
+each a thin wrapper around the matching `venues.py` handler — the
+lifecycle's own state-machine checks stay in those handlers, not
+duplicated. Every step is a direct mutating tool with no preview stage, per
+the ticket's own reasoning (state transitions, not one-way irreversible
+actions). Covered by `test_donation_batch_lifecycle_end_to_end` and
+`test_list_donation_batches_returns_created_batches` in
+`backend/tests/test_ai_tools.py`.
+
+<details>
+<summary>Original ticket text</summary>
+
+TICKET-61: AI tool — donation batch lifecycle
+
+**Priority:** Medium — a full feature (donation intake through distribution) with a real admin
+UI and zero AI coverage; previously deferred in TICKET-54 as a "separate, not-yet-requested
+workflow," now explicitly requested.
+**Area:** `backend/ai_tools/`, `backend/api/routes/venues.py` (`create_donation`,
+`list_donations`, `get_donation`, `collect_donation`, `receive_donation`, `sort_donation`,
+`complete_sorting`, `distribute_donation`, `close_donation`)
+
+### What's wrong
+
+The donation-batch workflow (create a batch → collect → receive → sort into inventory lots →
+distribute → close) is entirely invisible to the AI. An organizer can't ask "what donation
+batches are still awaiting sorting?" or have the AI advance a batch through its lifecycle.
+
+### What to do
+
+Add `create_donation_batch`, `list_donation_batches`, `get_donation_batch`,
+`collect_donation_batch`, `receive_donation_batch`, `sort_donation_batch`,
+`complete_donation_sorting`, `distribute_donation_batch`, and `close_donation_batch` AI tools,
+each a thin wrapper around the matching `venues.py` handler — the lifecycle's own state-machine
+checks (e.g. can't sort before receiving) already live in those handlers and should not be
+duplicated. Since each lifecycle step is a state transition rather than a one-way irreversible
+action outside the model's normal correction path (the batch doesn't disappear, and mis-steps
+are visible via `get_donation_batch`), a direct mutating tool per step is acceptable without an
+extra preview stage.
+
+</details>
+
+---
+
+~~TICKET-62: AI tool — organizations (external orgs, contacts, supplier orders) and beneficiaries~~
+— **Done.** Beneficiaries: `list_beneficiaries`, `get_beneficiary`,
+`create_beneficiary`, `update_beneficiary` — no redaction, confirmed
+against `beneficiaries.py`'s schema that beneficiary rows are group
+metadata (`id`, `name`) only, no individual contact fields to redact.
+`delete_beneficiary` deferred (hard delete). Organizations: all sixteen
+tools the ticket listed (`create_organization` through
+`cancel_supplier_order`) added, each a thin wrapper reusing the matching
+`organizations.py` handler's existing business checks (unit-matching,
+draft-only edits, event-editable gates, rental/purchase completion rules)
+as-is. `deactivate_organization`/`deactivate_contact` and
+`delete_order_line` deliberately left out, per the ticket's own deferral.
+Contact email/phone reviewed and shipped unredacted — judged
+lower-sensitivity external-partner business contact info, not beneficiary
+PII, consistent with how participant/team-member contact fields are
+already sent unredacted elsewhere in this tool set. Covered by new tests in
+`AiToolsTicket59To65Test` (`backend/tests/test_ai_tools.py`), including a
+full supplier-order lifecycle test and a check that `cancel_supplier_order`
+never hard-deletes the row.
+
+<details>
+<summary>Original ticket text</summary>
+
+TICKET-62: AI tool — organizations (external orgs, contacts, supplier orders) and beneficiaries
+
+**Priority:** Medium — two full modules (`organizations.py`, `beneficiaries.py`) with zero AI
+coverage, previously deferred in TICKET-54 over PII/external-partner-data sensitivity; now
+explicitly requested, so implement with the redaction discipline that deferral was waiting on
+rather than skipping it.
+**Area:** `backend/ai_tools/`, `backend/api/routes/organizations.py` (external-organization and
+contact CRUD, supplier-order lifecycle), `backend/api/routes/beneficiaries.py` (beneficiary CRUD)
+
+### What's wrong
+
+Neither module has any AI tool today. An organizer can't ask the AI to look up a partner
+organization's contact details, create or update a supplier order, or manage beneficiary group
+records — all real, actively-used admin workflows (`organizations.py` is one of the largest
+route modules in the backend).
+
+### What to do
+
+Add tools for both modules, following the redaction pattern already established elsewhere
+(`list_completed_event_reports`/`list_event_certificates` dropping names/tokens by default, see
+TICKET-50):
+
+- **Beneficiaries:** `list_beneficiaries`, `get_beneficiary`, `create_beneficiary`,
+  `update_beneficiary` — thin wrappers, no redaction needed for beneficiary *group* records
+  (these are program/group metadata, not individual migrant-worker contact records — confirm
+  against `beneficiaries.py`'s actual schema before assuming this holds for every field, and
+  redact any individual contact field found). Defer `delete_beneficiary` — it's a hard delete,
+  same rationale as `delete_event_task`/`delete_event`.
+- **Organizations:** `create_organization`, `update_organization`, `list_organizations`,
+  `get_organization`, `create_organization_contact`, `update_organization_contact`,
+  `create_supplier_order`, `update_supplier_order`, `list_supplier_orders`,
+  `get_supplier_order`, `add_supplier_order_line`, `update_supplier_order_line`,
+  `confirm_supplier_order`, `receive_supplier_order`, `return_supplier_order_rental`,
+  `complete_supplier_order`, `cancel_supplier_order`. Defer `deactivate_organization`/
+  `deactivate_contact` to TICKET-59's follow-up (they're the same safe `is_active` pattern, just
+  not in this ticket's explicit ask) and `delete_order_line` (destructive). Review contact
+  fields (email/phone) for whether they need the same download-token-style redaction TICKET-50
+  applied elsewhere before shipping — external-partner contact info is lower sensitivity than
+  beneficiary PII but still worth a deliberate call, not a silent default.
+
+</details>
+
+---
+
+~~TICKET-63: AI tool — team member management~~
+— **Done.** `create_team_member`, `list_team_members`, `get_team_member`,
+`update_team_member`, and `list_team_member_tasks` AI tools added, each a
+thin wrapper around the matching `team_members.py` handler.
+`delete_team_member` deferred, per the ticket's own guidance —
+`update_team_member(is_active=False)` is the documented non-destructive
+retirement path. Covered by `test_create_and_get_team_member` and
+`test_update_team_member_can_deactivate_instead_of_delete` in
+`backend/tests/test_ai_tools.py`.
+
+<details>
+<summary>Original ticket text</summary>
+
+TICKET-63: AI tool — team member management
+
+**Priority:** Medium — team members are the target of `assign_event_task` but the AI has no way
+to create, look up, or update the team-member roster itself; previously scoped in TICKET-8's
+backlog as "not started."
+**Area:** `backend/ai_tools/`, `backend/api/routes/team_members.py` (`create_team_member`,
+`list_team_members`, `get_team_member`, `update_team_member`, `list_team_member_tasks`)
+
+### What's wrong
+
+An organizer asking the AI to "add Priya as a new team member" or "who's on the team and what
+are they assigned to" has no tool — `assign_event_task` requires a `team_member_id` the AI has
+no way to look up or create.
+
+### What to do
+
+Add `create_team_member`, `list_team_members`, `get_team_member`, `update_team_member`, and
+`list_team_member_tasks` AI tools, each a thin wrapper around the matching `team_members.py`
+handler. Defer `delete_team_member` — it's a hard delete; if a team member needs to be retired,
+`update_team_member(is_active=False)` (already covered by `update_team_member` above) is the
+non-destructive path, same shape as TICKET-59's inventory/venue deactivation.
+
+</details>
+
+---
+
+~~TICKET-64: AI tool — reject a volunteer signup~~
+— **Done.** `reject_event_signup` AI tool added, a thin wrapper around
+`volunteers.py`'s existing handler, mirroring `approve_event_signup`'s
+"only after explicit organizer confirmation" guidance in `SYSTEM_PROMPT`.
+Covered by `test_reject_event_signup_sets_status_rejected` and
+`test_reject_event_signup_is_not_wired_to_a_destructive_delete` in
+`backend/tests/test_ai_tools.py` — the latter specifically checks the
+signup row still exists afterward, matching this area's recurring
+never-wire-to-a-hard-delete rule.
+
+<details>
+<summary>Original ticket text</summary>
+
+TICKET-64: AI tool — reject a volunteer signup
+
+**Priority:** Medium — `approve_event_signup` exists but its natural counterpart,
+`reject_event_signup` (`volunteers.py:643`), was never wired up, leaving the AI able to recommend
+and approve volunteers but not decline them.
+**Area:** `backend/ai_tools/`, `backend/api/routes/volunteers.py` (`reject_event_signup`)
+
+### What's wrong
+
+If an organizer tells the AI "reject Alex's signup for Saturday, we don't need another driver,"
+there's no tool for it — only `approve_event_signup` exists, so the organizer has to leave the
+chat and reject it manually.
+
+### What to do
+
+Add a `reject_event_signup` AI tool, a thin wrapper around `reject_event_signup` in
+`volunteers.py`, mirroring `approve_event_signup`'s existing pattern (only call after the
+organizer has explicitly confirmed which volunteer/signup to reject — same
+never-auto-decide-on-a-person guidance `SYSTEM_PROMPT` already gives for approval).
+
+</details>
+
+---
+
+~~TICKET-65: AI tool — create and update event templates~~
+— **Done.** `create_event_template` and `update_event_template` AI tools
+added, thin wrappers around `create_template`/`update_template` in
+`event_templates.py`. `delete_template`, `clone_template`, and
+template-task management left out of scope, per the ticket's own text.
+Covered by `test_create_event_template` and
+`test_update_event_template_partially_updates_fields` in
+`backend/tests/test_ai_tools.py`.
+
+<details>
+<summary>Original ticket text</summary>
+
+TICKET-65: AI tool — create and update event templates
+
+**Priority:** Medium — event templates are read-only for the AI today (`list_event_templates`
+only); creating/updating a template itself has no AI path, even though `create_event_draft`
+already lets the AI reference an existing template by id.
+**Area:** `backend/ai_tools/`, `backend/api/routes/event_templates.py` (`create_template`,
+`update_template`)
+
+### What's wrong
+
+An organizer asking the AI to "make a new template for beach cleanups based on what we usually
+do" has no way to have the AI actually create or adjust a template — only look existing ones up.
+
+### What to do
+
+Add `create_event_template` and `update_event_template` AI tools, thin wrappers around
+`create_template`/`update_template` in `event_templates.py`. Leave `delete_template`,
+`clone_template`, and template-task management (`create_template_task`/`update_template_task`/
+`delete_template_task`/`reorder_template_tasks`) out of this ticket's scope — deleting or cloning
+a template, and managing its task blueprint, are separate asks from "create/update a template"
+and deserve their own ticket if wanted, not a silent bundle-in here.
+
+</details>

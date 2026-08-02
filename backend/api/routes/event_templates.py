@@ -245,6 +245,17 @@ def clone_template(
             """,
             (cloned["id"], template_id),
         )
+        db.execute(
+            """INSERT INTO template_logistics_requirements
+               (event_template_id, requirement_type, inventory_item_id, service_name,
+                base_quantity, quantity_per_person, buffer_percentage, unit,
+                relative_needed_day, priority, notes)
+               SELECT ?, requirement_type, inventory_item_id, service_name,
+                      base_quantity, quantity_per_person, buffer_percentage, unit,
+                      relative_needed_day, priority, notes
+               FROM template_logistics_requirements WHERE event_template_id = ?""",
+            (cloned["id"], template_id),
+        )
     return template_model(cloned)
 
 

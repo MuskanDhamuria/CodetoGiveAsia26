@@ -8,11 +8,154 @@ Run with:
 
 from __future__ import annotations
 
+import math
 from datetime import date, timedelta
 
 from backend.database import DEFAULT_DATABASE_PATH, connect, initialize_database
 
 ROLE_CATEGORY = "volunteer"
+
+
+def seed_logistics(db) -> None:
+    """Add a small, idempotent logistics catalogue for local UI development."""
+
+    organizations = [
+        ("CareWell Supplies", ["supplier", "donor"]),
+        ("Community Transit", ["transport_provider", "supplier"]),
+        ("People's Association Hub", ["venue_partner", "government_agency"]),
+    ]
+    organization_ids = {}
+    for name, capabilities in organizations:
+        db.execute("INSERT OR IGNORE INTO external_organizations (name) VALUES (?)", (name,))
+        organization_id = db.execute(
+            "SELECT id FROM external_organizations WHERE name = ?", (name,)
+        ).fetchone()[0]
+        organization_ids[name] = organization_id
+        db.executemany(
+            "INSERT OR IGNORE INTO organization_capabilities (organization_id, capability) VALUES (?, ?)",
+            [(organization_id, capability) for capability in capabilities],
+        )
+    if db.execute(
+        "SELECT COUNT(*) FROM organization_contacts WHERE organization_id = ?",
+        (organization_ids["CareWell Supplies"],),
+    ).fetchone()[0] == 0:
+        db.execute(
+            """INSERT INTO organization_contacts
+               (organization_id, name, role, email, phone, is_primary)
+               VALUES (?, 'Mei Lin', 'Account manager', 'mei@carewell.example', '+65 6123 4567', 1)""",
+            (organization_ids["CareWell Supplies"],),
+        )
+
+    item_definitions = [
+        ("Drinking water", "WATER-1L", "litre", "consumable", 40, 220),
+        ("Folding chairs", "CHAIR-FOLD", "piece", "reusable", 20, 90),
+        ("First-aid kits", "FIRST-AID", "kit", "reusable", 3, 8),
+    ]
+    item_ids = {}
+    for name, sku, unit, item_type, reorder, opening in item_definitions:
+        db.execute(
+            """INSERT OR IGNORE INTO inventory_items
+               (name, sku, unit, item_type, reorder_level)
+               VALUES (?, ?, ?, ?, ?)""",
+            (name, sku, unit, item_type, reorder),
+        )
+        item_id = db.execute("SELECT id FROM inventory_items WHERE sku = ?", (sku,)).fetchone()[0]
+        item_ids[sku] = item_id
+
+    location = db.execute(
+        "SELECT id FROM inventory_locations WHERE name = 'Main Store' LIMIT 1"
+    ).fetchone()
+    if location is None:
+        location_id = db.execute(
+            "INSERT INTO inventory_locations (name, address) VALUES ('Main Store', 'Central operations store') RETURNING id"
+        ).fetchone()[0]
+    else:
+        location_id = location[0]
+    for _name, sku, _unit, _item_type, _reorder, opening in item_definitions:
+        item_id = item_ids[sku]
+        if db.execute("SELECT COUNT(*) FROM inventory_lots WHERE item_id = ?", (item_id,)).fetchone()[0] == 0:
+            lot_id = db.execute(
+                """INSERT INTO inventory_lots
+                   (item_id, location_id, source_type, condition, current_quantity)
+                   VALUES (?, ?, 'adjustment', 'usable', ?) RETURNING id""",
+                (item_id, location_id, opening),
+            ).fetchone()[0]
+            db.execute(
+                """INSERT INTO stock_movements
+                   (item_id, lot_id, location_id, movement_type, quantity_delta, reason)
+                   VALUES (?, ?, ?, 'adjustment', ?, 'Demo opening balance')""",
+                (item_id, lot_id, location_id, opening),
+            )
+
+    venue = db.execute("SELECT id FROM venues WHERE name = 'Tampines Hub' LIMIT 1").fetchone()
+    if venue is None:
+        venue_id = db.execute(
+            """INSERT INTO venues (name, address, managing_organization_id)
+               VALUES ('Tampines Hub', '1 Tampines Walk', ?) RETURNING id""",
+            (organization_ids["People's Association Hub"],),
+        ).fetchone()[0]
+        db.execute(
+            """INSERT INTO venue_spaces
+               (venue_id, name, pax_capacity, accessibility_information)
+               VALUES (?, 'Community Hall', 120, 'Step-free access and accessible washroom')""",
+            (venue_id,),
+        )
+
+    for template in db.execute("SELECT id, name FROM event_templates").fetchall():
+        if db.execute(
+            "SELECT COUNT(*) FROM template_logistics_requirements WHERE event_template_id = ?",
+            (template["id"],),
+        ).fetchone()[0] > 0:
+            continue
+        is_distribution = "distribution" in template["name"].lower()
+        requirements = [
+            (item_ids["WATER-1L"], 10, .6, 10, "litre", -1),
+            (item_ids["FIRST-AID"], 1, 0, 0, "kit", -1),
+        ]
+        if is_distribution:
+            requirements.append((item_ids["CHAIR-FOLD"], 20, .1, 5, "piece", -1))
+        for item_id, base, per_person, buffer, unit, relative_day in requirements:
+            db.execute(
+                """INSERT INTO template_logistics_requirements
+                   (event_template_id, requirement_type, inventory_item_id,
+                    base_quantity, quantity_per_person, buffer_percentage, unit,
+                    relative_needed_day)
+                   VALUES (?, 'goods', ?, ?, ?, ?, ?, ?)""",
+                (template["id"], item_id, base, per_person, buffer, unit, relative_day),
+            )
+
+    for event in db.execute("SELECT * FROM events").fetchall():
+        if event["expected_attendance"] is None:
+            db.execute("UPDATE events SET expected_attendance = 80 WHERE id = ?", (event["id"],))
+        if db.execute(
+            "SELECT COUNT(*) FROM event_logistics_requirements WHERE event_id = ?", (event["id"],)
+        ).fetchone()[0] == 0 and event["event_template_id"] is not None:
+            for requirement in db.execute(
+                "SELECT * FROM template_logistics_requirements WHERE event_template_id = ?",
+                (event["event_template_id"],),
+            ).fetchall():
+                attendance = event["expected_attendance"] or 80
+                required = math.ceil((requirement["base_quantity"] + requirement["quantity_per_person"] * attendance) * (1 + requirement["buffer_percentage"] / 100))
+                needed_by = (date.fromisoformat(event["event_date"]) + timedelta(days=requirement["relative_needed_day"])).isoformat()
+                db.execute(
+                    """INSERT INTO event_logistics_requirements
+                       (event_id, template_requirement_id, requirement_type, inventory_item_id,
+                        service_name, base_quantity, quantity_per_person, buffer_percentage,
+                        expected_attendance_snapshot, required_quantity, unit, needed_by, priority, notes)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (event["id"], requirement["id"], requirement["requirement_type"],
+                     requirement["inventory_item_id"], requirement["service_name"],
+                     requirement["base_quantity"], requirement["quantity_per_person"],
+                     requirement["buffer_percentage"], attendance, required, requirement["unit"],
+                     needed_by, requirement["priority"], requirement["notes"]),
+                )
+        if event["status"] == "closed":
+            db.execute(
+                "INSERT OR IGNORE INTO event_logistics_reconciliations (event_id, status) VALUES (?, 'pending')",
+                (event["id"],),
+            )
+
+    db.commit()
 
 
 def seed(db) -> None:
@@ -29,6 +172,8 @@ def seed(db) -> None:
             """,
             (name, email),
         )
+
+    seed_logistics(db)
 
     if db.execute("SELECT COUNT(*) FROM events").fetchone()[0] > 0:
         print("Database already has Events; refreshed safe seed records only.")
@@ -274,6 +419,7 @@ def seed(db) -> None:
             )
 
     db.commit()
+    seed_logistics(db)
     print("Seeded demo data.")
 
 

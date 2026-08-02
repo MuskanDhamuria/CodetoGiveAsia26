@@ -7,6 +7,7 @@ import EventTaskHierarchyPrototype from "./EventTaskHierarchyPrototype";
 import EventOperationsMvp from "./EventOperationsMvp";
 import ParticipantApp from "./participant/ParticipantApp";
 import AdminEventsPage from "./AdminEventsPage";
+import InventoryPage from "./InventoryPage";
 import { adminApi, type AdminApi, type DashboardSummary, type EventDetail, type UpcomingDeadline } from "./admin-api";
 import VolunteerDirectory from "./VolunteerDirectory";
 import VolunteerSignup from "./VolunteerSignup";
@@ -19,6 +20,7 @@ export type Page =
   | "home"
   | "dashboard"
   | "events"
+  | "inventory"
   | "volunteers"
   | "reports"
   | "ai"
@@ -31,6 +33,7 @@ export type Page =
 const navLinks: { label: string; page: Page }[] = [
   { label: "Dashboard", page: "dashboard" },
   { label: "Events", page: "events" },
+  { label: "Inventory", page: "inventory" },
   { label: "Volunteers", page: "volunteers" },
   { label: "Post-event", page: "reports" },
 ];
@@ -39,6 +42,7 @@ const pageLabels: Record<Page, string> = {
   home: "Landing",
   dashboard: "Dashboard",
   events: "Events",
+  inventory: "Inventory",
   volunteers: "Volunteers",
   reports: "Post-event",
   ai: "AI Copilot",
@@ -58,6 +62,7 @@ function readInitialPage(pathname = window.location.pathname): Page {
     const adminPage = pathname.split("/")[2];
     return adminPage === "dashboard" ||
       adminPage === "events" ||
+      adminPage === "inventory" ||
       adminPage === "volunteers" ||
       adminPage === "reports" ||
       adminPage === "ai"
@@ -74,6 +79,7 @@ function readInitialPage(pathname = window.location.pathname): Page {
   const page = new URLSearchParams(window.location.search).get("page");
   return page === "dashboard" ||
     page === "events" ||
+    page === "inventory" ||
     page === "volunteers" ||
     page === "reports" ||
     page === "ai" ||
@@ -1832,6 +1838,7 @@ function AdminPanel() {
       (page === "home" ||
         page === "dashboard" ||
         page === "events" ||
+        page === "inventory" ||
         page === "volunteers" ||
         page === "reports" ||
         page === "ai")
@@ -1945,6 +1952,7 @@ function AdminPanel() {
                 initialEventIndex={openEventIndex}
               />
             )}
+            {activePage === "inventory" && <InventoryPage />}
             {activePage === "volunteers" && <VolunteersPage />}
             {activePage === "reports" && <ReportsPage />}
             {activePage === "ai" && <PlaceholderPage title="AI Copilot" />}

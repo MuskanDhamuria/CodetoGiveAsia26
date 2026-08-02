@@ -8,12 +8,16 @@ from backend.api.routes import (
     events,
     dashboard,
     health,
+    inventory,
+    logistics,
+    organizations,
     participants,
     public,
     reports,
     team_members,
     volunteers,
     volunteer_auth,
+    venues,
 )
 
 
@@ -22,6 +26,10 @@ api_router.include_router(health.router)
 api_router.include_router(beneficiaries.router)
 api_router.include_router(event_templates.router)
 api_router.include_router(events.router)
+api_router.include_router(inventory.router)
+api_router.include_router(logistics.router)
+api_router.include_router(organizations.router)
+api_router.include_router(venues.router)
 api_router.include_router(team_members.router)
 api_router.include_router(dashboard.router)
 api_router.include_router(volunteers.router)

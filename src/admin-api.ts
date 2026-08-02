@@ -63,6 +63,7 @@ export type EventDetail = {
   venue: string
   event_date: string
   status: EventStatus
+  expected_attendance?: number | null
   created_at: string
   updated_at: string
   tasks: EventTask[]
@@ -70,7 +71,7 @@ export type EventDetail = {
 
 export type CreateEventInput = Pick<
   EventDetail,
-  "event_template_id" | "name" | "venue" | "event_date"
+  "event_template_id" | "name" | "venue" | "event_date" | "expected_attendance"
 >
 export type CreateTemplateInput = Pick<EventTemplate, "name" | "description"> & {
   beneficiary_id?: number | null

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import sqlite3
 from datetime import date, timedelta
 from typing import Annotated, Literal
@@ -88,6 +89,7 @@ def event_detail(db, event_id: int) -> EventDetail:
         event_time=event["start_time"],
         status=event["status"],
         beneficiary_id=event["beneficiary_id"],
+        expected_attendance=event["expected_attendance"],
         created_at=event["created_at"],
         updated_at=event["updated_at"],
         tasks=tasks,
@@ -125,8 +127,8 @@ def create_event(payload: EventCreate, db: Connection) -> EventDetail:
             """
             INSERT INTO events
                 (event_template_id, name, venue, event_date, description,
-                 start_time, end_time, beneficiary_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id
+                start_time, end_time, beneficiary_id, expected_attendance)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id
             """,
             (
                 payload.event_template_id,
@@ -137,6 +139,7 @@ def create_event(payload: EventCreate, db: Connection) -> EventDetail:
                 payload.start_time.isoformat() if payload.start_time else None,
                 payload.end_time.isoformat() if payload.end_time else None,
                 beneficiary_id,
+                payload.expected_attendance,
             ),
         ).fetchone()
         template_tasks = (
@@ -178,6 +181,40 @@ def create_event(payload: EventCreate, db: Connection) -> EventDetail:
                 WHERE template_task_id = ?
                 """,
                 (event_task["id"], template_task["id"]),
+            )
+        template_requirements = (
+            db.execute(
+                """SELECT * FROM template_logistics_requirements
+                   WHERE event_template_id = ? ORDER BY id""",
+                (payload.event_template_id,),
+            ).fetchall()
+            if payload.event_template_id is not None
+            else []
+        )
+        attendance = payload.expected_attendance or 0
+        for requirement in template_requirements:
+            required_quantity = math.ceil(
+                (float(requirement["base_quantity"])
+                 + float(requirement["quantity_per_person"]) * attendance)
+                * (1 + float(requirement["buffer_percentage"]) / 100)
+            )
+            needed_by = (
+                payload.event_date + timedelta(days=requirement["relative_needed_day"])
+            ).isoformat()
+            db.execute(
+                """INSERT INTO event_logistics_requirements
+                   (event_id, template_requirement_id, requirement_type,
+                    inventory_item_id, service_name, base_quantity,
+                    quantity_per_person, buffer_percentage,
+                    expected_attendance_snapshot, required_quantity, unit,
+                    needed_by, priority, notes)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (event["id"], requirement["id"], requirement["requirement_type"],
+                 requirement["inventory_item_id"], requirement["service_name"],
+                 requirement["base_quantity"], requirement["quantity_per_person"],
+                 requirement["buffer_percentage"], payload.expected_attendance,
+                 required_quantity, requirement["unit"], needed_by,
+                 requirement["priority"], requirement["notes"]),
             )
     return event_detail(db, event["id"])
 
@@ -224,7 +261,7 @@ def list_events(
     rows = db.execute(
         f"""
         SELECT id, name, venue, event_date, description, start_time, end_time,
-               status, beneficiary_id FROM events
+               status, beneficiary_id, expected_attendance FROM events
         WHERE {clause}
         ORDER BY {sort} {order.upper()}
         LIMIT ? OFFSET ?
@@ -468,6 +505,10 @@ def reschedule_event(
                 "UPDATE event_tasks SET due_at = date(due_at, ?) WHERE event_id = ?",
                 (modifier, event_id),
             )
+            db.execute(
+                "UPDATE event_logistics_requirements SET needed_by = datetime(needed_by, ?) WHERE event_id = ?",
+                (modifier, event_id),
+            )
     return event_detail(db, event_id)
 
 
@@ -676,7 +717,16 @@ def set_event_status(event_id: int, event_status: str, db) -> EventDetail:
 
 @router.post("/events/{event_id}/close", response_model=EventDetail)
 def close_event(event_id: int, db: Connection) -> EventDetail:
-    return set_event_status(event_id, "closed", db)
+    detail = set_event_status(event_id, "closed", db)
+    db.execute(
+        """INSERT INTO event_logistics_reconciliations (event_id, status)
+           VALUES (?, 'pending')
+           ON CONFLICT(event_id) DO UPDATE SET status = 'pending', completed_at = NULL,
+             updated_at = CURRENT_TIMESTAMP""",
+        (event_id,),
+    )
+    db.commit()
+    return detail
 
 
 @router.post("/events/{event_id}/reopen", response_model=EventDetail)

@@ -50,6 +50,7 @@ export default function WhatsAppPanel({ api = adminApi }: { api?: AdminApi }) {
   const [selectedRecipients, setSelectedRecipients] = useState<Set<string>>(new Set())
   const [sendCertBusy, setSendCertBusy] = useState(false)
   const [certMessage, setCertMessage] = useState<string | null>(null)
+  const [certFilter, setCertFilter] = useState<"all" | "sent" | "not_sent">("all")
 
   useEffect(() => {
     setLoading(true)
@@ -82,6 +83,7 @@ export default function WhatsAppPanel({ api = adminApi }: { api?: AdminApi }) {
     api.listCertificateCandidates(eventId).then(setCandidates).catch(() => setCandidates([]))
     setSelectedRecipients(new Set())
     setCertMessage(null)
+    setCertFilter("all")
   }
 
   useEffect(() => {
@@ -190,8 +192,16 @@ export default function WhatsAppPanel({ api = adminApi }: { api?: AdminApi }) {
     })
   }
 
+  const filteredCandidates = candidates.filter((candidate) => {
+    if (certFilter === "sent") return candidate.already_delivered
+    if (certFilter === "not_sent") return !candidate.already_delivered
+    return true
+  })
+  const sentCount = candidates.filter((candidate) => candidate.already_delivered).length
+  const notSentCount = candidates.length - sentCount
+
   function selectAllAttended() {
-    setSelectedRecipients(new Set(candidates.filter((c) => c.attended).map(candidateKey)))
+    setSelectedRecipients(new Set(filteredCandidates.filter((c) => c.attended).map(candidateKey)))
   }
 
   function clearSelection() {
@@ -236,6 +246,28 @@ export default function WhatsAppPanel({ api = adminApi }: { api?: AdminApi }) {
 
       {loading && <p className="public-events-state">Loading…</p>}
       {error && <p className="event-roster-error">{error}</p>}
+
+      {!loading && (
+        <section className="whatsapp-event-filter volunteer-table-card whatsapp-card">
+          <div className="whatsapp-card-heading">
+            <h2>Filtering by event</h2>
+            <p>Applies to both announcements and certificates below</p>
+          </div>
+          <label className="search-field">
+            <span>Event</span>
+            <select
+              value={selectedEventId ?? ""}
+              onChange={(event) => setSelectedEventId(Number(event.target.value))}
+            >
+              {events.map((event) => (
+                <option key={event.id} value={event.id}>
+                  {event.name} · {event.event_date}
+                </option>
+              ))}
+            </select>
+          </label>
+        </section>
+      )}
 
       {!loading && (
         <div className="whatsapp-panel-grid">
@@ -289,21 +321,8 @@ export default function WhatsAppPanel({ api = adminApi }: { api?: AdminApi }) {
           <section className="volunteer-table-card whatsapp-card">
             <div className="whatsapp-card-heading">
               <h2>Send an announcement</h2>
-              <p>{selectedEvent ? selectedEvent.name : "Choose an event"}</p>
+              <p>{selectedEvent ? selectedEvent.name : "Choose an event above"}</p>
             </div>
-            <label className="search-field">
-              <span>Event</span>
-              <select
-                value={selectedEventId ?? ""}
-                onChange={(event) => setSelectedEventId(Number(event.target.value))}
-              >
-                {events.map((event) => (
-                  <option key={event.id} value={event.id}>
-                    {event.name} · {event.event_date}
-                  </option>
-                ))}
-              </select>
-            </label>
             <form onSubmit={(event) => void handleSendAnnouncement(event)} className="whatsapp-panel-form">
               <label className="search-field">
                 <span>Title</span>
@@ -398,8 +417,31 @@ export default function WhatsAppPanel({ api = adminApi }: { api?: AdminApi }) {
               <h3>Pick recipients manually</h3>
               <p>Everyone registered for this event, attendance or not</p>
             </div>
+            <div className="whatsapp-cert-filter" role="group" aria-label="Filter by certificate delivery status">
+              <button
+                type="button"
+                className={certFilter === "all" ? "whatsapp-filter-active" : "whatsapp-filter"}
+                onClick={() => setCertFilter("all")}
+              >
+                All ({candidates.length})
+              </button>
+              <button
+                type="button"
+                className={certFilter === "sent" ? "whatsapp-filter-active" : "whatsapp-filter"}
+                onClick={() => setCertFilter("sent")}
+              >
+                Sent ({sentCount})
+              </button>
+              <button
+                type="button"
+                className={certFilter === "not_sent" ? "whatsapp-filter-active" : "whatsapp-filter"}
+                onClick={() => setCertFilter("not_sent")}
+              >
+                Not sent ({notSentCount})
+              </button>
+            </div>
             <div className="whatsapp-panel-actions">
-              <button type="button" className="whatsapp-button-secondary" onClick={selectAllAttended} disabled={candidates.length === 0}>
+              <button type="button" className="whatsapp-button-secondary" onClick={selectAllAttended} disabled={filteredCandidates.length === 0}>
                 Select all who attended
               </button>
               <button type="button" className="whatsapp-button-secondary" onClick={clearSelection} disabled={selectedRecipients.size === 0}>
@@ -428,12 +470,14 @@ export default function WhatsAppPanel({ api = adminApi }: { api?: AdminApi }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {candidates.length === 0 ? (
+                  {filteredCandidates.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="roster-empty">No one is registered for this event yet.</td>
+                      <td colSpan={5} className="roster-empty">
+                        {candidates.length === 0 ? "No one is registered for this event yet." : "No one matches this filter."}
+                      </td>
                     </tr>
                   ) : (
-                    candidates.map((candidate) => {
+                    filteredCandidates.map((candidate) => {
                       const key = candidateKey(candidate)
                       return (
                         <tr key={key}>

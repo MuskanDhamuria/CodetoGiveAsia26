@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -35,6 +36,29 @@ def load_dotenv() -> None:
             continue
         key, value = stripped_line.split("=", 1)
         os.environ.setdefault(key.strip(), value.strip().strip("\"'"))
+
+
+def configure_logging() -> None:
+    """Make backend.* loggers (WhatsApp bot included) visible on the console.
+
+    uvicorn configures its own "uvicorn"/"uvicorn.error"/"uvicorn.access"
+    loggers but leaves the root logger untouched, so without this,
+    logger.info()/logger.warning() calls in application code are silently
+    dropped. LOG_LEVEL controls verbosity; INFO shows each inbound/outbound
+    WhatsApp message, WARNING only shows failures.
+    """
+
+    level_name = os.environ.get("LOG_LEVEL", "INFO").upper()
+    level = getattr(logging, level_name, logging.INFO)
+    logging.basicConfig(
+        level=level,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
+
+
+# Load .env values (which may include LOG_LEVEL) before configuring logging.
+load_dotenv()
+configure_logging()
 
 
 def configured_database_path() -> Path:

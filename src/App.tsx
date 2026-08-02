@@ -7,6 +7,7 @@ import EventTaskHierarchyPrototype from "./EventTaskHierarchyPrototype";
 import EventOperationsMvp from "./EventOperationsMvp";
 import ParticipantApp from "./participant/ParticipantApp";
 import AdminEventsPage from "./AdminEventsPage";
+import WhatsAppPanel from "./WhatsAppPanel";
 import { adminApi, type AdminApi, type DashboardSummary, type EventDetail, type UpcomingDeadline } from "./admin-api";
 import VolunteerDirectory from "./VolunteerDirectory";
 import VolunteerSignup from "./VolunteerSignup";
@@ -21,6 +22,7 @@ export type Page =
   | "events"
   | "volunteers"
   | "reports"
+  | "broadcasts"
   | "ai"
   | "signup"
   | "community"
@@ -33,6 +35,7 @@ const navLinks: { label: string; page: Page }[] = [
   { label: "Events", page: "events" },
   { label: "Volunteers", page: "volunteers" },
   { label: "Post-event", page: "reports" },
+  { label: "Broadcasts", page: "broadcasts" },
 ];
 
 const pageLabels: Record<Page, string> = {
@@ -41,6 +44,7 @@ const pageLabels: Record<Page, string> = {
   events: "Events",
   volunteers: "Volunteers",
   reports: "Post-event",
+  broadcasts: "Broadcasts",
   ai: "AI Copilot",
   signup: "Volunteer Sign-Up",
   community: "Community Events",
@@ -60,6 +64,7 @@ function readInitialPage(pathname = window.location.pathname): Page {
       adminPage === "events" ||
       adminPage === "volunteers" ||
       adminPage === "reports" ||
+      adminPage === "broadcasts" ||
       adminPage === "ai"
       ? adminPage
       : "home";
@@ -76,6 +81,7 @@ function readInitialPage(pathname = window.location.pathname): Page {
     page === "events" ||
     page === "volunteers" ||
     page === "reports" ||
+    page === "broadcasts" ||
     page === "ai" ||
     page === "signup" ||
     page === "community" ||
@@ -1909,6 +1915,7 @@ function AdminPanel() {
         page === "events" ||
         page === "volunteers" ||
         page === "reports" ||
+        page === "broadcasts" ||
         page === "ai")
     ) {
       routerNavigate(page === "home" ? "/admin" : `/admin/${page}`);
@@ -2022,6 +2029,7 @@ function AdminPanel() {
             )}
             {activePage === "volunteers" && <VolunteersPage />}
             {activePage === "reports" && <ReportsPage />}
+            {activePage === "broadcasts" && <WhatsAppPanel />}
             {activePage === "ai" && <PlaceholderPage title="AI Copilot" />}
           </div>
           <AiCopilot activePage={activePage} />
@@ -2056,6 +2064,8 @@ function LegacyRouteRedirect() {
     dashboard: "/admin/dashboard",
     events: "/admin/events",
     volunteers: "/admin/volunteers",
+    reports: "/admin/reports",
+    broadcasts: "/admin/broadcasts",
     ai: "/admin/ai",
     community: "/community",
     signup: "/signup",

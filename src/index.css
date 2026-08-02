@@ -975,7 +975,8 @@ button {
 .events-page,
 .volunteers-page,
 .reports-page,
-.placeholder-page {
+.placeholder-page,
+.whatsapp-panel-page {
   background: #f6f7f9;
   min-height: 100vh;
   padding: 116px 36px 72px;
@@ -5212,6 +5213,128 @@ button {
 
   .public-events-grid,
   .dashboard-kpi-strip {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* WhatsApp bot panel */
+.public-events-whatsapp-link {
+  background: transparent;
+  border: 1px solid var(--public-teal);
+  border-radius: 999px;
+  padding: 10px 17px;
+}
+
+.whatsapp-panel-grid {
+  display: grid;
+  gap: 20px;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+}
+
+.whatsapp-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.whatsapp-card-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+
+.whatsapp-card-heading h2 {
+  color: var(--text);
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  line-height: 1.15;
+  margin: 0;
+}
+
+.whatsapp-card-heading p {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+
+.whatsapp-card .volunteer-table {
+  min-width: 0;
+  width: 100%;
+}
+
+.whatsapp-card .volunteer-table th,
+.whatsapp-card .volunteer-table td {
+  font-size: 12.5px;
+  padding: 10px 8px;
+}
+
+.whatsapp-card .volunteer-table tbody tr {
+  cursor: default;
+}
+
+.whatsapp-panel-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.whatsapp-panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.whatsapp-button-primary,
+.whatsapp-button-secondary {
+  border-radius: 7px;
+  font-size: 14px;
+  font-weight: 700;
+  padding: 10px 16px;
+  transition: background 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
+}
+
+.whatsapp-button-primary {
+  background: var(--text);
+  color: #ffffff;
+}
+
+.whatsapp-button-primary:hover:not(:disabled) {
+  background: #2a2a2a;
+}
+
+.whatsapp-button-primary:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+.whatsapp-button-secondary {
+  background: #ffffff;
+  border: 1px solid var(--border-soft);
+  color: var(--text);
+}
+
+.whatsapp-button-secondary:hover:not(:disabled) {
+  border-color: rgba(0, 0, 0, 0.3);
+}
+
+.whatsapp-button-secondary:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.whatsapp-panel-message {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+  margin: 0;
+}
+
+@media (max-width: 900px) {
+  .whatsapp-panel-grid {
     grid-template-columns: 1fr;
   }
 }

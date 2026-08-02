@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react"
 import { registerVolunteer, setVolunteerToken } from "./volunteer-api"
+import { whatsappChatLink } from "./whatsapp-link"
 
 const countryCodes = [
   ["+65", "SG +65"], ["+60", "MY +60"], ["+62", "ID +62"], ["+63", "PH +63"],
@@ -118,6 +119,7 @@ export function AccountHeader({ label, onLogin, onRegister, onSignOut }: { label
       <div className="pts-account-header-actions">
         <span className="pts-signup-tag">{label}</span>
         <a href="/community">Events</a>
+        <a href={whatsappChatLink()} target="_blank" rel="noreferrer">Chat on WhatsApp</a>
         {onLogin && <button type="button" onClick={onLogin}>Sign in</button>}
         {onRegister && <button type="button" onClick={onRegister}>Create account</button>}
         {onSignOut && <button type="button" onClick={onSignOut}>Sign out</button>}

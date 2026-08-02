@@ -23,3 +23,4 @@ docs/agents/
 skills-lock.json
 .venv/
 CLAUDE.md
+.claude/skills

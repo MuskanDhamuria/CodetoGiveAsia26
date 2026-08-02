@@ -154,6 +154,23 @@ class ListEventSignupsArgs(BaseModel):
     offset: int = Field(default=0, ge=0)
 
 
+class ListPendingSignupsArgs(BaseModel):
+    """TICKET-37: same filters as ListEventSignupsArgs, minus event_id, so
+
+    the AI can answer cross-event questions ("which volunteers haven't
+    been approved?") without an organizer naming an event first.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    status: str | None = None
+    role_id: int | None = None
+    attendance: bool | None = None
+    q: str | None = None
+    limit: int = Field(default=DEFAULT_LIMIT, ge=1, le=MAX_LIMIT)
+    offset: int = Field(default=0, ge=0)
+
+
 class ApproveEventSignupArgs(BaseModel):
     """TICKET-19: only reached after the organizer explicitly confirms a
 
@@ -183,5 +200,6 @@ TOOL_ARG_MODELS: dict[str, type[BaseModel]] = {
     "list_upcoming_deadlines": ListUpcomingDeadlinesArgs,
     "list_event_roles": ListEventRolesArgs,
     "list_event_signups": ListEventSignupsArgs,
+    "list_pending_signups": ListPendingSignupsArgs,
     "approve_event_signup": ApproveEventSignupArgs,
 }

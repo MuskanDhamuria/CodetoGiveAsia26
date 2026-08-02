@@ -26,6 +26,7 @@ from backend.ai_tools.schemas import (
     ListEventsArgs,
     ListEventTasksArgs,
     ListEventTemplatesArgs,
+    ListPendingSignupsArgs,
     ListUpcomingDeadlinesArgs,
     ListVolunteersArgs,
     PublishEventArgs,
@@ -193,6 +194,20 @@ def list_event_signups(db: sqlite3.Connection, args: ListEventSignupsArgs) -> di
     }
 
 
+def list_pending_signups(db: sqlite3.Connection, args: ListPendingSignupsArgs) -> dict:
+    """TICKET-37: cross-event signups, for phrasings that name no event."""
+
+    pagination = Pagination(limit=args.limit, offset=args.offset)
+    return volunteers_routes.list_signups_across_events(
+        db,
+        pagination,
+        status=args.status,
+        role_id=args.role_id,
+        attendance=args.attendance,
+        q=args.q,
+    )
+
+
 def approve_event_signup(db: sqlite3.Connection, args: ApproveEventSignupArgs) -> dict:
     """Only reached after the organizer explicitly confirms a recommendation
 
@@ -219,5 +234,6 @@ TOOL_EXECUTORS = {
     "list_upcoming_deadlines": list_upcoming_deadlines,
     "list_event_roles": list_event_roles,
     "list_event_signups": list_event_signups,
+    "list_pending_signups": list_pending_signups,
     "approve_event_signup": approve_event_signup,
 }

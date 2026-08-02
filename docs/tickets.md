@@ -2244,3 +2244,119 @@ clears the frontend's transient conversation view, not the audit trail of
 tool calls already made.
 
 </details>
+
+---
+
+~~TICKET-37: Cross-event queries ("which volunteers haven't been approved?", "list upcoming tasks") should aggregate across all events, then offer to narrow down~~
+— **Done.** New `volunteers.list_signups_across_events` (`backend/api/routes/volunteers.py`)
+mirrors `list_event_signups`'s existing filter set (`status`/`role_id`/
+`attendance`/`q`, pagination) minus the `event_id` requirement, joining
+`events` so each row carries `event_id`/`event_name`/`event_date` — same
+shape `dashboard_routes.upcoming_deadlines` already uses for its own
+cross-event task aggregation. Wrapped as new AI tool `list_pending_signups`
+(`backend/ai_tools/tools.py`), registered in `schemas.py`
+(`ListPendingSignupsArgs`), `specs.py`, and `dispatch.py`'s
+`TOOL_EXECUTORS`/`TOOL_ARG_MODELS`, following the exact pattern of every
+other read-only list tool — no new business logic beyond the aggregate SQL
+query itself. `SYSTEM_PROMPT` (`backend/api/routes/ai_assistant.py`) now
+tells the model to reach for `list_pending_signups`/`list_upcoming_deadlines`
+instead of asking the organizer to name an event first when the question
+spans every event, and to ask which event to narrow down to afterward,
+since any follow-up mutation (approving a signup, reassigning a task)
+still needs a single `event_id`. `list_event_tasks`'s existing description
+already pointed at `list_upcoming_deadlines` for cross-event task
+questions (TICKET-17) — only the signups side needed a new tool.
+
+New tests in `backend/tests/test_ai_tools.py`: `list_pending_signups`
+returns signups spanning two different events (each carrying its own
+`event_name`), filters by `status`, and rejects an unknown argument
+(`event_id`, which this cross-event tool deliberately doesn't accept).
+`test_tool_specs_expose_exactly_the_named_tool_set` extended to the new
+tool name. `.venv/bin/python -m unittest discover -s backend/tests` (139
+tests) and `npm test -- --run` (112 tests, unaffected — no frontend
+change) both pass.
+
+**Out of scope, not attempted:** making `run_chat_turn` support multiple
+sequential tool-calling rounds within one turn (a real architectural
+change to `backend/api/routes/ai_assistant.py`, unneeded once the
+aggregate tool exists) and a blanket "every list tool's `event_id` becomes
+optional" refactor — this ticket only added the one cross-event tool the
+reported phrasing needed.
+
+<details>
+<summary>Original ticket text</summary>
+
+## TICKET-37: Cross-event queries ("which volunteers haven't been approved?", "list upcoming tasks") should aggregate across all events, then offer to narrow down
+
+**Priority:** Medium
+**Area:** `backend/ai_tools/` (new tool + schema/spec/dispatch registration),
+`backend/api/routes/volunteers.py` (new aggregate query),
+`backend/api/routes/ai_assistant.py` (`SYSTEM_PROMPT`)
+
+### Problem
+
+Two organizer phrasings that name no specific event currently can't be
+answered directly:
+
+- **"which volunteers haven't been approved?"** — the only signup-listing
+  tool is `list_event_signups` (TICKET-19/23), which requires `event_id`.
+  With no event named, the model either has to guess an event or ask the
+  organizer to name one before it can answer at all — there's no way to
+  see pending signups across every event in one call.
+- **"list upcoming tasks across all events"** — a cross-event tool
+  *already exists* (`list_upcoming_deadlines`, TICKET-17, wraps
+  `dashboard_routes.upcoming_deadlines`), but the model has no prompt
+  guidance steering it there over the per-event `list_event_tasks`
+  (TICKET-13, requires `event_id`) when no event is named — it's a
+  discoverability/prompting gap, not a missing capability.
+
+`run_chat_turn` (`backend/api/routes/ai_assistant.py`) also only executes
+**one round of tool-calling per turn** (see its own docstring) — the model
+can't sequentially call `list_events` to discover ids and then loop
+`list_event_signups` per id within a single turn. A cross-event answer to
+the signups question needs a single tool that already aggregates, the same
+shape `list_upcoming_deadlines` takes for tasks.
+
+### Scope
+
+- New tool `list_pending_signups` (naming mirrors `list_upcoming_deadlines`):
+  wraps a new `volunteers.list_signups_across_events` handler — same
+  filter set as `list_event_signups` (`status`, `role_id`, `attendance`,
+  `q`, pagination) minus the `event_id` requirement, joining `events` so
+  each returned signup carries `event_id`/`event_name`/`event_date` (the
+  model needs these to group results by event and to reference a specific
+  one in a follow-up). Defaults `status` to `"requested"` when the
+  organizer's phrasing implies "not yet approved" is the intent — actually
+  leave `status` as an optional pass-through like `list_event_signups`
+  does today, and let `SYSTEM_PROMPT` tell the model to pass
+  `status="requested"` for "not approved yet" phrasing, so the tool itself
+  stays a generic filter rather than baking in one specific phrase's
+  meaning.
+  - Registered in `backend/ai_tools/schemas.py` (`ListPendingSignupsArgs`),
+    `specs.py`, and `dispatch.py`'s `TOOL_EXECUTORS`, following the exact
+    pattern of the other read-only list tools — no new business logic
+    beyond the aggregate SQL query itself.
+- `SYSTEM_PROMPT` update (`backend/api/routes/ai_assistant.py`):
+  - When asked about volunteer signups/approvals and no specific event is
+    named, call `list_pending_signups` (cross-event) rather than asking
+    the organizer to name one or guessing an event for
+    `list_event_signups`.
+  - When asked about upcoming tasks and no specific event is named, call
+    `list_upcoming_deadlines` rather than `list_event_tasks` (which needs
+    an `event_id`).
+  - After presenting either aggregated cross-event result, ask the
+    organizer whether they'd like to narrow down to one specific event —
+    this is what actually lets a follow-up action (approving a signup,
+    reassigning a task) target the right `event_id`, since neither
+    aggregate tool can itself execute a mutation.
+
+### Out of scope
+
+- Making `run_chat_turn` support multiple sequential tool-calling rounds
+  in one turn — real architectural change, and the new aggregate tool
+  makes it unnecessary for these two phrasings specifically.
+- A generic "make every list tool's `event_id` optional" refactor —
+  scoped tightly to the two phrasings reported, not a blanket redesign of
+  every per-event tool.
+
+</details>

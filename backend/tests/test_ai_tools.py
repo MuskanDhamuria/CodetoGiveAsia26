@@ -165,6 +165,7 @@ class AiToolsTest(unittest.TestCase):
                 "list_upcoming_deadlines",
                 "list_event_roles",
                 "list_event_signups",
+                "list_pending_signups",
                 "approve_event_signup",
             },
         )
@@ -626,6 +627,46 @@ class AiToolsTest(unittest.TestCase):
         self.assertTrue(result["success"])
         names = [item["volunteer_name"] for item in result["result"]["items"]]
         self.assertEqual(names, ["Pending"])
+
+    # -- list_pending_signups (TICKET-37) -----------------------------------
+
+    def test_list_pending_signups_spans_every_event(self) -> None:
+        fixture_a = self.create_event_with_role(role_name="First Aid")
+        fixture_b = self.create_event_with_role(role_name="Logistics")
+        volunteer_a = self.create_volunteer(name="Volunteer A", email="a@example.com")
+        volunteer_b = self.create_volunteer(name="Volunteer B", email="b@example.com")
+        self.create_signup(fixture_a["event"]["id"], volunteer_a)
+        self.create_signup(fixture_b["event"]["id"], volunteer_b)
+
+        result = dispatch_tool_call(self.db, "list_pending_signups", {})
+
+        self.assertTrue(result["success"])
+        items = result["result"]["items"]
+        event_ids = {item["event_id"] for item in items}
+        self.assertEqual(event_ids, {fixture_a["event"]["id"], fixture_b["event"]["id"]})
+        self.assertTrue(all(item.get("event_name") for item in items))
+
+    def test_list_pending_signups_filters_by_status(self) -> None:
+        fixture = self.create_event_with_role()
+        pending = self.create_volunteer(name="Pending", email="pending@example.com")
+        approved = self.create_volunteer(name="Approved", email="approved@example.com")
+        self.create_signup(fixture["event"]["id"], pending, status="requested")
+        self.create_signup(
+            fixture["event"]["id"],
+            approved,
+            status="approved",
+            assigned_role_id=fixture["role_id"],
+        )
+
+        result = dispatch_tool_call(self.db, "list_pending_signups", {"status": "requested"})
+
+        self.assertTrue(result["success"])
+        names = [item["volunteer_name"] for item in result["result"]["items"]]
+        self.assertEqual(names, ["Pending"])
+
+    def test_list_pending_signups_rejects_unknown_arguments(self) -> None:
+        result = dispatch_tool_call(self.db, "list_pending_signups", {"event_id": 1})
+        self.assertFalse(result["success"])
 
     def test_approve_event_signup_sets_status_and_role(self) -> None:
         fixture = self.create_event_with_role()

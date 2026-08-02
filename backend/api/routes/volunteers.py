@@ -362,6 +362,80 @@ def list_event_signups(
     return list_envelope(items, total, pagination)
 
 
+def list_signups_across_events(
+    db: sqlite3.Connection,
+    pagination: Pagination,
+    status: str | None = None,
+    role_id: int | None = None,
+    attendance: bool | None = None,
+    q: str | None = None,
+) -> dict:
+    """TICKET-37: same filters as list_event_signups, minus the event_id
+
+    requirement, so the AI can answer "which volunteers haven't been
+    approved?" without an organizer having to name an event first. Rows
+    carry event_id/event_name/event_date so a follow-up action can target
+    a specific one.
+    """
+    where = ["1 = 1"]
+    params: list[object] = []
+    if status is not None:
+        where.append("vs.status = ?")
+        params.append(status)
+    if role_id is not None:
+        where.append("vs.assigned_role_id = ?")
+        params.append(role_id)
+    if attendance is not None:
+        where.append("vs.attendance = ?")
+        params.append(1 if attendance else 0)
+    if q is not None and q.strip():
+        where.append("v.name LIKE ?")
+        params.append(f"%{q.strip()}%")
+    clause = " AND ".join(where)
+
+    total = db.execute(
+        f"""
+        SELECT COUNT(*) FROM volunteer_signups vs
+        JOIN volunteers v ON v.id = vs.volunteer_id
+        WHERE {clause}
+        """,
+        params,
+    ).fetchone()[0]
+    rows = db.execute(
+        f"""
+        SELECT vs.id, vs.event_id, e.name AS event_name, e.event_date,
+               vs.volunteer_id, v.name AS volunteer_name,
+               vs.status, vs.assigned_role_id, r.name AS assigned_role_name,
+               vs.is_leader, vs.attendance
+        FROM volunteer_signups vs
+        JOIN volunteers v ON v.id = vs.volunteer_id
+        JOIN events e ON e.id = vs.event_id
+        LEFT JOIN roles r ON r.id = vs.assigned_role_id
+        WHERE {clause}
+        ORDER BY e.event_date, v.name
+        LIMIT ? OFFSET ?
+        """,
+        [*params, pagination.limit, pagination.offset],
+    ).fetchall()
+    items = [
+        {
+            "id": row["id"],
+            "event_id": row["event_id"],
+            "event_name": row["event_name"],
+            "event_date": row["event_date"],
+            "volunteer_id": row["volunteer_id"],
+            "volunteer_name": row["volunteer_name"],
+            "status": row["status"],
+            "assigned_role_id": row["assigned_role_id"],
+            "assigned_role_name": row["assigned_role_name"],
+            "is_leader": bool(row["is_leader"]),
+            "attendance": as_bool(row["attendance"]),
+        }
+        for row in rows
+    ]
+    return list_envelope(items, total, pagination)
+
+
 @router.get(
     "/events/{event_id}/volunteer-signups/{signup_id}",
     response_model=SignupOut,

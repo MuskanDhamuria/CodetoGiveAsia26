@@ -70,6 +70,15 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
         "optionally filtered by status (requested/approved/rejected), "
         "role, attendance, or search text."
     ),
+    "list_pending_signups": (
+        "List volunteer signup requests/assignments across every event "
+        "(not just one), optionally filtered by status "
+        "(requested/approved/rejected), role, attendance, or search text. "
+        "Use this instead of list_event_signups when the organizer names "
+        "no specific event — e.g. 'which volunteers haven't been "
+        "approved yet?'. Each result includes its event_id/event_name so "
+        "you can group by event and ask the organizer which one to act on."
+    ),
     "approve_event_signup": (
         "Approve a volunteer's signup and assign them to a role. Only call "
         "this after the organizer has explicitly confirmed which volunteer "

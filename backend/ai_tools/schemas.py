@@ -132,6 +132,42 @@ class ListUpcomingDeadlinesArgs(BaseModel):
     limit: int = Field(default=20, ge=1, le=100)
 
 
+class ListEventRolesArgs(BaseModel):
+    """TICKET-19/23."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    event_id: int
+
+
+class ListEventSignupsArgs(BaseModel):
+    """TICKET-19/23."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    event_id: int
+    status: str | None = None
+    role_id: int | None = None
+    attendance: bool | None = None
+    q: str | None = None
+    limit: int = Field(default=DEFAULT_LIMIT, ge=1, le=MAX_LIMIT)
+    offset: int = Field(default=0, ge=0)
+
+
+class ApproveEventSignupArgs(BaseModel):
+    """TICKET-19: only reached after the organizer explicitly confirms a
+
+    recommendation — see SYSTEM_PROMPT in ai_assistant.py.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    event_id: int
+    signup_id: int
+    assigned_role_id: int
+    is_leader: bool = False
+
+
 TOOL_ARG_MODELS: dict[str, type[BaseModel]] = {
     "create_event_draft": CreateEventDraftArgs,
     "publish_event": PublishEventArgs,
@@ -145,4 +181,7 @@ TOOL_ARG_MODELS: dict[str, type[BaseModel]] = {
     "assign_event_task": AssignEventTaskArgs,
     "update_task_status": UpdateTaskStatusArgs,
     "list_upcoming_deadlines": ListUpcomingDeadlinesArgs,
+    "list_event_roles": ListEventRolesArgs,
+    "list_event_signups": ListEventSignupsArgs,
+    "approve_event_signup": ApproveEventSignupArgs,
 }

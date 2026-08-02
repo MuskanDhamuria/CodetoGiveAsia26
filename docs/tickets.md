@@ -1342,7 +1342,46 @@ Should land as part of TICKET-7, not before it.
 
 ---
 
-## TICKET-19: AI judgment call — recommend a volunteer for a role by skill match
+~~TICKET-19: AI judgment call — recommend a volunteer for a role by skill match~~
+— **Done, and folds in TICKET-23.** Three new tools
+(`backend/ai_tools/tools.py`): `list_event_roles` (wraps
+`volunteers.list_event_roles`), `list_event_signups` (wraps
+`volunteers.list_event_signups`, filterable to `status`/`role_id`/
+`attendance`/`q`), and `approve_event_signup` (wraps
+`volunteers.approve_event_signup`, taking `assigned_role_id`/`is_leader`).
+The first two are exactly TICKET-23's scope — implemented once here rather
+than as a separate pass, since TICKET-19's own "Scope" section already
+listed them as tools it depends on and TICKET-23 depends on nothing this
+ticket doesn't already need; see the TICKET-23 entry below, now marked done
+too rather than left describing tools that already exist.
+
+`SYSTEM_PROMPT` (`backend/api/routes/ai_assistant.py`) gained the
+recommend-then-confirm guidance the ticket asked for: on a request like
+"who should fill the first-aid role for Saturday's cleanup," call
+`list_event_roles` + `list_event_signups` (pending) + `list_volunteers`
+(TICKET-16) and reason over skill overlap and signup history, stating the
+reasoning rather than silently naming a winner — and only call
+`approve_event_signup` after the organizer explicitly confirms that
+specific recommendation, never on the model's own initiative. This is
+prompt-level enforcement, same mechanism as `publish_event`'s existing
+draft-then-confirm guidance; there's no separate frontend suggestion-card
+UI for this ticket (its own "Area" never named frontend files, unlike
+TICKET-6/9) — confirmation happens through the normal chat turn.
+
+Covered by eight new tests in `backend/tests/test_ai_tools.py`: roles
+returned for an event, a missing event is a structured error, signups
+returned for an event, filtering signups by status, approving a signup
+sets status and role, approving with a role not available for the event is
+rejected (the same 409 `_require_role_for_event` already enforces for the
+human-driven route), a missing signup is a structured error, unknown
+arguments rejected.
+
+**Out of scope, unchanged from the original ticket:** no "experience"
+scoring beyond signup history — nothing in the schema models it, so no
+field was invented for it.
+
+<details>
+<summary>Original ticket text</summary>
 
 **Priority:** Medium
 **Area:** new `backend/ai_tools/` tools, reuses `backend/api/routes/volunteers.py`;
@@ -1392,6 +1431,8 @@ which pending volunteer signup to approve for a role, using skill overlap
 isn't modeled anywhere in the schema — don't invent a field for it. If
 that's wanted later, it's a schema-change ticket in its own right, not
 something this tool can wrap.
+
+</details>
 
 ---
 
@@ -1464,7 +1505,17 @@ in the whole backlog.
 
 ---
 
-## TICKET-23: AI tool — view an event's roles and signups
+~~TICKET-23: AI tool — view an event's roles and signups~~
+— **Done, implemented as part of TICKET-19.** `list_event_roles` and
+`list_event_signups` (`backend/ai_tools/tools.py`) exist exactly as scoped
+below — both thin wrappers, no new logic. They were built alongside
+TICKET-19 rather than as a separate pass, since TICKET-19's own scope
+already named them as tools it depends on; this ticket's independence from
+TICKET-19 (noted below) meant there was no ordering reason to build them
+twice. See TICKET-19's entry above for the implementation and test detail.
+
+<details>
+<summary>Original ticket text</summary>
 
 **Priority:** Medium
 **Area:** new `backend/ai_tools/` tools, reuses `backend/api/routes/volunteers.py`
@@ -1483,3 +1534,5 @@ because this pair is useful general-purpose visibility on its own — "who's
 signed up for Saturday and what roles are still open?" — independent of
 whether the skill-matching judgment call in TICKET-19 ever gets built.
 TICKET-19 depends on this ticket; this ticket does not depend on TICKET-19.
+
+</details>

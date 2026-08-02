@@ -51,6 +51,19 @@ schema → business-rule → permission pipeline and returns a structured
 result instead of raising, and every call (success or failure) is written
 to an audit log.
 
+**Tool expansion — tasks and volunteers (TICKET-13/14/15/16/17/19/23).**
+The tool set grew from 7 to 15: task visibility and management
+(`list_event_tasks`, `assign_event_task`, `update_task_status`,
+`list_upcoming_deadlines` for cross-event deadline visibility) and
+volunteer visibility (`list_volunteers`, `list_event_roles`,
+`list_event_signups`). Volunteer management — previously flagged in
+TICKET-8's audit as having zero AI coverage — now also has a judgment-call
+tool: `approve_event_signup`, reachable only after the model recommends a
+candidate (reasoning over skill overlap and signup history via
+`SYSTEM_PROMPT` guidance) and the organizer explicitly confirms, never
+auto-approved. All eight new tools are thin wrappers with no new business
+logic, same pattern as the original seven.
+
 **Frontend chat experience (TICKET-5, 6, 11, 12).** The panel is wired to
 real conversation history and streams the model's reply live, rendered as
 markdown so lists and formatting show up properly instead of raw text.
@@ -64,9 +77,12 @@ duplicating everything twice.
 
 **Not started:** TICKET-7 (system-prompt iteration — live testing surfaced
 a couple of concrete cases worth tuning, like the model over-verifying
-information it already has) and TICKET-8 (future tool backlog — see
-`tickets.md` for candidate additions, notably volunteer management, which
-currently has no AI coverage at all).
+information it already has), TICKET-18 (task-prioritization prompt
+guidance, meant to land as part of TICKET-7), and TICKET-20/21/22 (a
+workload-based team-member recommendation tool, the team-member roster
+tool it depends on, and a dashboard-summary tool — see `tickets.md` for
+scope). TICKET-8's future-tool backlog is otherwise mostly picked up now;
+volunteer management has real AI coverage as of TICKET-16/19/23 above.
 
 ## How to run and see it
 
@@ -122,11 +138,16 @@ All backlog items — remaining tickets, their scope, dependencies, and open
 questions — live in [`tickets.md`](tickets.md). That's the single source of
 truth; don't duplicate it here. TICKET-9, TICKET-2, TICKET-3, TICKET-1,
 TICKET-4, TICKET-5, TICKET-6, TICKET-11 (a formatting bug found after
-TICKET-5 shipped), and TICKET-12 (template visibility, found during
-TICKET-6's verification) are all done. What's left: TICKET-7 (system
-prompt iteration — now with two concrete cases to test against) and
-TICKET-8 (future tool backlog — audited with concrete candidates, none
-scoped yet).
+TICKET-5 shipped), TICKET-12 (template visibility, found during
+TICKET-6's verification), and TICKET-13/14/15/16/17/19/23 (task
+visibility/assignment, volunteer visibility, cross-event deadlines, and
+the skill-match volunteer recommendation) are all done. What's left:
+TICKET-7 (system prompt iteration — now with several concrete cases to
+test against), TICKET-8 (future tool backlog — mostly picked up, see
+above), TICKET-18 (task-prioritization prompt guidance, folds into
+TICKET-7), and TICKET-20/21/22 (workload-based team-member
+recommendation, the team-member roster tool, and a dashboard-summary
+tool).
 
 ## Key decisions worth knowing the "why" of
 

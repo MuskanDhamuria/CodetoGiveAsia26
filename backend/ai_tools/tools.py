@@ -16,10 +16,13 @@ from backend.api.routes import events as events_routes
 from backend.api.routes import volunteers as volunteers_routes
 from backend.api.routes._common import Pagination
 from backend.ai_tools.schemas import (
+    ApproveEventSignupArgs,
     AssignEventTaskArgs,
     CancelEventArgs,
     CreateEventDraftArgs,
     GetEventArgs,
+    ListEventRolesArgs,
+    ListEventSignupsArgs,
     ListEventsArgs,
     ListEventTasksArgs,
     ListEventTemplatesArgs,
@@ -30,6 +33,7 @@ from backend.ai_tools.schemas import (
     UpdateTaskStatusArgs,
 )
 from backend.schema.events import EventCreate, EventTaskUpdate, EventUpdate
+from backend.schema.volunteers import SignupApprove
 
 _TASK_STATUS_HANDLERS = {
     "ongoing": events_routes.start_task,
@@ -167,6 +171,39 @@ def list_upcoming_deadlines(db: sqlite3.Connection, args: ListUpcomingDeadlinesA
     )
 
 
+def list_event_roles(db: sqlite3.Connection, args: ListEventRolesArgs) -> dict:
+    roles = volunteers_routes.list_event_roles(args.event_id, db)
+    return {"items": [role.model_dump(mode="json") for role in roles]}
+
+
+def list_event_signups(db: sqlite3.Connection, args: ListEventSignupsArgs) -> dict:
+    pagination = Pagination(limit=args.limit, offset=args.offset)
+    envelope = volunteers_routes.list_event_signups(
+        args.event_id,
+        db,
+        pagination,
+        status=args.status,
+        role_id=args.role_id,
+        attendance=args.attendance,
+        q=args.q,
+    )
+    return {
+        **envelope,
+        "items": [item.model_dump(mode="json") for item in envelope["items"]],
+    }
+
+
+def approve_event_signup(db: sqlite3.Connection, args: ApproveEventSignupArgs) -> dict:
+    """Only reached after the organizer explicitly confirms a recommendation
+
+    (TICKET-19's SYSTEM_PROMPT guidance) — never auto-approve.
+    """
+
+    payload = SignupApprove(assigned_role_id=args.assigned_role_id, is_leader=args.is_leader)
+    detail = volunteers_routes.approve_event_signup(args.event_id, args.signup_id, payload, db)
+    return detail.model_dump(mode="json")
+
+
 TOOL_EXECUTORS = {
     "create_event_draft": create_event_draft,
     "publish_event": publish_event,
@@ -180,4 +217,7 @@ TOOL_EXECUTORS = {
     "assign_event_task": assign_event_task,
     "update_task_status": update_task_status,
     "list_upcoming_deadlines": list_upcoming_deadlines,
+    "list_event_roles": list_event_roles,
+    "list_event_signups": list_event_signups,
+    "approve_event_signup": approve_event_signup,
 }

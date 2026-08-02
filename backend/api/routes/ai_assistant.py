@@ -40,7 +40,15 @@ SYSTEM_PROMPT = (
     "and match it by name to get the id — never ask the organizer for a "
     "raw numeric template id. If no template is named or none matches, "
     "proceed with event_template_id set to null; that is valid input, not "
-    "missing information, so don't block on it."
+    "missing information, so don't block on it. "
+    "When an organizer asks who should fill a volunteer role (e.g. 'who "
+    "should do first-aid for Saturday's cleanup'), call list_event_roles "
+    "and list_event_signups (filtered to pending requests) for that event, "
+    "plus list_volunteers to check skills, then recommend a candidate "
+    "based on skill overlap and signup history — state your reasoning, "
+    "don't just name someone. Only call approve_event_signup after the "
+    "organizer explicitly confirms that specific recommendation; never "
+    "approve a signup on your own initiative."
 )
 
 

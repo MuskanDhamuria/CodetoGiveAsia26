@@ -105,6 +105,47 @@ class AiToolsTest(unittest.TestCase):
         )
         self.db.commit()
 
+    def create_event_with_role(self, role_name: str = "First Aid") -> dict:
+        template_id = self.create_template()
+        role_id = self.db.execute(
+            "INSERT INTO roles (name, category) VALUES (?, ?) RETURNING id",
+            (role_name, "volunteer"),
+        ).fetchone()["id"]
+        self.db.execute(
+            "INSERT INTO template_roles (event_template_id, role_id) VALUES (?, ?)",
+            (template_id, role_id),
+        )
+        self.db.commit()
+        event = self._publish(event_template_id=template_id)
+        return {"template_id": template_id, "role_id": role_id, "event": event}
+
+    def create_signup(self, event_id: int, volunteer_id: int, **overrides) -> int:
+        fields = {
+            "status": "requested",
+            "assigned_role_id": None,
+            "is_leader": 0,
+            "attendance": None,
+        }
+        fields.update(overrides)
+        row = self.db.execute(
+            """
+            INSERT INTO volunteer_signups
+                (event_id, volunteer_id, status, assigned_role_id, is_leader, attendance)
+            VALUES (?, ?, ?, ?, ?, ?)
+            RETURNING id
+            """,
+            (
+                event_id,
+                volunteer_id,
+                fields["status"],
+                fields["assigned_role_id"],
+                fields["is_leader"],
+                fields["attendance"],
+            ),
+        ).fetchone()
+        self.db.commit()
+        return row["id"]
+
     def test_tool_specs_expose_exactly_the_named_tool_set(self) -> None:
         names = {spec["function"]["name"] for spec in TOOL_SPECS}
         self.assertEqual(
@@ -122,6 +163,9 @@ class AiToolsTest(unittest.TestCase):
                 "assign_event_task",
                 "update_task_status",
                 "list_upcoming_deadlines",
+                "list_event_roles",
+                "list_event_signups",
+                "approve_event_signup",
             },
         )
 
@@ -533,6 +577,120 @@ class AiToolsTest(unittest.TestCase):
 
     def test_list_upcoming_deadlines_rejects_unknown_arguments(self) -> None:
         result = dispatch_tool_call(self.db, "list_upcoming_deadlines", {"run_sql": "x"})
+        self.assertFalse(result["success"])
+
+    # -- list_event_roles / list_event_signups / approve_event_signup (TICKET-19/23) --
+
+    def test_list_event_roles_returns_roles_available_for_the_event(self) -> None:
+        fixture = self.create_event_with_role(role_name="First Aid")
+        result = dispatch_tool_call(
+            self.db, "list_event_roles", {"event_id": fixture["event"]["id"]}
+        )
+        self.assertTrue(result["success"])
+        names = [item["name"] for item in result["result"]["items"]]
+        self.assertEqual(names, ["First Aid"])
+
+    def test_list_event_roles_missing_event_is_a_structured_error(self) -> None:
+        result = dispatch_tool_call(self.db, "list_event_roles", {"event_id": 9999})
+        self.assertFalse(result["success"])
+
+    def test_list_event_signups_returns_signups_for_the_event(self) -> None:
+        fixture = self.create_event_with_role()
+        volunteer_id = self.create_volunteer()
+        self.create_signup(fixture["event"]["id"], volunteer_id)
+        result = dispatch_tool_call(
+            self.db, "list_event_signups", {"event_id": fixture["event"]["id"]}
+        )
+        self.assertTrue(result["success"])
+        items = result["result"]["items"]
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]["volunteer_id"], volunteer_id)
+        self.assertEqual(items[0]["status"], "requested")
+
+    def test_list_event_signups_filters_by_status(self) -> None:
+        fixture = self.create_event_with_role()
+        pending = self.create_volunteer(name="Pending", email="pending@example.com")
+        approved = self.create_volunteer(name="Approved", email="approved@example.com")
+        self.create_signup(fixture["event"]["id"], pending, status="requested")
+        self.create_signup(
+            fixture["event"]["id"],
+            approved,
+            status="approved",
+            assigned_role_id=fixture["role_id"],
+        )
+        result = dispatch_tool_call(
+            self.db,
+            "list_event_signups",
+            {"event_id": fixture["event"]["id"], "status": "requested"},
+        )
+        self.assertTrue(result["success"])
+        names = [item["volunteer_name"] for item in result["result"]["items"]]
+        self.assertEqual(names, ["Pending"])
+
+    def test_approve_event_signup_sets_status_and_role(self) -> None:
+        fixture = self.create_event_with_role()
+        volunteer_id = self.create_volunteer()
+        signup_id = self.create_signup(fixture["event"]["id"], volunteer_id)
+        result = dispatch_tool_call(
+            self.db,
+            "approve_event_signup",
+            {
+                "event_id": fixture["event"]["id"],
+                "signup_id": signup_id,
+                "assigned_role_id": fixture["role_id"],
+            },
+        )
+        self.assertTrue(result["success"])
+        self.assertEqual(result["result"]["status"], "approved")
+        self.assertEqual(result["result"]["assigned_role_id"], fixture["role_id"])
+
+    def test_approve_event_signup_rejects_a_role_not_available_for_the_event(self) -> None:
+        fixture = self.create_event_with_role()
+        other_role_id = self.db.execute(
+            "INSERT INTO roles (name, category) VALUES (?, ?) RETURNING id",
+            ("Unrelated Role", "volunteer"),
+        ).fetchone()["id"]
+        self.db.commit()
+        volunteer_id = self.create_volunteer()
+        signup_id = self.create_signup(fixture["event"]["id"], volunteer_id)
+        result = dispatch_tool_call(
+            self.db,
+            "approve_event_signup",
+            {
+                "event_id": fixture["event"]["id"],
+                "signup_id": signup_id,
+                "assigned_role_id": other_role_id,
+            },
+        )
+        self.assertFalse(result["success"])
+
+    def test_approve_event_signup_missing_signup_is_a_structured_error(self) -> None:
+        fixture = self.create_event_with_role()
+        result = dispatch_tool_call(
+            self.db,
+            "approve_event_signup",
+            {
+                "event_id": fixture["event"]["id"],
+                "signup_id": 9999,
+                "assigned_role_id": fixture["role_id"],
+            },
+        )
+        self.assertFalse(result["success"])
+
+    def test_approve_event_signup_rejects_unknown_arguments(self) -> None:
+        fixture = self.create_event_with_role()
+        volunteer_id = self.create_volunteer()
+        signup_id = self.create_signup(fixture["event"]["id"], volunteer_id)
+        result = dispatch_tool_call(
+            self.db,
+            "approve_event_signup",
+            {
+                "event_id": fixture["event"]["id"],
+                "signup_id": signup_id,
+                "assigned_role_id": fixture["role_id"],
+                "run_sql": "x",
+            },
+        )
         self.assertFalse(result["success"])
 
     # -- audit log (TICKET-4) ----------------------------------------------

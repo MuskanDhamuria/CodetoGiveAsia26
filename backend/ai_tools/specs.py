@@ -64,6 +64,18 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
         "days (default 14), ordered soonest first. Use this instead of "
         "list_event_tasks when the question spans more than one event."
     ),
+    "list_event_roles": "List the volunteer roles available for an event.",
+    "list_event_signups": (
+        "List volunteer signup requests/assignments for an event, "
+        "optionally filtered by status (requested/approved/rejected), "
+        "role, attendance, or search text."
+    ),
+    "approve_event_signup": (
+        "Approve a volunteer's signup and assign them to a role. Only call "
+        "this after the organizer has explicitly confirmed which volunteer "
+        "and role — never approve a signup on your own recommendation "
+        "alone."
+    ),
 }
 
 

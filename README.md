@@ -50,12 +50,24 @@ WHATSAPP_PHONE_NUMBER_ID=<from Meta app dashboard > WhatsApp > API Setup>
 WHATSAPP_DISPLAY_NUMBER=<your WhatsApp number, digits only>
 WHATSAPP_VERIFY_TOKEN=<any string you invent, entered in Meta's webhook config too>
 WHATSAPP_APP_SECRET=<optional, from Meta app dashboard > Settings > Basic>
+WHATSAPP_OTP_TEMPLATE_NAME=otp
+WHATSAPP_OTP_TEMPLATE_LANG=en_US
 PASSION_PUBLIC_BASE_URL=http://localhost:8000
+PASSION_FRONTEND_BASE_URL=http://localhost:5173
 PASSION_CORS_ORIGINS=http://localhost:5173
 ```
 
 Refresh `WHATSAPP_TOKEN` if it's more than a day old — temporary tokens from
 the Meta dashboard expire in 24h.
+
+`WHATSAPP_OTP_TEMPLATE_NAME`/`WHATSAPP_OTP_TEMPLATE_LANG` must match an
+approved template in Meta's Business Manager exactly (name + language code).
+Every volunteer signup now happens on the website — right after registering,
+the backend sends this template with the 6-digit code, the volunteer enters
+it on the site to verify their number, and a welcome message follows
+automatically. If your template doesn't use a "copy code" button component,
+that part of the payload is harmless to leave in — Meta ignores unused
+button components.
 
 **2. Start the backend** (terminal 1): `python3 -m uvicorn backend.main:app --reload`
 (runs on `localhost:8000`).

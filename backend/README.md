@@ -65,6 +65,14 @@ in development without a Meta Business account. To send real messages, set:
   `hub.verify_token` webhook subscription handshake.
 - `PASSION_PUBLIC_BASE_URL` — base URL used to build certificate links sent
   over WhatsApp (defaults to `http://localhost:8000`).
+- `PASSION_FRONTEND_BASE_URL` — base URL of the website, used to build the
+  volunteer registration link the bot sends to anyone who tries
+  `VOLUNTEER SIGNUP` before they have an account (defaults to
+  `http://localhost:5173`).
+- `WHATSAPP_OTP_TEMPLATE_NAME` / `WHATSAPP_OTP_TEMPLATE_LANG` — the approved
+  Meta template (and language code) used to deliver the phone-verification
+  code after someone registers on the website (default `otp` / `en_US`). See
+  `backend/api/routes/volunteer_auth.py` (`issue_and_send_otp`).
 
 Webhook URL to register with Meta: `POST /api/v1/integrations/whatsapp/webhook`
 (and `GET` on the same path for the verification handshake).

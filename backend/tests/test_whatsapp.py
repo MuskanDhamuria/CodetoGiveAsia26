@@ -126,6 +126,19 @@ class WhatsAppBotTest(unittest.TestCase):
         self.assertEqual(link_response.status_code, 201)
         return team_member
 
+    def register_volunteer(self, phone: str, name: str) -> dict:
+        """Register a volunteer through the website flow, exactly like a real
+        volunteer would — the bot no longer creates volunteer profiles from a
+        chat reply, so any test that needs an existing volunteer must go
+        through here first."""
+
+        response = self.client.post(
+            "/api/v1/volunteer-auth/register",
+            json={"name": name, "contact_number": f"+{phone}", "password": "Str0ngPass!"},
+        )
+        self.assertEqual(response.status_code, 201)
+        return response.json()
+
     def send_message(self, phone: str, text: str, name: str | None = None):
         return self.client.post(
             "/api/v1/integrations/whatsapp/webhook",
@@ -389,11 +402,11 @@ class WhatsAppBotTest(unittest.TestCase):
         volunteer_phone = "6580000005"
         admin_phone = "6580000006"
         self.make_team_member_contact(admin_phone)
+        self.register_volunteer(volunteer_phone, "Jamie Tan")
 
-        prompt_response = self.send_message(volunteer_phone, f"VOLUNTEER SIGNUP {event['id']}", name="Jamie")
-        self.assertEqual(prompt_response.status_code, 200)
-        self.assertIn("What name", self.fake_whatsapp.sent[-1][1])
-        self.send_message(volunteer_phone, "Jamie Tan")
+        signup_response = self.send_message(volunteer_phone, f"VOLUNTEER SIGNUP {event['id']}")
+        self.assertEqual(signup_response.status_code, 200)
+        self.assertIn("Thanks for volunteering", self.fake_whatsapp.sent[-1][1])
         signups = self.client.get(
             f"/api/v1/events/{event['id']}/volunteer-signups"
         ).json()["items"]
@@ -419,28 +432,34 @@ class WhatsAppBotTest(unittest.TestCase):
         self.assertEqual(confirm_response.status_code, 200)
         self.assertIn("confirmed", self.fake_whatsapp.sent[-1][1].lower())
 
-    def test_volunteer_signup_name_prompt_can_be_cancelled(self) -> None:
+    def test_unregistered_volunteer_is_pointed_to_website_registration(self) -> None:
+        # Becoming a volunteer only happens on the website now (OTP phone
+        # verification lives there) — the bot must not create a volunteer
+        # profile from a chat reply anymore.
         event = self.create_event()
         phone = "6580000031"
-        self.send_message(phone, f"VOLUNTEER SIGNUP {event['id']}")
-        response = self.send_message(phone, "STOP")
+        response = self.send_message(phone, f"VOLUNTEER SIGNUP {event['id']}")
         self.assertEqual(response.status_code, 200)
-        self.assertIn("cancelled", self.fake_whatsapp.sent[-1][1].lower())
+        reply = self.fake_whatsapp.sent[-1][1]
+        self.assertIn("volunteer-register", reply)
 
         signups = self.client.get(
             f"/api/v1/events/{event['id']}/volunteer-signups"
         ).json()["items"]
         self.assertEqual(len(signups), 0)
 
-    def test_returning_volunteer_signs_up_without_being_asked_for_a_name_again(self) -> None:
+    def test_returning_volunteer_signs_up_immediately(self) -> None:
         first_event = self.create_event()
         second_event = self.create_event()
         phone = "6580000032"
-        self.send_message(phone, f"VOLUNTEER SIGNUP {first_event['id']}")
-        self.send_message(phone, "Noor")
+        self.register_volunteer(phone, "Noor")
 
-        response = self.send_message(phone, f"VOLUNTEER SIGNUP {second_event['id']}")
-        self.assertEqual(response.status_code, 200)
+        first_response = self.send_message(phone, f"VOLUNTEER SIGNUP {first_event['id']}")
+        self.assertEqual(first_response.status_code, 200)
+        self.assertIn("Thanks for volunteering", self.fake_whatsapp.sent[-1][1])
+
+        second_response = self.send_message(phone, f"VOLUNTEER SIGNUP {second_event['id']}")
+        self.assertEqual(second_response.status_code, 200)
         self.assertIn("Thanks for volunteering", self.fake_whatsapp.sent[-1][1])
 
     def test_pending_lists_roles_and_approve_accepts_hash_prefixed_ids(self) -> None:
@@ -453,8 +472,8 @@ class WhatsAppBotTest(unittest.TestCase):
         volunteer_phone = "6580000020"
         admin_phone = "6580000021"
         self.make_team_member_contact(admin_phone)
-        self.send_message(volunteer_phone, f"VOLUNTEER SIGNUP {event['id']}", name="Farah Hassan")
-        self.send_message(volunteer_phone, "Farah Hassan")
+        self.register_volunteer(volunteer_phone, "Farah Hassan")
+        self.send_message(volunteer_phone, f"VOLUNTEER SIGNUP {event['id']}")
         signup_id = self.client.get(
             f"/api/v1/events/{event['id']}/volunteer-signups"
         ).json()["items"][0]["id"]
@@ -552,8 +571,8 @@ class WhatsAppBotTest(unittest.TestCase):
         volunteer_phone = "6580000011"
         admin_phone = "6580000012"
         self.make_team_member_contact(admin_phone)
+        self.register_volunteer(volunteer_phone, "Test Volunteer")
         self.send_message(volunteer_phone, f"VOLUNTEER SIGNUP {event['id']}")
-        self.send_message(volunteer_phone, "Test Volunteer")
         signup_id = self.client.get(
             f"/api/v1/events/{event['id']}/volunteer-signups"
         ).json()["items"][0]["id"]

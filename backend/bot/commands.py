@@ -123,8 +123,6 @@ def dispatch(db: sqlite3.Connection, contact: sqlite3.Row, text: str) -> list[st
     pending_kind, pending_event_id = _pending_state(contact)
     if pending_kind == "participant":
         return complete_signup_with_name(db, contact, pending_event_id, stripped)
-    if pending_kind == "volunteer":
-        return complete_volunteer_signup_with_name(db, contact, pending_event_id, stripped)
 
     if not stripped:
         return [greeting(contact)]
@@ -297,17 +295,18 @@ def _find_or_create_participant(
 
 
 _SIGNUP_NAME_STATE_PREFIX = "SIGNUP_NAME:"
-_VOLUNTEER_SIGNUP_NAME_STATE_PREFIX = "VOLUNTEER_SIGNUP_NAME:"
 
 
 def _pending_state(contact: sqlite3.Row) -> tuple[str | None, int | None]:
-    """("participant" | "volunteer" | None, event id) if awaiting a name reply."""
+    """("participant" | None, event id) if awaiting a name reply.
+
+    Volunteer signup no longer has a "waiting for a name" state — becoming a
+    volunteer only happens on the website now (see volunteer_signup()).
+    """
 
     state = contact["conversation_state"]
     if not state:
         return None, None
-    if state.startswith(_VOLUNTEER_SIGNUP_NAME_STATE_PREFIX):
-        return "volunteer", _parse_int(state[len(_VOLUNTEER_SIGNUP_NAME_STATE_PREFIX) :])
     if state.startswith(_SIGNUP_NAME_STATE_PREFIX):
         return "participant", _parse_int(state[len(_SIGNUP_NAME_STATE_PREFIX) :])
     return None, None
@@ -522,6 +521,11 @@ def _register_volunteer_signup(db: sqlite3.Connection, event: sqlite3.Row, volun
     ]
 
 
+def volunteer_registration_link() -> str:
+    base = os.environ.get("PASSION_FRONTEND_BASE_URL", os.environ.get("PASSION_PUBLIC_BASE_URL", "http://localhost:5173")).rstrip("/")
+    return f"{base}/volunteer-register"
+
+
 def volunteer_signup(db: sqlite3.Connection, contact: sqlite3.Row, raw_id: str) -> list[str]:
     event_id = _parse_int(raw_id)
     if event_id is None:
@@ -540,37 +544,15 @@ def volunteer_signup(db: sqlite3.Connection, contact: sqlite3.Row, raw_id: str) 
         _touch_contact(db, contact["id"], volunteer_id=existing["id"])
         return _register_volunteer_signup(db, event, existing["id"])
 
-    # First-time volunteer: ask for a name instead of guessing from the
-    # WhatsApp profile name, which is often a nickname or missing entirely.
-    # The reply to this message is picked up by dispatch()'s pending check.
-    _touch_contact(
-        db, contact["id"], conversation_state=f"{_VOLUNTEER_SIGNUP_NAME_STATE_PREFIX}{event_id}"
-    )
-    return [f"Great! What name should we register for {event['name']}?"]
-
-
-def complete_volunteer_signup_with_name(
-    db: sqlite3.Connection, contact: sqlite3.Row, event_id: int, name: str
-) -> list[str]:
-    name = name.strip()
-    if not name:
-        return ["Please reply with a name to finish volunteering (or reply STOP to cancel)."]
-    if name.upper() == "STOP":
-        _touch_contact(db, contact["id"], conversation_state=None)
-        return ["Volunteer signup cancelled. Reply VOLUNTEER SIGNUP <event id> if you change your mind."]
-
-    event = db.execute("SELECT id, name FROM events WHERE id = ?", (event_id,)).fetchone()
-    _touch_contact(db, contact["id"], conversation_state=None)
-    if event is None:
-        return ["That event isn't available anymore. Reply EVENTS to see what's on."]
-
-    volunteer_id = db.execute(
-        "INSERT INTO volunteers (name, contact_number) VALUES (?, ?) RETURNING id",
-        (name, contact["phone_number"]),
-    ).fetchone()["id"]
-    db.commit()
-    _touch_contact(db, contact["id"], volunteer_id=volunteer_id)
-    return _register_volunteer_signup(db, event, volunteer_id)
+    # Becoming a volunteer (as opposed to signing up for an individual event)
+    # only happens on the website now, so it goes through phone-number OTP
+    # verification. The bot doesn't create volunteer profiles from a chat
+    # reply anymore — point them to the registration form instead.
+    return [
+        "You'll need a volunteer account first — it only takes a minute. "
+        f"Register here: {volunteer_registration_link()}\n"
+        f"Once you're registered and verified, reply VOLUNTEER SIGNUP {event_id} again."
+    ]
 
 
 def volunteer_tasks(db: sqlite3.Connection, contact: sqlite3.Row) -> str:

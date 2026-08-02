@@ -29,7 +29,6 @@ export default function WhatsAppPanel({ api = adminApi }: { api?: AdminApi }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const [selectedEventId, setSelectedEventId] = useState<number | null>(null)
   const [selectedMemberId, setSelectedMemberId] = useState<number | null>(null)
 
   const [link, setLink] = useState<TeamMemberWhatsAppLink | null>(null)
@@ -37,6 +36,10 @@ export default function WhatsAppPanel({ api = adminApi }: { api?: AdminApi }) {
   const [linkBusy, setLinkBusy] = useState(false)
   const [linkMessage, setLinkMessage] = useState<string | null>(null)
 
+  // Each card below picks its own event independently — broadcasting an
+  // announcement about one event and reviewing certificates for a different
+  // one are unrelated tasks, so they don't share a single "current event."
+  const [announcementEventId, setAnnouncementEventId] = useState<number | null>(null)
   const [announcements, setAnnouncements] = useState<Announcement[]>([])
   const [title, setTitle] = useState("")
   const [body, setBody] = useState("")
@@ -44,6 +47,7 @@ export default function WhatsAppPanel({ api = adminApi }: { api?: AdminApi }) {
   const [sendBusy, setSendBusy] = useState(false)
   const [sendMessage, setSendMessage] = useState<string | null>(null)
 
+  const [certificateEventId, setCertificateEventId] = useState<number | null>(null)
   const [certificates, setCertificates] = useState<Certificate[]>([])
   const [certBusy, setCertBusy] = useState(false)
   const [candidates, setCandidates] = useState<CertificateCandidate[]>([])
@@ -58,7 +62,8 @@ export default function WhatsAppPanel({ api = adminApi }: { api?: AdminApi }) {
       .then(([eventData, memberData]) => {
         setEvents(eventData)
         setTeamMembers(memberData)
-        setSelectedEventId((current) => current ?? eventData[0]?.id ?? null)
+        setAnnouncementEventId((current) => current ?? eventData[0]?.id ?? null)
+        setCertificateEventId((current) => current ?? eventData[0]?.id ?? null)
         setSelectedMemberId((current) => current ?? memberData[0]?.id ?? null)
       })
       .catch((reason) => setError(reason instanceof Error ? reason.message : "Could not load data."))
@@ -77,20 +82,22 @@ export default function WhatsAppPanel({ api = adminApi }: { api?: AdminApi }) {
       .catch(() => setLink(null))
   }, [api, selectedMemberId])
 
-  function reloadEventData(eventId: number) {
-    api.listAnnouncements(eventId).then(setAnnouncements).catch(() => setAnnouncements([]))
-    api.listCertificates(eventId).then(setCertificates).catch(() => setCertificates([]))
-    api.listCertificateCandidates(eventId).then(setCandidates).catch(() => setCandidates([]))
+  useEffect(() => {
+    if (announcementEventId === null) return
+    api.listAnnouncements(announcementEventId).then(setAnnouncements).catch(() => setAnnouncements([]))
+    setSendMessage(null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [api, announcementEventId])
+
+  useEffect(() => {
+    if (certificateEventId === null) return
+    api.listCertificates(certificateEventId).then(setCertificates).catch(() => setCertificates([]))
+    api.listCertificateCandidates(certificateEventId).then(setCandidates).catch(() => setCandidates([]))
     setSelectedRecipients(new Set())
     setCertMessage(null)
     setCertFilter("all")
-  }
-
-  useEffect(() => {
-    if (selectedEventId === null) return
-    reloadEventData(selectedEventId)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [api, selectedEventId])
+  }, [api, certificateEventId])
 
   const selectedMember = useMemo(
     () => teamMembers.find((member) => member.id === selectedMemberId) ?? null,
@@ -129,11 +136,11 @@ export default function WhatsAppPanel({ api = adminApi }: { api?: AdminApi }) {
 
   async function handleSendAnnouncement(formEvent: React.FormEvent) {
     formEvent.preventDefault()
-    if (selectedEventId === null || !title.trim() || !body.trim()) return
+    if (announcementEventId === null || !title.trim() || !body.trim()) return
     setSendBusy(true)
     setSendMessage(null)
     try {
-      const created = await api.createAnnouncement(selectedEventId, {
+      const created = await api.createAnnouncement(announcementEventId, {
         title: title.trim(),
         body: body.trim(),
         audience,
@@ -150,11 +157,11 @@ export default function WhatsAppPanel({ api = adminApi }: { api?: AdminApi }) {
   }
 
   async function handleSendReminder() {
-    if (selectedEventId === null) return
+    if (announcementEventId === null) return
     setSendBusy(true)
     setSendMessage(null)
     try {
-      const created = await api.createReminder(selectedEventId)
+      const created = await api.createReminder(announcementEventId)
       setAnnouncements((current) => [created, ...current])
       setSendMessage(`Reminder sent to ${created.delivered_count} approved volunteer(s).`)
     } catch (reason) {
@@ -165,12 +172,12 @@ export default function WhatsAppPanel({ api = adminApi }: { api?: AdminApi }) {
   }
 
   async function handleGenerateCertificates() {
-    if (selectedEventId === null) return
+    if (certificateEventId === null) return
     setCertBusy(true)
     try {
-      const generated = await api.generateCertificates(selectedEventId)
+      const generated = await api.generateCertificates(certificateEventId)
       setCertificates(generated)
-      await api.listCertificateCandidates(selectedEventId).then(setCandidates)
+      await api.listCertificateCandidates(certificateEventId).then(setCandidates)
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Could not generate certificates.")
     } finally {
@@ -209,19 +216,19 @@ export default function WhatsAppPanel({ api = adminApi }: { api?: AdminApi }) {
   }
 
   async function handleSendSelectedCertificates() {
-    if (selectedEventId === null || selectedRecipients.size === 0) return
+    if (certificateEventId === null || selectedRecipients.size === 0) return
     setSendCertBusy(true)
     setCertMessage(null)
     try {
       const recipients = candidates
         .filter((candidate) => selectedRecipients.has(candidateKey(candidate)))
         .map(({ type, id }) => ({ type, id }))
-      const sent = await api.sendCertificates(selectedEventId, recipients)
+      const sent = await api.sendCertificates(certificateEventId, recipients)
       setCertMessage(`Sent ${sent.length} certificate(s).`)
       setSelectedRecipients(new Set())
       await Promise.all([
-        api.listCertificates(selectedEventId).then(setCertificates),
-        api.listCertificateCandidates(selectedEventId).then(setCandidates),
+        api.listCertificates(certificateEventId).then(setCertificates),
+        api.listCertificateCandidates(certificateEventId).then(setCandidates),
       ])
     } catch (reason) {
       setCertMessage(reason instanceof Error ? reason.message : "Could not send certificates.")
@@ -230,7 +237,7 @@ export default function WhatsAppPanel({ api = adminApi }: { api?: AdminApi }) {
     }
   }
 
-  const selectedEvent = events.find((event) => event.id === selectedEventId) ?? null
+  const selectedAnnouncementEvent = events.find((event) => event.id === announcementEventId) ?? null
 
   return (
     <section className="whatsapp-panel-page" aria-label="WhatsApp bot">
@@ -246,28 +253,6 @@ export default function WhatsAppPanel({ api = adminApi }: { api?: AdminApi }) {
 
       {loading && <p className="public-events-state">Loading…</p>}
       {error && <p className="event-roster-error">{error}</p>}
-
-      {!loading && (
-        <section className="whatsapp-event-filter volunteer-table-card whatsapp-card">
-          <div className="whatsapp-card-heading">
-            <h2>Filtering by event</h2>
-            <p>Applies to both announcements and certificates below</p>
-          </div>
-          <label className="search-field">
-            <span>Event</span>
-            <select
-              value={selectedEventId ?? ""}
-              onChange={(event) => setSelectedEventId(Number(event.target.value))}
-            >
-              {events.map((event) => (
-                <option key={event.id} value={event.id}>
-                  {event.name} · {event.event_date}
-                </option>
-              ))}
-            </select>
-          </label>
-        </section>
-      )}
 
       {!loading && (
         <div className="whatsapp-panel-grid">
@@ -321,8 +306,21 @@ export default function WhatsAppPanel({ api = adminApi }: { api?: AdminApi }) {
           <section className="volunteer-table-card whatsapp-card">
             <div className="whatsapp-card-heading">
               <h2>Send an announcement</h2>
-              <p>{selectedEvent ? selectedEvent.name : "Choose an event above"}</p>
+              <p>{selectedAnnouncementEvent ? selectedAnnouncementEvent.name : "Choose an event"}</p>
             </div>
+            <label className="search-field">
+              <span>Event</span>
+              <select
+                value={announcementEventId ?? ""}
+                onChange={(event) => setAnnouncementEventId(Number(event.target.value))}
+              >
+                {events.map((event) => (
+                  <option key={event.id} value={event.id}>
+                    {event.name} · {event.event_date}
+                  </option>
+                ))}
+              </select>
+            </label>
             <form onSubmit={(event) => void handleSendAnnouncement(event)} className="whatsapp-panel-form">
               <label className="search-field">
                 <span>Title</span>
@@ -349,7 +347,7 @@ export default function WhatsAppPanel({ api = adminApi }: { api?: AdminApi }) {
                 <button
                   type="submit"
                   className="whatsapp-button-primary"
-                  disabled={sendBusy || !title.trim() || !body.trim() || selectedEventId === null}
+                  disabled={sendBusy || !title.trim() || !body.trim() || announcementEventId === null}
                 >
                   Send announcement
                 </button>
@@ -357,7 +355,7 @@ export default function WhatsAppPanel({ api = adminApi }: { api?: AdminApi }) {
                   type="button"
                   className="whatsapp-button-secondary"
                   onClick={() => void handleSendReminder()}
-                  disabled={sendBusy || selectedEventId === null}
+                  disabled={sendBusy || announcementEventId === null}
                 >
                   Send shift reminder
                 </button>
@@ -405,8 +403,8 @@ export default function WhatsAppPanel({ api = adminApi }: { api?: AdminApi }) {
             <label className="search-field">
               <span>Event</span>
               <select
-                value={selectedEventId ?? ""}
-                onChange={(event) => setSelectedEventId(Number(event.target.value))}
+                value={certificateEventId ?? ""}
+                onChange={(event) => setCertificateEventId(Number(event.target.value))}
               >
                 {events.map((event) => (
                   <option key={event.id} value={event.id}>
@@ -420,7 +418,7 @@ export default function WhatsAppPanel({ api = adminApi }: { api?: AdminApi }) {
                 type="button"
                 className="whatsapp-button-primary"
                 onClick={() => void handleGenerateCertificates()}
-                disabled={certBusy || selectedEventId === null}
+                disabled={certBusy || certificateEventId === null}
               >
                 {certBusy ? "Generating…" : "Generate & send to everyone who attended"}
               </button>

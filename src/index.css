@@ -5895,11 +5895,6 @@ main:has(.copilot-panel.open) .navbar {
   padding: 10px 17px;
 }
 
-.whatsapp-event-filter {
-  margin-bottom: 20px;
-  max-width: 420px;
-}
-
 .whatsapp-panel-grid {
   display: grid;
   gap: 20px;

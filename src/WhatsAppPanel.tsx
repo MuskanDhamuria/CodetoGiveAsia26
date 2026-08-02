@@ -5,6 +5,7 @@ import {
   type Announcement,
   type Audience,
   type Certificate,
+  type CertificateCandidate,
   type EventDetail,
   type TeamMember,
   type TeamMemberWhatsAppLink,
@@ -45,6 +46,10 @@ export default function WhatsAppPanel({ api = adminApi }: { api?: AdminApi }) {
 
   const [certificates, setCertificates] = useState<Certificate[]>([])
   const [certBusy, setCertBusy] = useState(false)
+  const [candidates, setCandidates] = useState<CertificateCandidate[]>([])
+  const [selectedRecipients, setSelectedRecipients] = useState<Set<string>>(new Set())
+  const [sendCertBusy, setSendCertBusy] = useState(false)
+  const [certMessage, setCertMessage] = useState<string | null>(null)
 
   useEffect(() => {
     setLoading(true)
@@ -74,6 +79,9 @@ export default function WhatsAppPanel({ api = adminApi }: { api?: AdminApi }) {
   function reloadEventData(eventId: number) {
     api.listAnnouncements(eventId).then(setAnnouncements).catch(() => setAnnouncements([]))
     api.listCertificates(eventId).then(setCertificates).catch(() => setCertificates([]))
+    api.listCertificateCandidates(eventId).then(setCandidates).catch(() => setCandidates([]))
+    setSelectedRecipients(new Set())
+    setCertMessage(null)
   }
 
   useEffect(() => {
@@ -160,10 +168,55 @@ export default function WhatsAppPanel({ api = adminApi }: { api?: AdminApi }) {
     try {
       const generated = await api.generateCertificates(selectedEventId)
       setCertificates(generated)
+      await api.listCertificateCandidates(selectedEventId).then(setCandidates)
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Could not generate certificates.")
     } finally {
       setCertBusy(false)
+    }
+  }
+
+  function candidateKey(candidate: Pick<CertificateCandidate, "type" | "id">) {
+    return `${candidate.type}:${candidate.id}`
+  }
+
+  function toggleRecipient(candidate: CertificateCandidate) {
+    setSelectedRecipients((current) => {
+      const next = new Set(current)
+      const key = candidateKey(candidate)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
+
+  function selectAllAttended() {
+    setSelectedRecipients(new Set(candidates.filter((c) => c.attended).map(candidateKey)))
+  }
+
+  function clearSelection() {
+    setSelectedRecipients(new Set())
+  }
+
+  async function handleSendSelectedCertificates() {
+    if (selectedEventId === null || selectedRecipients.size === 0) return
+    setSendCertBusy(true)
+    setCertMessage(null)
+    try {
+      const recipients = candidates
+        .filter((candidate) => selectedRecipients.has(candidateKey(candidate)))
+        .map(({ type, id }) => ({ type, id }))
+      const sent = await api.sendCertificates(selectedEventId, recipients)
+      setCertMessage(`Sent ${sent.length} certificate(s).`)
+      setSelectedRecipients(new Set())
+      await Promise.all([
+        api.listCertificates(selectedEventId).then(setCertificates),
+        api.listCertificateCandidates(selectedEventId).then(setCandidates),
+      ])
+    } catch (reason) {
+      setCertMessage(reason instanceof Error ? reason.message : "Could not send certificates.")
+    } finally {
+      setSendCertBusy(false)
     }
   }
 
@@ -328,7 +381,7 @@ export default function WhatsAppPanel({ api = adminApi }: { api?: AdminApi }) {
           <section className="volunteer-table-card whatsapp-card">
             <div className="whatsapp-card-heading">
               <h2>Certificates</h2>
-              <p>For everyone with recorded attendance</p>
+              <p>Generate for everyone who attended, or pick specific people</p>
             </div>
             <div className="whatsapp-panel-actions">
               <button
@@ -337,8 +390,80 @@ export default function WhatsAppPanel({ api = adminApi }: { api?: AdminApi }) {
                 onClick={() => void handleGenerateCertificates()}
                 disabled={certBusy || selectedEventId === null}
               >
-                {certBusy ? "Generating…" : "Generate & send certificates"}
+                {certBusy ? "Generating…" : "Generate & send to everyone who attended"}
               </button>
+            </div>
+
+            <div className="whatsapp-card-heading">
+              <h3>Pick recipients manually</h3>
+              <p>Everyone registered for this event, attendance or not</p>
+            </div>
+            <div className="whatsapp-panel-actions">
+              <button type="button" className="whatsapp-button-secondary" onClick={selectAllAttended} disabled={candidates.length === 0}>
+                Select all who attended
+              </button>
+              <button type="button" className="whatsapp-button-secondary" onClick={clearSelection} disabled={selectedRecipients.size === 0}>
+                Clear selection
+              </button>
+              <button
+                type="button"
+                className="whatsapp-button-primary"
+                onClick={() => void handleSendSelectedCertificates()}
+                disabled={sendCertBusy || selectedRecipients.size === 0}
+              >
+                {sendCertBusy ? "Sending…" : `Send to selected (${selectedRecipients.size})`}
+              </button>
+            </div>
+            {certMessage && <p className="whatsapp-panel-message">{certMessage}</p>}
+
+            <div className="volunteer-table-wrap">
+              <table className="volunteer-table">
+                <thead>
+                  <tr>
+                    <th></th>
+                    <th>Name</th>
+                    <th>Type</th>
+                    <th>Attended</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {candidates.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="roster-empty">No one is registered for this event yet.</td>
+                    </tr>
+                  ) : (
+                    candidates.map((candidate) => {
+                      const key = candidateKey(candidate)
+                      return (
+                        <tr key={key}>
+                          <td>
+                            <input
+                              type="checkbox"
+                              checked={selectedRecipients.has(key)}
+                              onChange={() => toggleRecipient(candidate)}
+                            />
+                          </td>
+                          <td>{candidate.name}</td>
+                          <td>{candidate.type === "participant" ? "Participant" : "Volunteer"}</td>
+                          <td>{candidate.attended ? "Yes" : "No"}</td>
+                          <td>
+                            {candidate.already_delivered
+                              ? "Delivered"
+                              : candidate.already_issued
+                                ? "Issued, not delivered"
+                                : "Not issued"}
+                          </td>
+                        </tr>
+                      )
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="whatsapp-card-heading">
+              <h3>Issued certificates</h3>
             </div>
             <div className="volunteer-table-wrap">
               <table className="volunteer-table">

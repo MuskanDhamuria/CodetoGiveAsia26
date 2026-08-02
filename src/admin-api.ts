@@ -218,6 +218,20 @@ export type Certificate = {
   link: string
 }
 
+export type CertificateCandidate = {
+  type: "participant" | "volunteer"
+  id: number
+  name: string
+  attended: boolean
+  already_issued: boolean
+  already_delivered: boolean
+}
+
+export type CertificateRecipient = {
+  type: "participant" | "volunteer"
+  id: number
+}
+
 export type TeamMemberWhatsAppLink = {
   whatsapp_contact_id: number
   team_member_id: number
@@ -272,6 +286,8 @@ export interface AdminApi {
   createReminder(eventId: number, body?: string): Promise<Announcement>
   generateCertificates(eventId: number): Promise<Certificate[]>
   listCertificates(eventId: number): Promise<Certificate[]>
+  listCertificateCandidates(eventId: number): Promise<CertificateCandidate[]>
+  sendCertificates(eventId: number, recipients: CertificateRecipient[]): Promise<Certificate[]>
   getTeamMemberWhatsAppLink(memberId: number): Promise<TeamMemberWhatsAppLink | null>
   linkTeamMemberWhatsApp(memberId: number, phoneNumber: string): Promise<TeamMemberWhatsAppLink>
   unlinkTeamMemberWhatsApp(memberId: number): Promise<void>
@@ -434,6 +450,17 @@ export const adminApi: AdminApi = {
 
   listCertificates(eventId) {
     return request<Certificate[]>(`/events/${eventId}/certificates`)
+  },
+
+  listCertificateCandidates(eventId) {
+    return request<CertificateCandidate[]>(`/events/${eventId}/certificate-candidates`)
+  },
+
+  sendCertificates(eventId, recipients) {
+    return request<Certificate[]>(`/events/${eventId}/certificates/send`, {
+      method: "POST",
+      body: JSON.stringify({ recipients }),
+    })
   },
 
   async getTeamMemberWhatsAppLink(memberId) {

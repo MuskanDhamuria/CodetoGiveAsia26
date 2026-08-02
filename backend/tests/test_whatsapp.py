@@ -551,6 +551,83 @@ class WhatsAppBotTest(unittest.TestCase):
         self.assertEqual(page.status_code, 200)
         self.assertIn("Sam", page.text)
 
+    def test_certificate_candidates_lists_registrants_regardless_of_attendance(self) -> None:
+        event = self.create_event()
+        attended_phone = "6580000041"
+        no_show_phone = "6580000042"
+        admin_phone = "6580000043"
+        self.make_team_member_contact(admin_phone)
+        self.send_message(attended_phone, f"SIGNUP {event['id']}", name="Attended Person")
+        self.send_message(attended_phone, "Attended Person")
+        self.send_message(no_show_phone, f"SIGNUP {event['id']}", name="No Show")
+        self.send_message(no_show_phone, "No Show")
+        self.send_message(admin_phone, f"ATTEND {event['id']} {attended_phone}")
+
+        response = self.client.get(f"/api/v1/events/{event['id']}/certificate-candidates")
+        self.assertEqual(response.status_code, 200)
+        candidates = {row["name"]: row for row in response.json()}
+        self.assertEqual(len(candidates), 2)
+        self.assertTrue(candidates["Attended Person"]["attended"])
+        self.assertFalse(candidates["No Show"]["attended"])
+        self.assertFalse(candidates["No Show"]["already_issued"])
+
+    def test_send_certificates_to_manually_selected_recipient_ignores_attendance(self) -> None:
+        # An admin should be able to issue a certificate to someone who
+        # wasn't marked present — e.g. attendance wasn't scanned in time.
+        event = self.create_event()
+        phone = "6580000044"
+        self.send_message(phone, f"SIGNUP {event['id']}", name="Manual Pick")
+        self.send_message(phone, "Manual Pick")
+        candidates = self.client.get(
+            f"/api/v1/events/{event['id']}/certificate-candidates"
+        ).json()
+        self.assertEqual(len(candidates), 1)
+        self.assertFalse(candidates[0]["attended"])
+
+        response = self.client.post(
+            f"/api/v1/events/{event['id']}/certificates/send",
+            json={"recipients": [{"type": "participant", "id": candidates[0]["id"]}]},
+        )
+        self.assertEqual(response.status_code, 200)
+        certificates = response.json()
+        self.assertEqual(len(certificates), 1)
+        self.assertIsNotNone(certificates[0]["delivered_at"])
+        self.assertIn("Here's your certificate", self.fake_whatsapp.sent[-1][1])
+
+    def test_send_certificates_works_for_a_selected_volunteer(self) -> None:
+        event = self.create_event()
+        phone = "6591230045"
+        self.register_volunteer(phone, "Selected Volunteer")
+        self.send_message(phone, f"VOLUNTEER SIGNUP {event['id']}")
+        candidates = self.client.get(
+            f"/api/v1/events/{event['id']}/certificate-candidates"
+        ).json()
+        volunteer_candidate = next(row for row in candidates if row["type"] == "volunteer")
+
+        response = self.client.post(
+            f"/api/v1/events/{event['id']}/certificates/send",
+            json={"recipients": [{"type": "volunteer", "id": volunteer_candidate["id"]}]},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.json()), 1)
+        self.assertIn("Here's your certificate", self.fake_whatsapp.sent[-1][1])
+
+    def test_send_certificates_rejects_a_recipient_not_registered_for_the_event(self) -> None:
+        event = self.create_event()
+        response = self.client.post(
+            f"/api/v1/events/{event['id']}/certificates/send",
+            json={"recipients": [{"type": "participant", "id": 99999}]},
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_send_certificates_requires_at_least_one_recipient(self) -> None:
+        event = self.create_event()
+        response = self.client.post(
+            f"/api/v1/events/{event['id']}/certificates/send",
+            json={"recipients": []},
+        )
+        self.assertEqual(response.status_code, 400)
+
     def test_website_volunteer_registration_auto_links_whatsapp(self) -> None:
         # Registering through the website's volunteer signup form should be
         # enough on its own — no separate WhatsApp SIGNUP step required for

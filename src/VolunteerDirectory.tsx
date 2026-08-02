@@ -81,7 +81,7 @@ export default function VolunteerDirectory({ onOpenEvent }: VolunteerDirectoryPr
   const [profileError, setProfileError] = useState<string | null>(null)
   const [profileReloadKey, setProfileReloadKey] = useState(0)
   const [profileRoles, setProfileRoles] = useState<Record<number, Role[]>>({})
-  const [approvalRoleChoice, setApprovalRoleChoice] = useState<Record<number, number>>({})
+  const [approvalRoleChoice, setApprovalRoleChoice] = useState<Record<number, number | null>>({})
   const [approvingSignupId, setApprovingSignupId] = useState<number | null>(null)
   const [approvalNotice, setApprovalNotice] = useState<string | null>(null)
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
@@ -141,7 +141,7 @@ export default function VolunteerDirectory({ onOpenEvent }: VolunteerDirectoryPr
         setApprovalRoleChoice(Object.fromEntries(history.items.filter((event) => event.status === "requested").map((event) => {
           const roles = roleEntries.find(([eventId]) => eventId === event.event_id)?.[1] ?? []
           const preferred = roles.find((role) => event.preferred_role_names.includes(role.name))
-          return [event.signup_id, preferred?.id ?? roles[0]?.id ?? 0]
+          return [event.signup_id, preferred?.id ?? null]
         })))
       })
       .catch((err) => {
@@ -215,8 +215,7 @@ export default function VolunteerDirectory({ onOpenEvent }: VolunteerDirectoryPr
   }
 
   async function handleApproveRequest(event: VolunteerEventHistory) {
-    const assignedRoleId = approvalRoleChoice[event.signup_id]
-    if (!assignedRoleId) return
+    const assignedRoleId = approvalRoleChoice[event.signup_id] ?? null
     setApprovingSignupId(event.signup_id)
     setProfileError(null)
     setApprovalNotice(null)
@@ -314,7 +313,9 @@ export default function VolunteerDirectory({ onOpenEvent }: VolunteerDirectoryPr
                           <div>
                             {statusPill(event.status)}
                             {event.status === "requested" ? <div className="volunteer-history-approval">
-                              {availableRoles.length ? <><label><span>Approve as</span><select aria-label={`Role for ${event.event_name}`} value={approvalRoleChoice[event.signup_id] || ""} onChange={(input) => setApprovalRoleChoice({ ...approvalRoleChoice, [event.signup_id]: Number(input.target.value) })}>{availableRoles.map((role) => <option key={role.id} value={role.id}>{role.name}</option>)}</select></label><button disabled={approvingSignupId === event.signup_id || !approvalRoleChoice[event.signup_id]} type="button" onClick={() => void handleApproveRequest(event)}>{approvingSignupId === event.signup_id ? "Approving…" : "Approve"}</button></> : <small>No role options exist for this event. Add one from the event workspace first.</small>}
+                              <label><span>Interest label (optional)</span><select aria-label={`Interest label for ${event.event_name}`} value={approvalRoleChoice[event.signup_id] ?? ""} onChange={(input) => setApprovalRoleChoice({ ...approvalRoleChoice, [event.signup_id]: input.target.value ? Number(input.target.value) : null })}><option value="">No role assignment</option>{availableRoles.map((role) => <option key={role.id} value={role.id}>{role.name}</option>)}</select></label>
+                              {!availableRoles.length && <small>No interest options configured; approval can continue.</small>}
+                              <button disabled={approvingSignupId === event.signup_id} type="button" onClick={() => void handleApproveRequest(event)}>{approvingSignupId === event.signup_id ? "Approving…" : "Approve"}</button>
                             </div> : <><span>{event.assigned_role_name ?? "Role not assigned"}{event.is_leader ? " · lead" : ""}</span>{attendanceLabel(event.attendance)}</>}
                           </div>
                         </article>

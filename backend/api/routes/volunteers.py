@@ -622,7 +622,8 @@ def approve_event_signup(
     event_id: int, signup_id: int, payload: SignupApprove, db: Connection
 ) -> SignupOut:
     signup_row(db, event_id, signup_id)
-    _require_role_for_event(db, event_id, payload.assigned_role_id)
+    if payload.assigned_role_id is not None:
+        _require_role_for_event(db, event_id, payload.assigned_role_id)
     db.execute(
         """
         UPDATE volunteer_signups

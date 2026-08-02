@@ -86,7 +86,7 @@ class SignupUpdate(BaseModel):
 
 
 class SignupApprove(BaseModel):
-    assigned_role_id: int
+    assigned_role_id: int | None = None
     is_leader: bool = False
 
 

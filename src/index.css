@@ -3558,6 +3558,22 @@ button {
   z-index: 3;
 }
 
+/* Landing page role entry points. */
+.landing-actions { display: grid; gap: 12px; grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: 34px; width: min(100%, 700px); }
+.landing-role { align-items: flex-start; background: rgba(255, 255, 255, 0.78); border: 1px solid rgba(10, 10, 10, 0.12); border-radius: 18px; color: var(--text); cursor: pointer; display: flex; flex-direction: column; min-height: 112px; padding: 18px; position: relative; text-align: left; transition: box-shadow 0.2s ease, transform 0.2s ease, background 0.2s ease; }
+.landing-role:hover { background: #fff; box-shadow: 0 12px 30px rgba(0, 0, 0, 0.12); transform: translateY(-2px); }
+.landing-role span { font-size: 16px; font-weight: 700; }
+.landing-role small { color: var(--muted); font-size: 12px; line-height: 1.35; margin-top: 8px; max-width: 145px; }
+.landing-role b { font-size: 18px; font-weight: 500; position: absolute; right: 15px; top: 14px; }
+.landing-role-primary { background: var(--button-bg); border-color: var(--button-bg); color: white; }
+.landing-role-primary:hover { background: #252525; border-color: #252525; color: white; }
+.landing-role-primary small { color: rgba(255, 255, 255, 0.7); }
+@media (max-width: 720px) {
+  .landing-actions { grid-template-columns: 1fr; }
+  .landing-role { min-height: 76px; }
+  .landing-role small { max-width: 240px; }
+}
+
 .copilot-fab {
   align-items: center;
   background: #0a0a0a;

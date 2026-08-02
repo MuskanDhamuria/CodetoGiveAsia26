@@ -59,7 +59,7 @@ const pageLabels: Record<Page, string> = {
 
 function readInitialPage(pathname = window.location.pathname): Page {
   if (pathname === "/admin" || pathname === "/admin/") {
-    return "home";
+    return "dashboard";
   }
 
   if (pathname.startsWith("/admin/")) {
@@ -530,7 +530,49 @@ function CurvedLines() {
   );
 }
 
-function LandingPage({ onGetStarted }: { onGetStarted: () => void }) {
+const landingRoles = [
+  {
+    label: "Volunteer",
+    description: "Discover meaningful ways to serve your community.",
+    route: "/community",
+  },
+  {
+    label: "Admin",
+    description: "Plan events, coordinate teams and measure impact.",
+    route: "/admin",
+  },
+  {
+    label: "Participants",
+    description: "Find events and join experiences that matter to you.",
+    route: "/participant",
+  },
+] as const;
+
+function LandingActions({
+  onNavigate,
+}: {
+  onNavigate: (route: string) => void;
+}) {
+  return (
+    <div className="landing-actions">
+      {landingRoles.map((role, index) => (
+        <button
+          className={index === 1 ? "landing-role landing-role-primary" : "landing-role"}
+          key={role.label}
+          type="button"
+          onClick={() => onNavigate(role.route)}
+        >
+          <span>{role.label}</span>
+          <small>{role.description}</small>
+          <b aria-hidden="true">↗</b>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function LandingPage() {
+  const onNavigate = useNavigate();
   return (
     <section
       className="hero"
@@ -548,11 +590,7 @@ function LandingPage({ onGetStarted }: { onGetStarted: () => void }) {
           communications to certificates and impact reports-all in one
           intelligent platform.
         </p>
-        <div className="cta-row">
-          <button className="primary-cta" type="button" onClick={onGetStarted}>
-            Get Started
-          </button>
-        </div>
+        <LandingActions onNavigate={onNavigate} />
       </div>
       <div className="hero-blur" aria-hidden="true" />
     </section>
@@ -2035,9 +2073,7 @@ function AdminPanel() {
         activePage={activePage}
         onNavigate={navigate}
       />
-      {activePage === "home" && (
-        <LandingPage onGetStarted={() => navigate("dashboard")} />
-      )}
+      {activePage === "home" && <LandingPage />}
       {activePage !== "home" && (
         <div className="product-frame">
           <div className="product-page-content">
@@ -2074,7 +2110,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/participant/*" element={<ParticipantApp />} />
-      <Route path="/" element={<LegacyRouteRedirect />} />
+      <Route path="/" element={<LandingPage />} />
       <Route path="/admin" element={<AdminPanel />} />
       <Route path="/admin/*" element={<AdminPanel />} />
       <Route path="/community" element={<AdminPanel />} />
@@ -2104,7 +2140,7 @@ function LegacyRouteRedirect() {
     "volunteer-login": "/volunteer-login",
     "volunteer-dashboard": "/volunteer-dashboard",
   };
-  const target = routes[page ?? ""] ?? "/admin";
+  const target = routes[page ?? ""] ?? "/";
   params.delete("page");
   const search = params.toString();
   return <Navigate to={`${target}${search ? `?${search}` : ""}`} replace />;

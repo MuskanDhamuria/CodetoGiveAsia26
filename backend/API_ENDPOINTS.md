@@ -16,6 +16,9 @@ The organizer/admin backend currently implements:
 - Participant CRUD, event registration, RSVP, attendance, and event history.
 - Dashboard summary, upcoming deadlines, calendar events, and per-event
   progress summaries.
+- WhatsApp bot webhook, organizer announcements/reminders, and certificate
+  generation/delivery (see "WhatsApp bot, announcements, and certificates"
+  below).
 
 Volunteer routes remain owned by the volunteer feature module. The organizer
 implementation does not change the event volunteer-signup endpoints. Routes in
@@ -421,6 +424,32 @@ Suggested `/events/{event_id}/summary` shape:
 }
 ```
 
+## WhatsApp bot, announcements, and certificates
+
+Uses the Meta WhatsApp Cloud API. See `backend/README.md` for required
+environment variables and `backend/bot/commands.py` for the bot's text
+command grammar (`EVENTS`, `SIGNUP <id>`, `VOLUNTEER SIGNUP <id>`, `TASKS`,
+`CONFIRM <id>`, `CERT <id>`, and admin-only `BROADCAST`, `REMIND`,
+`PENDING`, `APPROVE`, `REJECT`, `ATTEND`, `MARK`). A `whatsapp_contacts`
+row links a phone number to a participant, volunteer, and/or team member;
+which of those links exist controls which commands are available.
+
+| Method | Path | Parameters/body | Description |
+| --- | --- | --- | --- |
+| `GET` | `/integrations/whatsapp/webhook` | Query: `hub.mode`, `hub.verify_token`, `hub.challenge` | One-time Meta subscription verification handshake. |
+| `POST` | `/integrations/whatsapp/webhook` | Meta message payload; `X-Hub-Signature-256` header | Receives inbound messages, runs the bot, and sends replies. Validates the signature when `WHATSAPP_APP_SECRET` is set. |
+| `POST` | `/events/{event_id}/announcements` | Body: `title`, `body`, `audience: all\|participants\|volunteers` | Create and immediately send an announcement. |
+| `GET` | `/events/{event_id}/announcements` | Path: `event_id` | List announcements/reminders sent for an event, with delivery counts. |
+| `POST` | `/events/{event_id}/reminders` | Body: `body?` (defaults to a shift reminder) | Send a reminder to the event's approved volunteers. |
+| `POST` | `/events/{event_id}/certificates/generate` | Path: `event_id` | Generate certificates for everyone with recorded attendance and message the links. |
+| `GET` | `/events/{event_id}/certificates` | Path: `event_id` | List certificates issued for an event. |
+| `GET` | `/public/certificates/{download_token}` | Path: `download_token` | Public, printable certificate page (no auth). |
+| `POST` | `/public/notification-subscriptions` | Body: `phone_number`, `display_name?` | Opt a WhatsApp number in to new-event alerts. |
+| `DELETE` | `/public/notification-subscriptions/{subscription_id}` | Path: `subscription_id` | Opt a WhatsApp number out of new-event alerts. |
+| `POST` | `/team-members/{member_id}/whatsapp-link` | Body: `phone_number` | Link a phone number to a team member, unlocking bot admin commands for it. `409` if that number is already linked to a different team member. |
+| `GET` | `/team-members/{member_id}/whatsapp-link` | Path: `member_id` | Get the phone number linked to a team member, if any. |
+| `DELETE` | `/team-members/{member_id}/whatsapp-link` | Path: `member_id` | Remove a team member's WhatsApp admin link. |
+
 ## Proposed future endpoints requiring more design
 
 The product plan mentions the following capabilities, but the current database
@@ -439,28 +468,13 @@ requirements, reservations, and fulfilment status.
 - `PATCH/DELETE /events/{event_id}/logistics-requirements/{requirement_id}`
 - `POST /events/{event_id}/logistics-requirements/{requirement_id}/allocate`
 
-### Announcements, reminders, and bots
+### Announcements, reminders, bots, and certificates
 
-Likely resources: announcements, recipients, delivery attempts, external chat
-identities, subscriptions, and message templates. WhatsApp/Telegram webhooks
-must validate provider signatures and should not expose internal admin routes.
-
-- `POST /events/{event_id}/announcements`
-- `GET /events/{event_id}/announcements`
-- `POST /events/{event_id}/reminders`
-- `POST /integrations/telegram/webhook`
-- `POST /integrations/whatsapp/webhook`
-- `POST /public/notification-subscriptions`
-- `DELETE /public/notification-subscriptions/{subscription_id}`
-
-### Certificates
-
-Likely resources: certificate templates, generated certificates, eligibility,
-and secure download tokens.
-
-- `POST /events/{event_id}/certificates/generate`
-- `GET /events/{event_id}/certificates`
-- `GET /public/certificates/{download_token}`
+Implemented — see "WhatsApp bot, announcements, and certificates" above.
+A Telegram webhook (`POST /integrations/telegram/webhook`) is not yet
+implemented; the bot layer (`backend/bot/commands.py`) is provider-agnostic,
+so adding Telegram means a new webhook route and client, reusing the same
+`dispatch()` logic.
 
 ### Partner summary
 

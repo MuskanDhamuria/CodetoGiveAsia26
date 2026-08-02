@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 // PROTOTYPE ONLY: three Event collection variants, switchable via
 // `?variant=`, on the existing Events route.
@@ -137,6 +137,10 @@ type VariantCProps = VariantProps & {
   onCloseSelected: () => void;
   isMobile: boolean;
   selectedDialogOpen: boolean;
+  // TICKET-70: lets a real page (AdminEventsPage) swap in a production
+  // calendar instead of PrototypeCalendar's hardcoded Jul-Sep-2027 demo
+  // grid, without touching this file's own `?variant=` prototype pages.
+  renderCalendar?: () => ReactNode;
 };
 
 function VariantA({ events, view, month, showClosed, showCancelled, onMonth, onNewEvent, onOpen, onShowClosed, onShowCancelled, onView }: VariantProps) {
@@ -191,7 +195,7 @@ function VariantB({ events, month, showClosed, showCancelled, onMonth, onNewEven
   );
 }
 
-function VariantC({ events, view, month, showClosed, showCancelled, selected, onMonth, onNewEvent, onOpen, onSelect, onShowClosed, onShowCancelled, onView, openOnSelect, onCloseSelected, isMobile, selectedDialogOpen }: VariantCProps) {
+function VariantC({ events, view, month, showClosed, showCancelled, selected, onMonth, onNewEvent, onOpen, onSelect, onShowClosed, onShowCancelled, onView, openOnSelect, onCloseSelected, isMobile, selectedDialogOpen, renderCalendar }: VariantCProps) {
   return (
     <div className="collection-variant collection-variant-c">
       <header className="portfolio-header">
@@ -199,7 +203,7 @@ function VariantC({ events, view, month, showClosed, showCancelled, selected, on
         <CollectionControls {...{ showClosed, showCancelled, view, onNewEvent, onShowClosed, onShowCancelled, onView }} />
       </header>
       {view === "calendar" ? (
-        <PrototypeCalendar events={events} month={month} onMonth={onMonth} onOpen={onOpen} />
+        renderCalendar ? renderCalendar() : <PrototypeCalendar events={events} month={month} onMonth={onMonth} onOpen={onOpen} />
       ) : (
         <div className="portfolio-split">
           <section className="portfolio-index">
@@ -261,6 +265,7 @@ export default function EventCollectionPrototype({
   initialShowClosed = false,
   initialShowCancelled = false,
   openOnSelect = false,
+  renderCalendar,
 }: {
   events?: EventCollectionItem[];
   onNewEvent?: () => void;
@@ -268,6 +273,7 @@ export default function EventCollectionPrototype({
   initialShowClosed?: boolean;
   initialShowCancelled?: boolean;
   openOnSelect?: boolean;
+  renderCalendar?: () => ReactNode;
 }) {
   const params = new URLSearchParams(window.location.search);
   const initialVariant = params.get("variant");
@@ -389,7 +395,7 @@ export default function EventCollectionPrototype({
     <>
       {variant === "A" && <VariantA {...props} />}
       {variant === "B" && <VariantB {...props} />}
-      {variant === "C" && <VariantC {...props} selectedDialogOpen={selectedDialogOpen} />}
+      {variant === "C" && <VariantC {...props} selectedDialogOpen={selectedDialogOpen} renderCalendar={renderCalendar} />}
       {notice && <button className="collection-notice" type="button" onClick={() => setNotice("")}>{notice}<span>Dismiss</span></button>}
     </>
   );

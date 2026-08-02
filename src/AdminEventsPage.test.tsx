@@ -62,6 +62,37 @@ describe("API-backed organizer events", () => {
     expect(document.querySelector(".event-collection-header")).toBeNull()
   })
 
+  it("uses the production calendar for API-backed Events instead of the prototype demo window", async () => {
+    const events: EventDetail[] = [
+      { id: 4, event_template_id: null, name: "Spring clinic", venue: "Hall", event_date: "2026-04-15", status: "open", is_cancelled: false, created_at: "", updated_at: "", tasks: [] },
+      { id: 5, event_template_id: null, name: "Winter clinic", venue: "Room B", event_date: "2026-12-02", status: "open", is_cancelled: false, created_at: "", updated_at: "", tasks: [] },
+    ]
+    const api = {
+      listEventTemplates: vi.fn().mockResolvedValue([]),
+      listEvents: vi.fn().mockResolvedValue(events),
+      listTeamMembers: vi.fn().mockResolvedValue([]),
+      listEventTaskAssignees: vi.fn().mockResolvedValue({ organizers: [], volunteers: [] }),
+    } as unknown as AdminApi
+    const user = userEvent.setup()
+
+    render(<AdminEventsPage api={api} />)
+    await user.click(await screen.findByRole("button", { name: "Calendar" }))
+
+    expect(screen.getByRole("heading", { name: "April 2026" })).toBeTruthy()
+    expect(screen.queryByRole("heading", { name: /2027/ })).toBeNull()
+    expect(screen.getByRole("button", { name: "Spring clinic" })).toBeTruthy()
+
+    await user.click(screen.getByRole("button", { name: "Next month" }))
+    expect(screen.getByRole("heading", { name: "May 2026" })).toBeTruthy()
+
+    await user.click(screen.getByRole("button", { name: "Previous month" }))
+    await user.click(screen.getByRole("button", { name: "Spring clinic" }))
+    await user.click(screen.getByRole("button", { name: "Open workspace" }))
+
+    expect(await screen.findByRole("button", { name: "Back to Events" })).toBeTruthy()
+    expect(screen.getByRole("heading", { name: "Spring clinic" })).toBeTruthy()
+  })
+
   it("opens and closes the selected Event dialog on mobile", async () => {
     const event: EventDetail = {
       id: 4, event_template_id: null, name: "Wellness session", venue: "Hall",

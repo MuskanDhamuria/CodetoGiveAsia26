@@ -13,6 +13,7 @@ import {
   type TeamMember,
 } from "./admin-api"
 import EventCollectionPrototype, { type EventCollectionItem } from "./EventCollectionPrototype"
+import { EventCalendar } from "./EventCalendar"
 import EventVolunteerTab from "./EventVolunteerTab"
 import EventLogistics from "./EventLogistics"
 import "./EventOperationsMvp.css"
@@ -1053,6 +1054,15 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
             const apiEvent = events.find((candidate) => String(candidate.id) === event.id)
             if (apiEvent) openCollectionEvent(apiEvent)
           }}
+          renderCalendar={() => (
+            <EventCalendar
+              events={events}
+              onOpenWorkspace={(eventId) => {
+                const apiEvent = events.find((candidate) => candidate.id === eventId)
+                if (apiEvent) openCollectionEvent(apiEvent)
+              }}
+            />
+          )}
         />
         </>}
 

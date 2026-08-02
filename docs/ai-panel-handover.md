@@ -86,6 +86,23 @@ tool call actually writes something (`publish_event`, `update_event`,
 `approve_event_signup`) — no manual reload needed to see the change
 reflected outside the chat.
 
+**Tool expansion — inventory, broadcast, reports/certificates
+(TICKET-38–41).** A 2026-08-02 merge of `origin/backend` added three
+whole admin features (`/admin/inventory`, the Broadcasts page, and
+post-event reports/certificates) with zero AI coverage; the tool set grew
+from 15 to 28 (bumping past the earlier 7→15 growth noted above) to close
+that gap. Inventory got four read-only tools (items, locations, stock
+levels, movement ledger) — write tools (adjustments/transfers) were
+deliberately left out pending a real organizer use case. Broadcast and
+certificate generation both got the same two-step pattern as
+`create_event_draft`/`publish_event`: a `preview_*` tool that writes/sends
+nothing and returns a recipient count, then a `send_*`/`generate_*` tool
+the model is instructed (`SYSTEM_PROMPT`) to only call after the organizer
+explicitly confirms the exact preview. That confirmation is still
+prompt-only, same as every other mutating tool — see TICKET-26 below,
+which now also covers `send_announcement`, `send_shift_reminder`, and
+`generate_event_certificates`.
+
 **Not started:** TICKET-7 (system-prompt iteration — live testing surfaced
 a couple of concrete cases worth tuning, like the model over-verifying
 information it already has), TICKET-18 (task-prioritization prompt

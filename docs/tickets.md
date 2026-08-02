@@ -2360,3 +2360,226 @@ shape `list_upcoming_deadlines` takes for tasks.
   every per-event tool.
 
 </details>
+
+---
+
+~~TICKET-38: Gap audit — admin pages added by the `origin/backend` merge with no AI tool equivalent~~
+— **Done.** All three sub-tickets shipped: TICKET-39 (inventory,
+read-only), TICKET-40 (broadcast, preview/send pattern), TICKET-41
+(reports/certificates, full scope including certificate generation+send).
+Ordering ended up simultaneous rather than sequential — the confirm-before-
+send question (TICKET-40) and the no-op permission pipeline question
+(TICKET-41) were both resolved as explicit product decisions rather than
+blockers, see each ticket's own "Done" note for specifics.
+
+<details>
+<summary>Original ticket text</summary>
+
+The 2026-08-02 merge of `origin/backend` into `feat/agent` (fast-forward
+`396e96d..6f6206e`) brought in `backend/api/routes/inventory.py`,
+`backend/api/routes/whatsapp.py` broadcast/announcement endpoints, and
+post-event reporting (`backend/api/routes/reports.py` + certificate
+endpoints), each with a corresponding `/admin` page
+(`src/InventoryPage.tsx`, the "Broadcasts" nav entry rendering
+`WhatsAppPanel`, and `src/EventCollectionPrototype.tsx`'s `postEventMode`
+reports/certificates UI). `backend/ai_tools/tools.py`'s `TOOL_EXECUTORS`
+(16 tools as of this merge — event CRUD/lifecycle plus event templates,
+volunteers, tasks, deadlines, roles, and signups) has zero coverage for
+any of the three. This ticket is the tracking umbrella; TICKET-39/40/41
+below scope each domain separately since they have unrelated risk
+profiles (inventory is pure data CRUD, broadcast sends real WhatsApp
+messages to beneficiaries, reports/certificates touch participant PII).
+
+### Why these three, and why not yet
+
+- **Inventory** (`inventory.py`, lines 102-304): item/location CRUD,
+  stock levels, movements, adjustments, transfers. Read-oriented AI tools
+  here are low-risk; the CRUD mutations are internal-only data (no
+  outward message, no cascading delete) so this is the safest of the
+  three to build first.
+- **Broadcast** (`whatsapp.py`'s announcement/reminder/certificate-send
+  endpoints, plus `backend/bot/commands.py:741`'s `admin_broadcast`): an
+  AI tool that sends a WhatsApp broadcast is irreversible the moment it
+  fires — it reaches real migrant-worker beneficiaries, not a sandbox.
+  Any tool here needs the same one-shot-per-call, no-retry-loop care
+  `docs/tickets.md`'s existing TICKET-6/9 confirmation pattern already
+  established for `cancel_event`, plus probably an explicit
+  confirm-before-send step in the chat turn rather than direct dispatch.
+- **Post-event reports/certificates** (`reports.py`,
+  `EventCollectionPrototype.tsx`'s `postEventMode`): certificate
+  generation embeds participant names/contact info; before wiring an AI
+  tool here, check whether `dispatch_tool_call`'s existing permission
+  pipeline (see `backend/ai_tools/` module docstring / `dispatch.py`)
+  already gates on the right fields, since this is the first tool
+  touching participant PII rather than event/volunteer/task metadata.
+
+### Scope of this ticket
+
+- [ ] Confirm this list against a fresh `git diff 396e96d..6f6206e` if
+      more backend routes land before TICKET-39/40/41 start (this was a
+      point-in-time audit).
+- [ ] Decide ordering: recommend Inventory (TICKET-39) first as the
+      lowest-risk / highest-value pilot, then Broadcast (TICKET-40) and
+      Reports/Certificates (TICKET-41) once the confirmation-before-send
+      and PII-handling questions above are answered — not necessarily in
+      that order, whichever resolves its open question first.
+
+### Out of scope
+
+- Actually implementing any of the three tool sets — that's
+  TICKET-39/40/41.
+- Auditing for gaps beyond these three; the investigation that produced
+  this ticket was scoped specifically to "what's new since the AI tool
+  set was last extended," not a full re-audit of every admin page.
+
+</details>
+
+---
+
+~~TICKET-39: AI tool — inventory read/CRUD (items, locations, stock, movements)~~
+— **Done.** Four read-only tools added: `list_inventory_items`,
+`list_inventory_locations`, `get_stock_levels`, `list_inventory_movements`
+(`backend/ai_tools/tools.py`, wrapping `backend/api/routes/inventory.py`'s
+`list_items`/`list_locations`/`list_stock`/`list_movements` directly, no
+duplicated SQL), registered in `schemas.py` (`ListInventoryItemsArgs` etc.)
+and `specs.py`, following the exact thin-wrapper pattern every other list
+tool uses. Per the ticket's own scoping, write tools (`adjust_stock`,
+`transfer_stock`) were deliberately **not** built — there's no organizer
+use case yet for the AI to perform them rather than just report on them,
+so the open question about a required `reason` field on adjustments is
+moot for now (the schema already enforces `min_length=1` on `reason` if/
+when that tool is eventually added). Tests in
+`backend/tests/test_ai_tools.py`'s `AiToolsInventoryTest`, including one
+asserting no `adjust_stock`-style tool is reachable via `dispatch_tool_call`.
+
+<details>
+<summary>Original ticket text</summary>
+
+Wrap `backend/api/routes/inventory.py`'s endpoints
+(`POST/GET/PATCH/DELETE /inventory/items`, `/inventory/locations`,
+`GET /inventory/stock`, `/inventory/movements`,
+`POST /inventory/adjustments`, `POST /inventory/transfers`) as AI tools
+following the existing thin-wrapper pattern (`backend/ai_tools/tools.py`
+executors call straight into the route handler's business logic, no
+duplicated SQL). Start with read tools (`list_inventory_items`,
+`get_stock_levels`) since they carry no mutation risk; only add
+write tools (adjustments/transfers) once there's a clear organizer
+use case for the AI to perform them rather than just report on them.
+
+### Open questions
+
+- Does `/inventory/adjustments` require a reason/note field the AI
+  should always populate (e.g. "adjusted via AI assistant")? Check the
+  schema in `backend/schema/` (or wherever `inventory.py`'s Pydantic
+  models live, per TICKET-38's PII note above — this route wasn't part
+  of the original schema/route split audit).
+
+</details>
+
+---
+
+~~TICKET-40: AI tool — broadcast / WhatsApp announcement (send-with-confirmation)~~
+— **Done.** Resolved the open question by matching the existing
+draft/publish precedent (`create_event_draft`/`publish_event`) rather than
+inventing a new confirmation mechanism: `preview_announcement` (no DB
+write — validates the event via `events_routes.get_event`, computes the
+recipient count via `bot.commands.audience_contacts`, now a public
+function, previously `_audience_contacts`) and `send_announcement` (calls
+`whatsapp_routes.create_announcement`, which sends immediately, unchanged).
+Same pair for shift reminders: `preview_shift_reminder`/
+`send_shift_reminder`, reusing a newly extracted `default_reminder_body`
+helper in `whatsapp.py` (previously inlined in `create_reminder`) so the
+preview and the real send can never compute different default text.
+`SYSTEM_PROMPT` (`backend/api/routes/ai_assistant.py`) now explicitly
+tells the model these tools message real people and cannot be undone —
+always preview first, only send after explicit confirmation, mirroring
+the language already used for `approve_event_signup`. Confirmation is
+enforced the same way every other mutation tool enforces it in this
+codebase: system-prompt instruction only, no code-level approval gate —
+consistent with the precedent, not a gap specific to this ticket. Tests
+in `AiToolsBroadcastAndReportsTest` cover both preview tools writing
+nothing/sending nothing, and both send tools actually delivering via the
+fake WhatsApp client.
+
+<details>
+<summary>Original ticket text</summary>
+
+Wrap the relevant `backend/api/routes/whatsapp.py` endpoint(s)
+(announcement creation+send, ~line 193; shift reminders, ~line 237) as
+an AI tool, explicitly excluding `backend/bot/commands.py:741`'s
+`admin_broadcast` (that's the WhatsApp-bot-side code path, a different
+integration surface — don't conflate the two when scoping this).
+
+### Why this needs its own confirmation step
+
+Every existing AI mutation tool (`publish_event`, `cancel_event`, task
+assignment, signup approval) affects internal event/volunteer state that
+an organizer can see and undo from the admin UI. A broadcast is the
+first tool whose effect leaves the system entirely — real people receive
+a real WhatsApp message with no undo. This ticket should not ship
+without an explicit user-facing confirmation turn (show the drafted
+message + recipient count, require an explicit yes) before the tool
+actually dispatches, mirroring how TICKET-6/9 treated `cancel_event`'s
+irreversibility but stricter, since this can't even be "corrected" by a
+follow-up admin action the way a wrongly-cancelled event can be reopened.
+
+### Open questions
+
+- Should the tool support drafting-only (returns the message for the
+  organizer to send manually from `/admin/broadcasts`) as a first,
+  lower-risk milestone before allowing the AI to dispatch it directly?
+
+</details>
+
+---
+
+~~TICKET-41: AI tool — post-event reports and certificates~~
+— **Done.** Both open questions were decided explicitly rather than
+deferred (see the AskUserQuestion exchange that resolved this ticket):
+built the full scope, accepting that `_check_permissions` in
+`backend/ai_tools/dispatch.py` remains the documented no-op it's always
+been — every existing mutation tool already ships without a real
+permission check, so this isn't a new gap introduced here, just an
+existing one this ticket's own open question correctly surfaced.
+`list_completed_event_reports` required extracting `completed_event_reports(connection)`
+out of the `/reports/completed` route in `reports.py` (it previously only
+accepted a FastAPI `Request` and opened its own connection via `connect()`,
+unlike every other route in this codebase that takes the shared `Connection`
+dependency) — the route is now a two-line wrapper calling the extracted
+function, no duplicated SQL. `list_event_certificates` and
+`generate_event_certificates` wrap `whatsapp.py`'s existing
+`list_certificates`/`generate_certificates` directly (both already took a
+`Connection`, no refactor needed). Certificate generation/send got the
+same preview/send-with-confirmation treatment as TICKET-40:
+`preview_certificate_generation` is a new read-only helper
+(`whatsapp_routes.certificate_recipient_counts`) counting eligible
+attendees/volunteers and already-delivered certificates without writing
+anything, so the organizer sees a real number before
+`generate_event_certificates` actually creates certificate rows and
+messages people. `SYSTEM_PROMPT` extended alongside TICKET-40's addition.
+Tests in `AiToolsBroadcastAndReportsTest` cover the closed-events-only
+filter, the eligible-count preview, and an end-to-end generate-and-deliver
+via the fake WhatsApp client.
+
+<details>
+<summary>Original ticket text</summary>
+
+Wrap `backend/api/routes/reports.py` (event reports) and `whatsapp.py`'s
+certificate endpoints (generation ~line 281, send ~line 357/369) as AI
+tools, gated by `src/EventCollectionPrototype.tsx`'s existing
+`postEventMode` (`reports` / `certificates`) split on the frontend side
+for reference on what the two flows cover.
+
+### Open questions
+
+- Certificate generation embeds participant PII (name, contact info per
+  TICKET-38). Confirm `dispatch_tool_call`'s permission pipeline
+  (`backend/ai_tools/dispatch.py`) has a check for this before wiring the
+  tool — if not, that's a prerequisite sub-task, not something to bolt on
+  after the fact.
+- Certificate *sending* inherits TICKET-40's "leaves the system, no
+  undo" risk (it's a WhatsApp send under the hood) — likely wants the
+  same confirm-before-send treatment; report *generation* alone (no
+  send) is lower risk and could ship independently first.
+
+</details>

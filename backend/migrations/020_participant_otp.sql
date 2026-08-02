@@ -18,6 +18,6 @@ ALTER TABLE participants ADD COLUMN otp_attempts INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE participants ADD COLUMN otp_verify_token_hash TEXT;
 
 INSERT OR IGNORE INTO schema_migrations (version, name)
-VALUES (19, '019_participant_otp.sql');
+VALUES (20, '020_participant_otp.sql');
 
 COMMIT;

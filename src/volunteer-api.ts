@@ -102,6 +102,10 @@ export type Participation = {
   email: string | null
   rsvp_status: boolean
   attendance: boolean | null
+  // true/false when this event has a template and the participant does/doesn't
+  // have another participation sharing it; null when there's no template to
+  // compare against. See backend/api/routes/participants.py, TICKET-70.
+  repeat_signup: boolean | null
 }
 
 export type Role = {

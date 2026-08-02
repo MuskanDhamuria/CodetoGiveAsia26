@@ -43,3 +43,7 @@ class ParticipationOut(BaseModel):
     email: str | None
     rsvp_status: bool
     attendance: bool | None
+    # True/False when this event has an event_template_id and the
+    # participant does/doesn't have another participation sharing it; None
+    # when the event has no template, so "similar" can't be determined.
+    repeat_signup: bool | None = None

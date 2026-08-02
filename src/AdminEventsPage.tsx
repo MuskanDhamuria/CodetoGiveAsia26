@@ -15,6 +15,7 @@ import {
 import EventCollectionPrototype, { type EventCollectionItem } from "./EventCollectionPrototype"
 import { EventCalendar } from "./EventCalendar"
 import EventVolunteerTab from "./EventVolunteerTab"
+import EventParticipantsTab from "./EventParticipantsTab"
 import EventLogistics from "./EventLogistics"
 import "./EventOperationsMvp.css"
 
@@ -166,7 +167,7 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
   const [reviewPage, setReviewPage] = useState(0)
   const [creating, setCreating] = useState(false)
   const [openEventId, setOpenEventId] = useState<number | null>(initialEventId)
-  const [workspaceTab, setWorkspaceTab] = useState<"tasks" | "volunteers" | "logistics">("tasks")
+  const [workspaceTab, setWorkspaceTab] = useState<"tasks" | "volunteers" | "participants" | "logistics">("tasks")
   const [mobileTaskStatus, setMobileTaskStatus] = useState<"incomplete" | "ongoing" | "done">("incomplete")
   const [draggedTaskId, setDraggedTaskId] = useState<number | null>(null)
   const [dragOverStatus, setDragOverStatus] = useState<string | null>(null)
@@ -827,7 +828,7 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
       <div className={`dashboard-shell event-operations-page api-event-operations-page${openEvent ? " workspace-open" : ""}`}>
         {openEvent && <header className="section-hero">
           <p>Event operations</p>
-          <h1>Event portfolio</h1>
+          <h1>Event Workspace</h1>
           <span>Plan reusable workflows or begin with an empty Event.</span>
         </header>}
         <p aria-live="polite" className="event-operations-feedback" role={error ? "alert" : undefined}>
@@ -884,6 +885,15 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
                 type="button"
                 onClick={() => setWorkspaceTab("volunteers")}
               >Volunteers</button>
+              <button
+                aria-controls="event-participants-workspace"
+                aria-selected={workspaceTab === "participants"}
+                className={workspaceTab === "participants" ? "active" : ""}
+                id="event-participants-tab"
+                role="tab"
+                type="button"
+                onClick={() => setWorkspaceTab("participants")}
+              >Participants</button>
               <button
                 aria-controls="event-logistics-workspace"
                 aria-selected={workspaceTab === "logistics"}
@@ -1040,6 +1050,8 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
                 onUpdateSubtaskAssignees={(task, subtask, people) => updateSubtaskPeople(openEvent, task, subtask, people)}
                 onOpenTask={(task) => { setWorkspaceTab("tasks"); openTaskEditor(task, openEvent.status === "open" ? "edit" : "preview") }}
               />
+            </div> : workspaceTab === "participants" ? <div aria-labelledby="event-participants-tab" id="event-participants-workspace" role="tabpanel">
+              <EventParticipantsTab eventId={openEvent.id} />
             </div> : <div aria-labelledby="event-logistics-tab" id="event-logistics-workspace" role="tabpanel">
               <EventLogistics eventId={openEvent.id} eventStatus={openEvent.status} />
             </div>}

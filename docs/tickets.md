@@ -1440,3 +1440,37 @@ TICKET-68 deliberately read `window.innerWidth` only once, via a lazy `useState`
 Track `isDesktop` as real state updated by a `window` `resize` listener, not just a one-time lazy initializer. When the breakpoint is actually crossed, snap `open` to match `isDesktop` (desktop always open, mobile always closed) — but only on an actual crossing, not on every resize event within the same mode, so a user's manual open/close toggle on mobile isn't overwritten by, say, the browser chrome causing a 1px resize tick while they're mid-conversation.
 
 </details>
+
+---
+
+TICKET-70: Add a "Participants" tab to the Event Workspace, showing repeat-signup status and attendance
+
+**Priority:** Medium — organizer-requested visibility into who's signed up for an event, without leaving the workspace to cross-reference `EventRoster.tsx`.
+**Area:** `src/AdminEventsPage.tsx` (`workspaceTab` state, tab button list ~line 869-896, tab-panel switch ~line 897-1045), a new `src/EventParticipantsTab.tsx`, `backend/api/routes/participants.py` (`list_event_participants`), `backend/schema/participants.py` (`ParticipationOut`), possibly `backend/database.py` query additions.
+
+### What's wrong
+
+The Event Workspace (`AdminEventsPage.tsx`) has Tasks, Volunteers, and Logistics tabs, but nothing surfaces the participant/RSVP list for the event an organizer currently has open — they have to leave the workspace and go to the separate `EventRoster.tsx` page to see who's signed up, and even there, there's no way to tell whether a given participant is a first-timer or a repeat attendee of similar events, which organizers want when triaging outreach or follow-up.
+
+Most of the underlying data already exists and doesn't need new tables:
+- `participations` (`backend/migrations/001_initial_schema.sql`) already stores `rsvp_status` and a nullable `attendance` (`NULL`/`0`/`1` = not recorded/absent/present) per `(event_id, participant_id)`, wired end-to-end through the existing QR check-in flow (`backend/attendance_qr.py`, `POST /events/{id}/attendance/scan`).
+- `GET /events/{event_id}/participants` (`participants.py`, `list_event_participants`) already returns this per event, and the frontend already has a typed client for it (`listEventParticipants` in `src/volunteer-api.ts`) and a working attendance-label pattern (`attendanceLabel()`, `roster-att-yes/no/pending` classes) in `EventRoster.tsx` that a new tab can copy.
+
+What's genuinely missing is "has this participant signed up for a similar event before" — there is no existing endpoint or column for this, and "similar" isn't a well-defined concept in the schema today: events only relate to each other via the nullable `events.event_template_id` FK to `event_templates`, and `event_templates` has no category/type field beyond `name`/`description`/`is_built_in`. Scratch-built events (no template) have no basis for comparison at all.
+
+### What to do
+
+**Backend**
+- Extend `list_event_participants` (or add a sibling read) to also return, per participant, a `repeat_signup: bool` (or a count) computed as: other rows in `participations` for a *different* `event_id` that shares the current event's `event_template_id`, for the same `participant_id`. When the current event has no `event_template_id`, this should come back `false`/`null` for everyone rather than silently matching unrelated scratch events — don't fall back to "same organizer" or "any other event" as a substitute definition, that would produce false positives for organizers running many unrelated one-off events.
+- This is a read-only addition to an existing endpoint's response shape (`ParticipationOut` in `backend/schema/participants.py`), not a new table or mutating capability — a single additional `JOIN`/subquery against `participations`+`events` keyed on `event_template_id` and `participant_id`, excluding the current `event_id`.
+
+**Frontend**
+- Add a new `EventParticipantsTab.tsx` component following the existing tab pattern (`EventVolunteerTab.tsx`, `EventLogistics.tsx`): takes `{ eventId, eventStatus, api? }`, fetches via `listEventParticipants` on mount/`eventId` change, local loading/error state.
+- In `AdminEventsPage.tsx`, widen `workspaceTab` to `"tasks" | "volunteers" | "logistics" | "participants"`, add a fourth tab button (`role="tab"`, same `api-event-workspace-tabs` styling) between "Volunteers" and "Logistics" — matching the existing `aria-controls`/`aria-selected`/`id` wiring pattern — and a corresponding `role="tabpanel"` branch rendering `EventParticipantsTab`.
+- Table columns: Name, Contact, RSVP status, **Repeat signup** (e.g. "Returning" / "First time", or a badge/tooltip listing which past event when the count is available), **Attendance** (present/absent/not recorded — reuse `attendanceLabel()`'s three-state pattern rather than inventing a new one). Read-only tab; no new mutation actions (attendance is already recorded via the existing QR scan flow, not manually toggled here).
+
+### Constraints / open questions
+
+- "Similar event" is being defined narrowly as *same `event_template_id`* for this ticket, since that's the only structural relation that exists today. If organizers actually mean something broader (same venue, same beneficiary population, same rough date range), that needs a product decision and likely a schema addition (e.g. a `category` field on `event_templates` or `events`) — flag this rather than guessing if it comes up during implementation.
+- Scratch-built events (`event_template_id IS NULL`) can't participate in repeat-signup detection under this definition; the UI should show "N/A" or omit the column state rather than implying "first time" (which would be a false claim, not just an unknown).
+- No changes to how attendance is *recorded* — this ticket is display-only, layering onto the existing QR check-in flow's data, not adding a new manual toggle that could drift from what the scanner already recorded.

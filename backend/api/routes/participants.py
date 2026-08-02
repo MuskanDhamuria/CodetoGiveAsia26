@@ -40,6 +40,36 @@ def require_participant(db: sqlite3.Connection, participant_id: int) -> sqlite3.
     return row
 
 
+def _event_template_id(db: sqlite3.Connection, event_id: int) -> int | None:
+    row = db.execute(
+        "SELECT event_template_id FROM events WHERE id = ?", (event_id,)
+    ).fetchone()
+    return row["event_template_id"] if row else None
+
+
+def _has_repeat_signup(
+    db: sqlite3.Connection, template_id: int | None, event_id: int, participant_id: int
+) -> bool | None:
+    """Has this participant signed up for another event sharing the same
+
+    template? None when the event has no event_template_id, since there's
+    no basis for "similar" without one — see docs/tickets.md TICKET-70.
+    """
+
+    if template_id is None:
+        return None
+    row = db.execute(
+        """
+        SELECT 1 FROM participations pt
+        JOIN events e ON e.id = pt.event_id
+        WHERE pt.participant_id = ? AND e.event_template_id = ? AND e.id != ?
+        LIMIT 1
+        """,
+        (participant_id, template_id, event_id),
+    ).fetchone()
+    return row is not None
+
+
 def participation_model(db: sqlite3.Connection, event_id: int, participant_id: int):
     row = db.execute(
         """
@@ -52,6 +82,7 @@ def participation_model(db: sqlite3.Connection, event_id: int, participant_id: i
     ).fetchone()
     if row is None:
         raise HTTPException(404, "Event participation was not found")
+    template_id = _event_template_id(db, event_id)
     return ParticipationOut(
         participant_id=row["participant_id"],
         name=row["name"],
@@ -59,6 +90,7 @@ def participation_model(db: sqlite3.Connection, event_id: int, participant_id: i
         email=row["email"],
         rsvp_status=bool(row["rsvp_status"]),
         attendance=as_bool(row["attendance"]),
+        repeat_signup=_has_repeat_signup(db, template_id, event_id, row["participant_id"]),
     )
 
 
@@ -379,6 +411,21 @@ def list_event_participants(
         """,
         [*params, pagination.limit, pagination.offset],
     ).fetchall()
+
+    template_id = _event_template_id(db, event_id)
+    repeat_participant_ids: set[int] = set()
+    if template_id is not None and rows:
+        repeat_rows = db.execute(
+            f"""
+            SELECT DISTINCT pt.participant_id FROM participations pt
+            JOIN events e ON e.id = pt.event_id
+            WHERE e.event_template_id = ? AND e.id != ?
+            AND pt.participant_id IN ({",".join("?" for _ in rows)})
+            """,
+            [template_id, event_id, *(row["participant_id"] for row in rows)],
+        ).fetchall()
+        repeat_participant_ids = {row["participant_id"] for row in repeat_rows}
+
     items = [
         ParticipationOut(
             participant_id=row["participant_id"],
@@ -387,6 +434,9 @@ def list_event_participants(
             email=row["email"],
             rsvp_status=bool(row["rsvp_status"]),
             attendance=as_bool(row["attendance"]),
+            repeat_signup=row["participant_id"] in repeat_participant_ids
+            if template_id is not None
+            else None,
         )
         for row in rows
     ]

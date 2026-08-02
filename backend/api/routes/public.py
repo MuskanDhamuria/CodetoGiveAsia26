@@ -8,6 +8,7 @@ open items before this is production-safe.
 
 from __future__ import annotations
 
+import os
 import sqlite3
 
 from fastapi import APIRouter, HTTPException, Request, status
@@ -17,6 +18,23 @@ from backend.database import connect
 from backend.phone import InvalidPhoneNumberError, normalize_phone_number
 
 router = APIRouter(prefix="/public", tags=["public"])
+
+
+class WhatsAppConfigOut(BaseModel):
+    number: str
+
+
+@router.get("/whatsapp-config", response_model=WhatsAppConfigOut)
+def whatsapp_config() -> WhatsAppConfigOut:
+    """The Cloud API number the "Chat on WhatsApp" links should point at.
+
+    Read at request time (not baked into the frontend build) so the number
+    can be changed just by updating the backend's WHATSAPP_DISPLAY_NUMBER
+    env var — no rebuild/redeploy of the frontend needed.
+    """
+
+    number = os.environ.get("WHATSAPP_DISPLAY_NUMBER", "6580000000")
+    return WhatsAppConfigOut(number=number)
 
 
 class PublicRsvpIn(BaseModel):

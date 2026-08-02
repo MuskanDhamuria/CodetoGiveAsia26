@@ -38,9 +38,11 @@ describe("Inventory and Event Logistics", () => {
     const styles = readFileSync("src/InventoryLogistics.css", "utf8")
 
     expect(styles).toMatch(/\.event-logistics-workspace\s*\{[^}]*max-width:\s*100%/)
+    expect(styles).toMatch(/\.event-logistics-workspace\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/)
     expect(styles).toMatch(/\.inventory-workbench\s*\{[^}]*padding:\s*96px[^}]*128px/)
     expect(styles).toMatch(/\.event-logistics-workspace\s*\{[^}]*padding-bottom:\s*128px/)
     expect(styles).toMatch(/\.event-logistics-workspace\s+\.inventory-table-scroll\s*\{[^}]*overflow-x:\s*auto/)
+    expect(styles).toMatch(/\.api-event-workspace\s+\.event-logistics-workspace\s*\{[^}]*width:\s*auto/)
     expect(styles).toMatch(/\.product-app\s+\.logistics-drawer-backdrop\s*\{[^}]*right:\s*var\(--copilot-sidebar-width\)/)
   })
 

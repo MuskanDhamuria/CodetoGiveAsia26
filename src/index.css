@@ -3233,6 +3233,7 @@ button {
   font-weight: 800;
   letter-spacing: 0.05em;
   padding: 0 12px 12px;
+  position: relative;
   text-align: left;
   text-transform: uppercase;
 }
@@ -4053,6 +4054,25 @@ button {
 .landing-role-primary { background: var(--button-bg); border-color: var(--button-bg); color: white; }
 .landing-role-primary:hover { background: #252525; border-color: #252525; color: white; }
 .landing-role-primary small { color: rgba(255, 255, 255, 0.7); }
+.admin-login-page { align-items: center; display: flex; justify-content: center; min-height: 100vh; overflow: hidden; padding: 24px; position: relative; }
+.admin-login-page button { cursor: pointer; font: inherit; }
+.admin-login-page { background: #f1f3ef; color: #172019; font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
+.admin-login-card { background: #fff; border: 1px solid #dfe5dd; border-radius: 24px; box-shadow: 0 24px 80px rgba(24, 49, 31, .12); display: grid; gap: 22px; max-width: 430px; padding: 46px; width: 100%; }
+.admin-login-heading { text-align: center; }
+.admin-login-heading p { color: #316343; font-size: 12px; font-weight: 800; letter-spacing: .16em; margin: 0 0 18px; text-transform: uppercase; }
+.admin-login-heading h1 { color: inherit; font-size: clamp(27px, 4vw, 36px); font-weight: 650; letter-spacing: -.05em; line-height: 1.05; margin: 0; }
+.admin-login-form { display: grid; gap: 16px; }
+.admin-login-form label { display: grid; gap: 7px; font-size: 13px; font-weight: 750; }
+.admin-login-form input { background: #fbfcfa; border: 1px solid #cad5cb; border-radius: 10px; color: inherit; font: inherit; padding: 13px 14px; outline: none; }
+.admin-login-form input:focus { border-color: #316343; box-shadow: 0 0 0 3px rgba(49, 99, 67, .14); }
+.admin-login-submit, .admin-login-home { border: 0; border-radius: 10px; padding: 13px 14px; }
+.admin-login-submit { background: #183e28; color: #fff; font-weight: 800; margin-top: 4px; }
+.admin-login-home { background: transparent; color: #58705c; font-size: 13px; justify-self: center; padding: 5px 8px; text-decoration: underline; text-underline-offset: 3px; }
+.admin-login-error { color: #a33a32; font-size: 13px; margin: 0; }
+@media (max-width: 680px) {
+  .admin-login-card { padding: 32px 24px; }
+  .admin-login-form input { font-size: 16px; }
+}
 @media (max-width: 720px) {
   .landing-actions { grid-template-columns: 1fr; }
   .landing-role { min-height: 76px; }
@@ -4570,12 +4590,13 @@ main:has(.copilot-panel.open) .navbar {
   }
 
   .hero {
-    min-height: 760px;
-    padding: 134px 22px 120px;
+    justify-content: flex-start;
+    min-height: 100svh;
+    padding: 24px 18px 24px;
   }
 
   .hero h1 {
-    font-size: 56px;
+    font-size: 44px;
   }
 
   .hero sup {
@@ -4583,8 +4604,24 @@ main:has(.copilot-panel.open) .navbar {
   }
 
   .hero p {
-    font-size: 16px;
+    font-size: 14px;
+    line-height: 1.35;
+    margin-top: 14px;
   }
+
+  .landing-actions {
+    gap: 8px;
+    margin-top: 18px;
+  }
+
+  .landing-role {
+    min-height: 58px;
+    padding: 11px 14px;
+  }
+
+  .landing-role span { font-size: 14px; }
+  .landing-role small { font-size: 11px; margin-top: 4px; }
+  .landing-role b { font-size: 16px; right: 12px; top: 10px; }
 
   .side-lines {
     display: none;
@@ -5355,6 +5392,8 @@ main:has(.copilot-panel.open) .navbar {
   .pts-signup-nav { gap: 12px; }
   .pts-signup-layout, .pts-account-main { flex-direction: column; }
   .pts-event-preview, .pts-account-side-copy, .pts-account-card { width: 100%; }
+  .pts-account-card .pts-field input,
+  .pts-account-card .pts-field select { font-size: 16px; }
   .pts-account-side-copy { max-width: none; padding-top: 0; }
   .pts-dashboard-top, .pts-locked-section { align-items: stretch; flex-direction: column; }
   .pts-dashboard-actions { justify-content: flex-start; }
@@ -5897,6 +5936,13 @@ main:has(.copilot-panel.open) .navbar {
   border-radius: 12px;
   overflow: hidden;
   width: 100%;
+  min-height: 280px;
+  background: #111;
+}
+
+.attendance-scanner-viewport video {
+  width: 100%;
+  border-radius: 12px;
 }
 
 .attendance-scan-feedback {

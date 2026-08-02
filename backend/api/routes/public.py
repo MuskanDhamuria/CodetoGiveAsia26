@@ -8,6 +8,8 @@ open items before this is production-safe.
 
 from __future__ import annotations
 
+import hmac
+import logging
 import os
 import sqlite3
 from typing import Annotated
@@ -15,8 +17,20 @@ from typing import Annotated
 from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel, StringConstraints
 
+from backend.bot.commands import get_or_create_contact
 from backend.database import connect
+from backend.integrations.whatsapp_client import get_client
+from backend.otp import (
+    OTP_MAX_ATTEMPTS,
+    generate_opaque_token,
+    generate_otp_code,
+    hash_value,
+    is_expired,
+    otp_expiry_timestamp,
+)
 from backend.phone import InvalidPhoneNumberError, normalize_phone_number
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/public", tags=["public"])
 
@@ -83,6 +97,25 @@ class PublicSignupOut(BaseModel):
     participant_name: str
     participant_contact_number: str | None
     participant_email: str | None
+    # False whenever a phone number was provided and hasn't been verified
+    # yet (true, with no verify_token, when signing up with email only —
+    # there's nothing to verify). See verify_participant_otp below.
+    phone_verified: bool
+    verify_token: str | None = None
+
+
+class PublicVerifyOtpIn(BaseModel):
+    verify_token: str
+    code: str
+
+
+class PublicResendOtpIn(BaseModel):
+    verify_token: str
+
+
+class PublicOtpOut(BaseModel):
+    phone_verified: bool
+    verify_token: str | None = None
 
 
 class PublicRsvpOut(BaseModel):
@@ -137,6 +170,48 @@ def _find_or_create_participant(
         return row
 
 
+# --------------------------------------------------------------------------- #
+# WhatsApp OTP verification
+#
+# Only POST /signup (the "Create account" form, no event attached) sends an
+# OTP — event RSVP and the WhatsApp bot's own SIGNUP flow are unaffected.
+# Participants have no account/session system to authorize a verify call
+# with, so /signup instead hands back a one-time opaque `verify_token`
+# alongside participant_id; verify/resend-otp require it. See backend/otp.py
+# (generate_opaque_token) and backend/api/routes/volunteer_auth.py for the
+# equivalent flow for volunteers, which uses a real login session instead.
+# --------------------------------------------------------------------------- #
+def _issue_and_send_participant_otp(
+    connection: sqlite3.Connection, participant_id: int, phone: str
+) -> str:
+    code = generate_otp_code()
+    token = generate_opaque_token()
+    with connection:
+        connection.execute(
+            """
+            UPDATE participants
+            SET otp_code_hash = ?, otp_expires_at = ?, otp_attempts = 0,
+                otp_verify_token_hash = ?
+            WHERE id = ?
+            """,
+            (hash_value(code), otp_expiry_timestamp(), hash_value(token), participant_id),
+        )
+    try:
+        get_client().send_template(
+            phone,
+            template_name=os.environ.get("WHATSAPP_OTP_TEMPLATE_NAME", "otp"),
+            language_code=os.environ.get("WHATSAPP_OTP_TEMPLATE_LANG", "en_US"),
+            body_params=[code],
+            button_param=code,
+            button_sub_type=os.environ.get("WHATSAPP_OTP_TEMPLATE_BUTTON_TYPE", "url"),
+        )
+    except Exception:
+        # Signup/resend already succeeded and committed above; a failed
+        # WhatsApp delivery shouldn't make the request look like it failed.
+        logger.exception("Failed to send OTP WhatsApp template to %s", phone)
+    return token
+
+
 @router.post(
     "/signup",
     response_model=PublicSignupOut,
@@ -165,12 +240,122 @@ def public_signup(body: PublicSignupIn, request: Request) -> PublicSignupOut:
                 )
             except ParticipantNameMismatchError as error:
                 raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
+
+        verify_token = None
+        phone_verified = participant["phone_verified_at"] is not None
+        if participant["contact_number"] and not phone_verified:
+            # Auto-link this phone to the WhatsApp bot, same as the
+            # volunteer registration flow — never overwrites an existing
+            # link to a different participant.
+            contact = get_or_create_contact(connection, participant["contact_number"])
+            if contact["participant_id"] is None and contact["volunteer_id"] is None:
+                connection.execute(
+                    "UPDATE whatsapp_contacts SET participant_id = ? WHERE id = ?",
+                    (participant["id"], contact["id"]),
+                )
+                connection.commit()
+            verify_token = _issue_and_send_participant_otp(
+                connection, participant["id"], participant["contact_number"]
+            )
+        elif not participant["contact_number"]:
+            # Signed up with email only — nothing to verify over WhatsApp.
+            phone_verified = True
+
         return PublicSignupOut(
             participant_id=participant["id"],
             participant_name=participant["name"],
             participant_contact_number=participant["contact_number"],
             participant_email=participant["email"],
+            phone_verified=phone_verified,
+            verify_token=verify_token,
         )
+    finally:
+        connection.close()
+
+
+@router.post("/participants/{participant_id}/verify-otp", response_model=PublicOtpOut)
+def verify_participant_otp(
+    participant_id: int, body: PublicVerifyOtpIn, request: Request
+) -> PublicOtpOut:
+    connection = connect(request.app.state.database_path)
+    try:
+        participant = connection.execute(
+            "SELECT * FROM participants WHERE id = ?", (participant_id,)
+        ).fetchone()
+        if participant is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Participant not found")
+        if participant["phone_verified_at"] is not None:
+            return PublicOtpOut(phone_verified=True)
+        if participant["otp_verify_token_hash"] is None or not hmac.compare_digest(
+            hash_value(body.verify_token), participant["otp_verify_token_hash"]
+        ):
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or expired verification session.")
+        if participant["otp_code_hash"] is None:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST, "No verification code is pending. Request a new one."
+            )
+        if participant["otp_attempts"] >= OTP_MAX_ATTEMPTS:
+            raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "Too many attempts. Request a new code.")
+        if is_expired(participant["otp_expires_at"]):
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "This code has expired. Request a new one.")
+        if not hmac.compare_digest(hash_value(body.code.strip()), participant["otp_code_hash"]):
+            connection.execute(
+                "UPDATE participants SET otp_attempts = otp_attempts + 1 WHERE id = ?",
+                (participant_id,),
+            )
+            connection.commit()
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "That code is incorrect.")
+
+        with connection:
+            connection.execute(
+                """
+                UPDATE participants
+                SET phone_verified_at = CURRENT_TIMESTAMP, otp_code_hash = NULL,
+                    otp_expires_at = NULL, otp_attempts = 0, otp_verify_token_hash = NULL
+                WHERE id = ?
+                """,
+                (participant_id,),
+            )
+        try:
+            get_client().send_text(
+                participant["contact_number"],
+                f"You're verified, {participant['name'].split(' ')[0]}! Welcome to Passion to "
+                "Serve — reply HELP anytime to see what I can do.",
+            )
+        except Exception:
+            logger.exception(
+                "Verified participant %s but failed to send welcome WhatsApp message to %s",
+                participant_id,
+                participant["contact_number"],
+            )
+        return PublicOtpOut(phone_verified=True)
+    finally:
+        connection.close()
+
+
+@router.post("/participants/{participant_id}/resend-otp", response_model=PublicOtpOut)
+def resend_participant_otp(
+    participant_id: int, body: PublicResendOtpIn, request: Request
+) -> PublicOtpOut:
+    connection = connect(request.app.state.database_path)
+    try:
+        participant = connection.execute(
+            "SELECT * FROM participants WHERE id = ?", (participant_id,)
+        ).fetchone()
+        if participant is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Participant not found")
+        if participant["phone_verified_at"] is not None:
+            return PublicOtpOut(phone_verified=True)
+        if participant["otp_verify_token_hash"] is None or not hmac.compare_digest(
+            hash_value(body.verify_token), participant["otp_verify_token_hash"]
+        ):
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or expired verification session.")
+        if not participant["contact_number"]:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "No phone number on file to verify.")
+        new_token = _issue_and_send_participant_otp(
+            connection, participant_id, participant["contact_number"]
+        )
+        return PublicOtpOut(phone_verified=False, verify_token=new_token)
     finally:
         connection.close()
 

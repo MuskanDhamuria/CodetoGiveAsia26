@@ -231,8 +231,14 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
       setEventTaskAssignees(emptyTaskAssignees)
       return
     }
+    if (loading) return
+    if (!events.some((event) => event.id === openEventId)) {
+      setEventTaskAssignees(emptyTaskAssignees)
+      setError(`Event ${openEventId} was not found.`)
+      return
+    }
     void refreshTaskAssignees(openEventId)
-  }, [openEventId])
+  }, [events, loading, openEventId])
 
   function taskPeople(task: EventTask) {
     if (task.assignees?.length) return task.assignees
@@ -823,7 +829,7 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
           <h1>Event portfolio</h1>
           <span>Plan reusable workflows or begin with an empty Event.</span>
         </header>}
-        <p aria-live="polite" className="event-operations-feedback">
+        <p aria-live="polite" className="event-operations-feedback" role={error ? "alert" : undefined}>
           {message || error}
         </p>
         {openEvent ? (<>

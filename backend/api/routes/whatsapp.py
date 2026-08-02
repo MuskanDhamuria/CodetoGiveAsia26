@@ -7,8 +7,12 @@ Cloud API (see `backend/integrations/whatsapp_client.py`).
 
 from __future__ import annotations
 
+import base64
 import logging
 import sqlite3
+from datetime import date
+from functools import lru_cache
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response, status
@@ -410,6 +414,20 @@ def list_certificates(event_id: int, db: Connection) -> list[CertificateOut]:
     return [_certificate_model(row) for row in rows]
 
 
+LOGO_PATH = Path(__file__).resolve().parents[3] / "public" / "pts-logo.png"
+
+
+@lru_cache(maxsize=1)
+def _logo_data_uri() -> str | None:
+    """Base64-embed the PTS logo so the page has no dependency on the frontend
+    server being up — the whole certificate must be self-contained."""
+
+    try:
+        return "data:image/png;base64," + base64.b64encode(LOGO_PATH.read_bytes()).decode("ascii")
+    except OSError:
+        return None
+
+
 @router.get(
     "/public/certificates/{download_token}",
     summary="Public printable certificate page",
@@ -422,8 +440,16 @@ def get_public_certificate(download_token: str, db: Connection) -> HTMLResponse:
     if certificate is None:
         raise HTTPException(status_code=404, detail="Certificate not found")
     event = db.execute(
-        "SELECT name, event_date FROM events WHERE id = ?", (certificate["event_id"],)
+        """
+        SELECT e.name, e.event_date, e.start_time, e.end_time, b.name AS beneficiary_name
+        FROM events e
+        LEFT JOIN beneficiaries b ON b.id = e.beneficiary_id
+        WHERE e.id = ?
+        """,
+        (certificate["event_id"],),
     ).fetchone()
+
+    is_volunteer = certificate["volunteer_id"] is not None
     if certificate["participant_id"] is not None:
         person = db.execute(
             "SELECT name FROM participants WHERE id = ?", (certificate["participant_id"],)
@@ -433,31 +459,117 @@ def get_public_certificate(download_token: str, db: Connection) -> HTMLResponse:
             "SELECT name FROM volunteers WHERE id = ?", (certificate["volunteer_id"],)
         ).fetchone()
     person_name = person["name"] if person else "Participant"
+
+    logo_uri = _logo_data_uri()
+    logo_img = f'<img src="{logo_uri}" alt="Passion To Serve" class="logo" />' if logo_uri else ""
+
+    if is_volunteer:
+        beneficiary_line = (
+            f'<p class="beneficiary">in support of <span>{event["beneficiary_name"]}</span></p>'
+            if event["beneficiary_name"]
+            else ""
+        )
+        body_html = f"""
+                <p class="lede">in grateful recognition of dedicated volunteer service rendered during</p>
+                <div class="event-name">{event['name']}</div>
+                <div class="event-rule"></div>
+                {beneficiary_line}
+                <p class="lede on-date">on <span>{event['event_date']}</span></p>
+        """
+        title = "Certificate of Volunteer Participation"
+    else:
+        body_html = f"""
+                <p class="lede">in recognition of successful completion of</p>
+                <div class="event-name">{event['name']}</div>
+                <div class="event-rule"></div>
+                <p class="lede on-date">on <span>{event['event_date']}</span></p>
+        """
+        title = "Certificate of Completion"
+
+    issue_date = date.today().isoformat()
+
     html = f"""
     <!DOCTYPE html>
     <html>
     <head>
         <meta charset="utf-8" />
-        <title>Certificate of Participation</title>
+        <title>{title}</title>
         <style>
-            body {{ font-family: Georgia, serif; text-align: center; padding: 64px; }}
-            .certificate {{
-                border: 8px solid #2c5f2d; padding: 48px; max-width: 700px; margin: 0 auto;
+            body {{
+                background: #f2efe8; color: #1b3b36; font-family: Georgia, 'Times New Roman', serif;
+                margin: 0; padding: 40px 16px;
             }}
-            h1 {{ font-size: 28px; color: #2c5f2d; }}
-            .name {{ font-size: 32px; margin: 24px 0; }}
-            .meta {{ color: #555; }}
+            .frame {{
+                max-width: 860px; margin: 0 auto; padding: 6px;
+                border: 1px solid #1b8a7a; box-shadow: 0 0 0 1px #f2efe8;
+            }}
+            .frame-inner {{
+                border: 1px solid #c99a3f; padding: 48px 56px; background: #f9f7f1;
+            }}
+            header {{ display: flex; align-items: center; gap: 16px; margin-bottom: 32px; }}
+            header .logo {{ width: 64px; height: 64px; object-fit: contain; }}
+            header .wordmark {{ letter-spacing: 0.14em; font-size: 20px; font-weight: 700; color: #1b8a7a; }}
+            header .subwordmark {{ color: #6b6b62; font-size: 13px; margin-top: 2px; }}
+            h1 {{
+                font-size: 36px; color: #1b3b36; text-align: center; margin: 24px 0 12px;
+                line-height: 1.25;
+            }}
+            .divider {{ width: 90px; height: 2px; background: #c99a3f; margin: 0 auto 32px; }}
+            .lede {{ text-align: center; font-size: 17px; margin: 8px 0; }}
+            .name {{
+                text-align: center; font-size: 30px; font-weight: 700; margin: 12px 0 6px;
+                color: #1b3b36;
+            }}
+            .name-rule {{ width: 320px; height: 2px; background: #1b8a7a; margin: 0 auto 20px; }}
+            .event-name {{ text-align: center; font-size: 22px; font-weight: 700; margin: 6px 0 4px; }}
+            .event-rule {{ width: 220px; height: 2px; background: #1b8a7a; margin: 0 auto 16px; }}
+            .beneficiary {{ text-align: center; color: #6b6b62; font-size: 14px; margin: 0 0 32px; }}
+            .beneficiary span {{ border-bottom: 1px solid #b9b9ac; padding-bottom: 1px; }}
+            .on-date {{ color: #6b6b62; font-size: 14px; margin-bottom: 32px; }}
+            .on-date span {{ border-bottom: 1px solid #b9b9ac; padding-bottom: 1px; }}
+            .signatures {{
+                display: flex; justify-content: space-between; margin-top: 72px; gap: 40px;
+            }}
+            .signature {{ flex: 1; text-align: center; }}
+            .signature .signed {{
+                font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 14px; font-weight: 700;
+                color: #1b3b36; margin-bottom: 6px;
+            }}
+            .signature .rule {{ border-top: 1px solid #4a4a42; margin-bottom: 6px; }}
+            .signature .label {{
+                font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 12px; color: #4a4a42;
+            }}
         </style>
     </head>
     <body>
-        <div class="certificate">
-            <h1>Certificate of Participation</h1>
-            <p>This certifies that</p>
-            <div class="name">{person_name}</div>
-            <p>participated in</p>
-            <p><strong>{event['name']}</strong></p>
-            <p class="meta">{event['event_date']}</p>
-            <p class="meta">Issued {certificate['issued_at']}</p>
+        <div class="frame">
+            <div class="frame-inner">
+                <header>
+                    {logo_img}
+                    <div>
+                        <div class="wordmark">PASSION TO SERVE</div>
+                        <div class="subwordmark">Volunteer Network</div>
+                    </div>
+                </header>
+                <h1>{title}</h1>
+                <div class="divider"></div>
+                <p class="lede">This certificate is proudly presented to</p>
+                <div class="name">{person_name}</div>
+                <div class="name-rule"></div>
+                {body_html}
+                <div class="signatures">
+                    <div class="signature">
+                        <div class="signed">{issue_date}</div>
+                        <div class="rule"></div>
+                        <div class="label">Date of Issue</div>
+                    </div>
+                    <div class="signature">
+                        <div class="signed">Passion to Serve</div>
+                        <div class="rule"></div>
+                        <div class="label">Organisation Stamp</div>
+                    </div>
+                </div>
+            </div>
         </div>
     </body>
     </html>

@@ -1474,6 +1474,7 @@ function CertificateGenerationPanel({
   >({});
   const [sendBusy, setSendBusy] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
+  const [beneficiaryName, setBeneficiaryName] = useState<string | null>(null);
   const getCertificateOptions = (event: CompletedEvent): CertificateType[] =>
     event.isSkillsWorkshop ? ["participants", "volunteers"] : ["volunteers"];
   const getCertificateType = (event: CompletedEvent): CertificateType => {
@@ -1492,10 +1493,36 @@ function CertificateGenerationPanel({
       : activeEvent?.volunteerNames ?? [];
   const receiverName = recipientNames[0] ?? "Receiver Name";
   const issuer = "Passion to Serve";
+
+  // Read-only preview data: which beneficiary group this event serves. A
+  // plain GET — nothing here ever calls certificate generation or the
+  // WhatsApp send.
+  useEffect(() => {
+    let cancelled = false;
+    setBeneficiaryName(null);
+    if (!activeEvent || activeCertificateType !== "volunteers") return;
+
+    fetch(`${API_BASE_URL}/events/${activeEvent.id}`)
+      .then((response) => (response.ok ? response.json() : null))
+      .then((detail: { beneficiary_id?: number | null } | null) => {
+        if (cancelled || !detail?.beneficiary_id) return;
+        fetch(`${API_BASE_URL}/beneficiaries/${detail.beneficiary_id}`)
+          .then((response) => (response.ok ? response.json() : null))
+          .then((beneficiary: { name?: string } | null) => {
+            if (!cancelled && beneficiary?.name) setBeneficiaryName(beneficiary.name);
+          })
+          .catch(() => undefined);
+      })
+      .catch(() => undefined);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeEvent, activeCertificateType]);
   const certificateTitle =
     activeCertificateType === "participants"
       ? "Certificate of Completion"
-      : "Certificate of Appreciation";
+      : "Certificate of Volunteer Participation";
   const activeCertificateKey = activeEvent
     ? `${activeEvent.id}-${activeCertificateType}`
     : "";
@@ -1715,25 +1742,46 @@ function CertificateGenerationPanel({
         </section>
 
         <div className="certificate-preview">
-          <div>
-            <p>{certificateTitle}</p>
-            <h3>{receiverName}</h3>
-            <span>
+          <div className="pts-cert-doc">
+            <header className="pts-cert-doc-header">
+              <img src="/pts-logo.png" alt="" />
+              <div>
+                <div className="pts-cert-wordmark">PASSION TO SERVE</div>
+                <div className="pts-cert-subwordmark">Volunteer Network</div>
+              </div>
+            </header>
+            <h3 className="pts-cert-title">{certificateTitle}</h3>
+            <div className="pts-cert-divider" />
+            <p className="pts-cert-lede">This certificate is proudly presented to</p>
+            <div className="pts-cert-name">{receiverName}</div>
+            <div className="pts-cert-name-rule" />
+            <p className="pts-cert-lede">
               {activeCertificateType === "participants"
-                ? "has successfully completed"
-                : "is recognized for volunteering at"}
-            </span>
-            <strong>{activeEvent?.name ?? "Completed Event"}</strong>
-            <dl>
+                ? "in recognition of successful completion of"
+                : "in grateful recognition of dedicated volunteer service rendered during"}
+            </p>
+            <div className="pts-cert-event">{activeEvent?.name ?? "Completed Event"}</div>
+            <div className="pts-cert-event-rule" />
+            {activeCertificateType === "volunteers" && beneficiaryName && (
+              <p className="pts-cert-beneficiary">
+                in support of <span>{beneficiaryName}</span>
+              </p>
+            )}
+            <p className="pts-cert-ondate">
+              on <span>{activeEvent?.date ?? "YYYY-MM-DD"}</span>
+            </p>
+            <div className="pts-cert-signatures">
               <div>
-                <dt>Date</dt>
-                <dd>{activeEvent?.date ?? "YYYY-MM-DD"}</dd>
+                <div className="pts-cert-signed">{new Date().toISOString().slice(0, 10)}</div>
+                <div className="pts-cert-rule" />
+                <span>Date of Issue</span>
               </div>
               <div>
-                <dt>Issuer</dt>
-                <dd>{issuer}</dd>
+                <div className="pts-cert-signed">{issuer}</div>
+                <div className="pts-cert-rule" />
+                <span>Organisation Stamp</span>
               </div>
-            </dl>
+            </div>
           </div>
         </div>
       </section>

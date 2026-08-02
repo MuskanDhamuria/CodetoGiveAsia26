@@ -4,8 +4,16 @@ import { ApiError, getMyEvents, type EventForParticipant } from "../api/client";
 import { formatEventDate, formatEventTime } from "../dateFormat";
 import type { ParticipantOutletContext } from "../ParticipantApp";
 
+// See the matching comment in EventDetailCard.tsx: require_participant
+// (backend/api/routes/participants.py) raises "Participant {id} was not
+// found" for this route, not the differently-worded "Participant not
+// found" used by the separate sign-in-by-phone lookup route.
 function isStaleIdentityError(error: unknown): boolean {
-  return error instanceof ApiError && error.status === 404 && error.message === "Participant not found";
+  return (
+    error instanceof ApiError &&
+    error.status === 404 &&
+    /^Participant \d+ was not found$/.test(error.message)
+  );
 }
 
 export default function MyEventsList() {

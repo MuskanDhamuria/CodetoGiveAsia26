@@ -12,11 +12,21 @@ import { formatEventDateLong, formatEventTime } from "../dateFormat";
 import type { ParticipantOutletContext } from "../ParticipantApp";
 import SignupForm from "./SignupForm";
 
-// The backend uses this exact message when a participant_id doesn't exist —
-// distinguishing it from other 404s (e.g. "Event not found") matters so we
-// only clear the saved identity when it's actually the identity that's bad.
+// The backend's require_participant (backend/api/routes/participants.py)
+// raises exactly "Participant {id} was not found" when a participant_id
+// doesn't exist — distinguishing it from other 404s on these same routes
+// (e.g. "Event {id} was not found") matters so we only clear the saved
+// identity when it's actually the identity that's bad. Matching on the
+// id-interpolated message (not the differently-worded "Participant not
+// found" used by the sign-in-by-phone lookup route, which this component
+// never calls) so a stale saved identity actually gets detected instead of
+// leaving the user stuck on a dead-end "refresh the page" error forever.
 function isStaleIdentityError(error: unknown): boolean {
-  return error instanceof ApiError && error.status === 404 && error.message === "Participant not found";
+  return (
+    error instanceof ApiError &&
+    error.status === 404 &&
+    /^Participant \d+ was not found$/.test(error.message)
+  );
 }
 
 export default function EventDetailCard() {

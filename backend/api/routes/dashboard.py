@@ -84,6 +84,7 @@ def calendar_events(
     if event_status is not None:
         where.append("status = ?")
         params.append(event_status)
+    where.append("cancelled_at IS NULL")
     rows = db.execute(
         f"""
         SELECT id, name, venue, event_date, status FROM events
@@ -102,7 +103,7 @@ def dashboard_summary(
 ) -> dict:
     start = (date_from or date.today()).isoformat()
     end = date_to.isoformat() if date_to else None
-    where = ["status = 'open'", "event_date >= ?"]
+    where = ["status = 'open'", "cancelled_at IS NULL", "event_date >= ?"]
     params: list[object] = [start]
     if end is not None:
         where.append("event_date <= ?")

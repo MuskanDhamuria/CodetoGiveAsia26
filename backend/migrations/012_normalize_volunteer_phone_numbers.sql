@@ -44,6 +44,6 @@ WHERE id IN (
 );
 
 INSERT OR IGNORE INTO schema_migrations (version, name)
-VALUES (8, '008_normalize_volunteer_phone_numbers.sql');
+VALUES (12, '012_normalize_volunteer_phone_numbers.sql');
 
 COMMIT;

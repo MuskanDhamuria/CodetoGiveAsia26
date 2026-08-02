@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import sqlite3
+from contextlib import closing
 from pathlib import Path
 
 
@@ -86,19 +87,106 @@ def _repair_event_columns_before_optional_template(
     connection.commit()
 
 
+def _repair_migration_seven_numbering_collision(connection: sqlite3.Connection) -> None:
+    """Repair databases affected by two migrations briefly both named 007.
+
+    ``008_whatsapp_bot.sql`` was originally numbered ``007_whatsapp_bot.sql``
+    before ``007_skill_enhancement_template.sql`` was added and renumbering
+    became necessary. A database that already applied the old
+    007-numbered WhatsApp migration has ``schema_migrations`` recording
+    version 7 as done — but that means the *other* version-7 migration
+    (the skill-enhancement seed data) was silently skipped, and
+    volunteer_signups.confirmed_at already exists, which would make this
+    migration's own column addition fail with "duplicate column name".
+    Both repairs are idempotent and safe to run on a fresh database too,
+    where they are no-ops.
+    """
+
+    columns = {
+        row["name"] for row in connection.execute("PRAGMA table_info(volunteer_signups)")
+    }
+    if "confirmed_at" not in columns:
+        connection.execute("ALTER TABLE volunteer_signups ADD COLUMN confirmed_at TEXT")
+
+    has_event_templates = connection.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'event_templates'"
+    ).fetchone()
+    if has_event_templates is None:
+        return
+    has_skill_enhancement = connection.execute(
+        "SELECT 1 FROM event_templates WHERE name = 'Skill Enhancement'"
+    ).fetchone()
+    if has_skill_enhancement is None:
+        skill_enhancement_path = MIGRATIONS_PATH / "007_skill_enhancement_template.sql"
+        if skill_enhancement_path.exists():
+            connection.executescript(skill_enhancement_path.read_text(encoding="utf-8"))
+
+    connection.commit()
+
+
+def _repair_volunteer_migration_numbering_collisions(
+    connection: sqlite3.Connection,
+) -> None:
+    """Move previously applied volunteer migrations to their new versions.
+
+    The volunteer branch originally used versions 008 and 009 for phone-number
+    normalisation and event roles. The backend branch later used those same
+    versions for WhatsApp and inventory migrations. Preserve the volunteer
+    migrations as 012 and 013 so the backend migrations remain pending and can
+    be applied without rebuilding an existing database.
+    """
+
+    migrations_table = connection.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'schema_migrations'"
+    ).fetchone()
+    if migrations_table is None:
+        return
+
+    renumberings = (
+        (8, "008_normalize_volunteer_phone_numbers.sql", 12, "012_normalize_volunteer_phone_numbers.sql"),
+        (9, "009_event_roles.sql", 13, "013_event_roles.sql"),
+    )
+    for old_version, old_name, new_version, new_name in renumberings:
+        legacy_row = connection.execute(
+            "SELECT 1 FROM schema_migrations WHERE version = ? AND name = ?",
+            (old_version, old_name),
+        ).fetchone()
+        if legacy_row is None:
+            continue
+
+        new_row = connection.execute(
+            "SELECT 1 FROM schema_migrations WHERE version = ?",
+            (new_version,),
+        ).fetchone()
+        if new_row is None:
+            connection.execute(
+                "UPDATE schema_migrations SET version = ?, name = ? WHERE version = ? AND name = ?",
+                (new_version, new_name, old_version, old_name),
+            )
+        else:
+            connection.execute(
+                "DELETE FROM schema_migrations WHERE version = ? AND name = ?",
+                (old_version, old_name),
+            )
+
+    connection.commit()
+
+
 def initialize_database(database_path: str | Path = DEFAULT_DATABASE_PATH) -> Path:
     """Create the database and apply pending SQL migrations in order."""
 
     path = Path(database_path)
     path.parent.mkdir(parents=True, exist_ok=True)
 
-    with connect(path) as connection:
+    with closing(connect(path)) as connection:
         has_migrations_table = connection.execute(
             """
             SELECT 1 FROM sqlite_master
             WHERE type = 'table' AND name = 'schema_migrations'
             """
         ).fetchone()
+        if has_migrations_table:
+            _repair_volunteer_migration_numbering_collisions(connection)
         applied_versions = (
             {
                 row[0]
@@ -115,6 +203,8 @@ def initialize_database(database_path: str | Path = DEFAULT_DATABASE_PATH) -> Pa
                 continue
             if version == 6:
                 _repair_event_columns_before_optional_template(connection)
+            if version == 8:
+                _repair_migration_seven_numbering_collision(connection)
             connection.executescript(migration_path.read_text(encoding="utf-8"))
             applied_versions.add(version)
 

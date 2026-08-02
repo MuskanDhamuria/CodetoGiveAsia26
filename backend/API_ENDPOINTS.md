@@ -16,11 +16,17 @@ The organizer/admin backend currently implements:
 - Participant CRUD, event registration, RSVP, attendance, and event history.
 - Dashboard summary, upcoming deadlines, calendar events, and per-event
   progress summaries.
+- WhatsApp bot webhook, organizer announcements/reminders, and certificate
+  generation/delivery (see "WhatsApp bot, announcements, and certificates"
+  below).
+- Inventory Items, Locations, condition-aware Lots, stock views, immutable
+  movements, adjustments, and transfers.
+- Event and template Logistics Requirements, allocations, readiness warnings,
+  attendance forecasting, Venue Bookings, Supplier Orders, Donation Batches,
+  and post-Event reconciliation.
 
 Volunteer routes remain owned by the volunteer feature module. The organizer
-implementation does not change the event volunteer-signup endpoints. Routes in
-the “Proposed future endpoints” section still require schema/product decisions
-and are not implemented.
+implementation does not change the event volunteer-signup endpoints.
 
 ## Conventions
 
@@ -99,6 +105,10 @@ backend/
 │       ├── events.py
 │       ├── team_members.py
 │       ├── participants.py
+│       ├── inventory.py
+│       ├── logistics.py
+│       ├── organizations.py
+│       ├── venues.py
 │       ├── volunteers.py
 │       ├── roles.py
 │       └── dashboard.py
@@ -107,6 +117,10 @@ backend/
     ├── health.py
     ├── event_templates.py
     ├── events.py
+    ├── inventory.py
+    ├── logistics.py
+    ├── organizations.py
+    ├── venues.py
     ├── team_members.py
     └── participants.py
 ```
@@ -218,13 +232,16 @@ Create event body:
   "name": "August Wellness Session",
   "venue": "Tampines Hub",
   "event_date": "2026-08-09",
-  "event_time": "09:00"
+  "start_time": "09:00",
+  "end_time": "12:00",
+  "expected_attendance": 80
 }
 ```
 
-`event_time` ("HH:MM", 24-hour) is required — kept as a separate column from
-`event_date` rather than merged into a datetime, so date-only filtering/
-sorting/calendar-matching is unaffected.
+`start_time`, `end_time`, and `expected_attendance` are optional. Times remain
+separate from `event_date`, so date-only filtering and calendar matching are
+unaffected. Planned attendance drives template Requirement snapshots; changing
+it later does not silently recalculate existing Requirements.
 
 `event_template_id` may be `null` when the organizer chooses **Start from
 scratch**. That creates an Event with an empty Task plan. Otherwise, creating an
@@ -424,46 +441,108 @@ Suggested `/events/{event_id}/summary` shape:
 }
 ```
 
-## Proposed future endpoints requiring more design
+## WhatsApp bot, announcements, and certificates
 
-The product plan mentions the following capabilities, but the current database
-schema does not yet contain the records needed to implement them safely. These
-routes should not be assigned until their data models and permissions are
-agreed.
+Uses the Meta WhatsApp Cloud API. See `backend/README.md` for required
+environment variables and `backend/bot/commands.py` for the bot's text
+command grammar (`EVENTS`, `SIGNUP <id>`, `VOLUNTEER SIGNUP <id>`, `TASKS`,
+`CONFIRM <id>`, `CERT <id>`, and admin-only `BROADCAST`, `REMIND`,
+`PENDING`, `APPROVE`, `REJECT`, `ATTEND`, `MARK`). A `whatsapp_contacts`
+row links a phone number to a participant, volunteer, and/or team member;
+which of those links exist controls which commands are available.
 
-### Inventory and logistics
+| Method | Path | Parameters/body | Description |
+| --- | --- | --- | --- |
+| `GET` | `/integrations/whatsapp/webhook` | Query: `hub.mode`, `hub.verify_token`, `hub.challenge` | One-time Meta subscription verification handshake. |
+| `POST` | `/integrations/whatsapp/webhook` | Meta message payload; `X-Hub-Signature-256` header | Receives inbound messages, runs the bot, and sends replies. Validates the signature when `WHATSAPP_APP_SECRET` is set. |
+| `POST` | `/events/{event_id}/announcements` | Body: `title`, `body`, `audience: all\|participants\|volunteers` | Create and immediately send an announcement. |
+| `GET` | `/events/{event_id}/announcements` | Path: `event_id` | List announcements/reminders sent for an event, with delivery counts. |
+| `POST` | `/events/{event_id}/reminders` | Body: `body?` (defaults to a shift reminder) | Send a reminder to the event's approved volunteers. |
+| `POST` | `/events/{event_id}/certificates/generate` | Path: `event_id` | Generate certificates for everyone with recorded attendance and message the links. |
+| `GET` | `/events/{event_id}/certificates` | Path: `event_id` | List certificates issued for an event. |
+| `GET` | `/public/certificates/{download_token}` | Path: `download_token` | Public, printable certificate page (no auth). |
+| `POST` | `/public/notification-subscriptions` | Body: `phone_number`, `display_name?` | Opt a WhatsApp number in to new-event alerts. |
+| `DELETE` | `/public/notification-subscriptions/{subscription_id}` | Path: `subscription_id` | Opt a WhatsApp number out of new-event alerts. |
+| `POST` | `/team-members/{member_id}/whatsapp-link` | Body: `phone_number` | Link a phone number to a team member, unlocking bot admin commands for it. `409` if that number is already linked to a different team member. |
+| `GET` | `/team-members/{member_id}/whatsapp-link` | Path: `member_id` | Get the phone number linked to a team member, if any. |
+| `DELETE` | `/team-members/{member_id}/whatsapp-link` | Path: `member_id` | Remove a team member's WhatsApp admin link. |
 
-Likely resources: inventory items, locations, stock movements, event
-requirements, reservations, and fulfilment status.
+## Inventory and logistics
+
+All quantities support up to three decimal places and use the fixed Unit of
+Measure on the Inventory Item or Requirement. There is no automatic conversion.
+Stock corrections must use an adjustment with a reason; balances are never
+overwritten directly. Reservations that exceed Available stock return `409`.
+
+### Inventory
 
 - `GET/POST /inventory/items`
 - `GET/PATCH/DELETE /inventory/items/{item_id}`
+- `GET/POST /inventory/locations`
+- `PATCH /inventory/locations/{location_id}`
+- `GET /inventory/stock` — usable, unexpired On-hand, Reserved and Available by Item/Location
+- `GET /inventory/movements` — immutable ledger
+- `POST /inventory/adjustments` — `item_id`, `location_id`, signed `quantity_delta`, mandatory `reason`, optional lot condition/expiry
+- `POST /inventory/transfers` — Item, source/destination Locations, positive quantity and reason; creates paired movement rows
+
+### Event Logistics and templates
+
+- `GET/POST /event-templates/{template_id}/logistics-requirements`
+- `PATCH/DELETE /event-templates/{template_id}/logistics-requirements/{requirement_id}`
 - `GET/POST /events/{event_id}/logistics-requirements`
 - `PATCH/DELETE /events/{event_id}/logistics-requirements/{requirement_id}`
-- `POST /events/{event_id}/logistics-requirements/{requirement_id}/allocate`
+- `POST /events/{event_id}/logistics-requirements/{requirement_id}/reserve`
+- `POST /events/{event_id}/logistics-requirements/{requirement_id}/allocations/{allocation_id}/release`
+- `POST /events/{event_id}/logistics-requirements/{requirement_id}/allocations/{allocation_id}/issue`
+- `POST /events/{event_id}/logistics-requirements/{requirement_id}/allocations/{allocation_id}/reconcile`
+- `GET /events/{event_id}/logistics` — aggregated Requirements, sourcing/on-site totals, warnings, forecast, bookings and reconciliation
+- `POST /events/{event_id}/logistics/reconciliation/finalize`
+- `GET /events/{event_id}/attendance-forecast`
 
-### Announcements, reminders, and bots
+Template quantities use `ceil((base + per_person × expected_attendance) ×
+(1 + buffer_percentage / 100))`. The Event stores the result as an editable
+snapshot; later RSVP changes never silently recalculate it.
 
-Likely resources: announcements, recipients, delivery attempts, external chat
-identities, subscriptions, and message templates. WhatsApp/Telegram webhooks
-must validate provider signatures and should not expose internal admin routes.
+### External Organizations and Supplier Orders
 
-- `POST /events/{event_id}/announcements`
-- `GET /events/{event_id}/announcements`
-- `POST /events/{event_id}/reminders`
-- `POST /integrations/telegram/webhook`
-- `POST /integrations/whatsapp/webhook`
-- `POST /public/notification-subscriptions`
-- `DELETE /public/notification-subscriptions/{subscription_id}`
+- `GET/POST /external-organizations`
+- `GET/PATCH /external-organizations/{organization_id}`
+- `POST /external-organizations/{organization_id}/contacts`
+- `PATCH/DELETE /external-organizations/{organization_id}/contacts/{contact_id}`
+- `POST /events/{event_id}/external-organizations?organization_id={id}`
+- `GET/POST /supplier-orders`
+- `GET/PATCH /supplier-orders/{order_id}`
+- `POST /supplier-orders/{order_id}/lines`
+- `PATCH/DELETE /supplier-orders/{order_id}/lines/{line_id}`
+- `POST /supplier-orders/{order_id}/confirm|receive|return|complete|cancel`
 
-### Certificates
+Purchased-goods receipts create Inventory Lots. Rentals never enter Inventory
+and require a return before completion. Services complete through an explicit
+fulfilment record.
 
-Likely resources: certificate templates, generated certificates, eligibility,
-and secure download tokens.
+### Venues and donations
 
-- `POST /events/{event_id}/certificates/generate`
-- `GET /events/{event_id}/certificates`
-- `GET /public/certificates/{download_token}`
+- `GET/POST/PATCH /venues[/{venue_id}]`
+- `POST /venues/{venue_id}/spaces`
+- `PATCH /venues/{venue_id}/spaces/{space_id}`
+- `GET/POST /events/{event_id}/venue-bookings`
+- `PATCH /events/{event_id}/venue-bookings/{booking_id}`
+- `GET/POST /donation-batches`
+- `POST /donation-batches/{batch_id}/collect|receive|sort|sorting-complete|distribute|close`
+
+Confirmed bookings for the same Venue Space cannot overlap. A booking above
+capacity succeeds with `capacity_warning=true`. Donation Lots in `pending_sort`
+or another unusable condition do not contribute to Available stock.
+
+## Proposed future endpoints requiring more design
+
+### Announcements, reminders, bots, and certificates
+
+Implemented — see "WhatsApp bot, announcements, and certificates" above.
+A Telegram webhook (`POST /integrations/telegram/webhook`) is not yet
+implemented; the bot layer (`backend/bot/commands.py`) is provider-agnostic,
+so adding Telegram means a new webhook route and client, reusing the same
+`dispatch()` logic.
 
 ### Partner summary
 

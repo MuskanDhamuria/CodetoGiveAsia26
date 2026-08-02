@@ -11,6 +11,7 @@ export type EventSummary = {
   event_date: string;
   event_time: string | null;
   status: EventStatus;
+  is_cancelled: boolean;
 };
 
 export type EventForParticipant = EventSummary & {
@@ -36,6 +37,19 @@ export type PublicRsvpInput = {
   name: string;
   contact_number?: string | null;
   email?: string | null;
+};
+
+export type PublicSignupInput = {
+  name: string;
+  contact_number?: string | null;
+  email?: string | null;
+};
+
+export type PublicSignupResult = {
+  participant_id: number;
+  participant_name: string;
+  participant_contact_number: string | null;
+  participant_email: string | null;
 };
 
 export type PublicRsvpResult = {
@@ -88,6 +102,13 @@ export function getEvent(eventId: number): Promise<EventSummary> {
 
 export function publicRsvp(eventId: number, input: PublicRsvpInput): Promise<PublicRsvpResult> {
   return request(`/public/events/${eventId}/rsvp`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function publicSignup(input: PublicSignupInput): Promise<PublicSignupResult> {
+  return request(`/public/signup`, {
     method: "POST",
     body: JSON.stringify(input),
   });

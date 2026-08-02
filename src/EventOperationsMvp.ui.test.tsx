@@ -8,6 +8,28 @@ import EventOperationsMvp from "./EventOperationsMvp"
 afterEach(cleanup)
 
 describe("Event Operations MVP primary organizer journey", () => {
+  it("opens the selected Event in a mobile dialog before entering its workspace", async () => {
+    const user = userEvent.setup()
+    const originalWidth = window.innerWidth
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 375 })
+
+    try {
+      render(<EventOperationsMvp />)
+
+      const eventButton = screen.getByRole("button", { name: "Open Distribution of clothes" })
+      await user.click(eventButton)
+
+      const dialog = screen.getByRole("dialog", { name: "Distribution of clothes" })
+      expect(within(dialog).getByText("Distribution of clothes")).toBeTruthy()
+      expect(screen.queryByRole("region", { name: "Mobile selected Event actions" })).toBeNull()
+
+      await user.click(within(dialog).getByRole("button", { name: /Open event workspace/ }))
+      expect(screen.getByRole("region", { name: "Distribution of clothes" })).toBeTruthy()
+    } finally {
+      Object.defineProperty(window, "innerWidth", { configurable: true, value: originalWidth })
+    }
+  })
+
   it("renders the Event workspace as a three-column Kanban board", async () => {
     const user = userEvent.setup()
     render(<EventOperationsMvp />)
@@ -31,6 +53,10 @@ describe("Event Operations MVP primary organizer journey", () => {
       "In progress",
       "Done",
     ])
+    expect(screen.getByRole("tablist", { name: "Task status" })).toBeTruthy()
+    expect(screen.getByRole("tab", { name: /To do/ }).getAttribute("aria-selected")).toBe("true")
+    await user.click(screen.getByRole("tab", { name: /Done/ }))
+    expect(screen.getByRole("tab", { name: /Done/ }).getAttribute("aria-selected")).toBe("true")
 
     const styles = readFileSync("src/EventOperationsMvp.css", "utf8")
     expect(styles).toMatch(/\.event-operations-kanban\s*\{[^}]*display:\s*grid/)
@@ -106,5 +132,23 @@ describe("Event Operations MVP primary organizer journey", () => {
     await user.click(screen.getByRole("button", { name: "Cancel Event creation" }))
     await user.click(screen.getByRole("button", { name: "Discard draft" }))
     expect(screen.getByText("Event draft discarded.")).toBeTruthy()
+  })
+
+  it("keeps the creation steps above the mobile menu and lets Back leave step 1", async () => {
+    const user = userEvent.setup()
+    render(<EventOperationsMvp />)
+
+    await user.click(screen.getAllByRole("button", { name: /new event/i })[0])
+
+    const backButton = screen.getByRole("button", { name: "Back" })
+    expect(backButton.hasAttribute("disabled")).toBe(false)
+    expect(screen.getByText("Choose template")).toBeTruthy()
+
+    await user.click(backButton)
+    expect(screen.getByText("Discard this Event draft?")).toBeTruthy()
+
+    const styles = readFileSync("src/EventOperationsMvp.css", "utf8")
+    expect(styles).toMatch(/\.event-creation-overlay\s*\{[^}]*z-index:\s*(1\d\d|[2-9]\d\d)/)
+    expect(styles).toMatch(/\.event-creation-dialog\s*\{[^}]*max-height:\s*100dvh/)
   })
 })

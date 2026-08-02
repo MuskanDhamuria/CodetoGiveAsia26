@@ -10,6 +10,7 @@ import {
 } from "./admin-api"
 import EventCollectionPrototype, { type EventCollectionItem } from "./EventCollectionPrototype"
 import EventVolunteerTab from "./EventVolunteerTab"
+import EventLogistics from "./EventLogistics"
 import "./EventOperationsMvp.css"
 
 
@@ -18,6 +19,7 @@ type Draft = {
   name: string
   event_date: string
   venue: string
+  expected_attendance: string
 }
 
 type CreationTaskEdit = {
@@ -46,9 +48,10 @@ const emptyDraft: Draft = {
   name: "",
   event_date: "",
   venue: "",
+  expected_attendance: "",
 }
 
-type EventDialog = "edit" | "reschedule" | "close" | "delete" | null
+type EventDialog = "edit" | "reschedule" | "close" | "cancel" | "delete" | null
 type TaskEditorMode = "preview" | "edit"
 type TaskDraft = {
   name: string
@@ -101,7 +104,8 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
   const [reviewPage, setReviewPage] = useState(0)
   const [creating, setCreating] = useState(false)
   const [openEventId, setOpenEventId] = useState<number | null>(initialEventId)
-  const [workspaceTab, setWorkspaceTab] = useState<"tasks" | "volunteers">("tasks")
+  const [workspaceTab, setWorkspaceTab] = useState<"tasks" | "volunteers" | "logistics">("tasks")
+  const [mobileTaskStatus, setMobileTaskStatus] = useState<"incomplete" | "ongoing" | "done">("incomplete")
   const [draggedTaskId, setDraggedTaskId] = useState<number | null>(null)
   const [dragOverStatus, setDragOverStatus] = useState<string | null>(null)
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
@@ -148,11 +152,13 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
     () => events.map((event) => {
       const completed = eventCompletion(event)
       const date = new Date(`${event.event_date}T00:00:00Z`)
-      const status = event.status === "closed"
-        ? "Closed"
-        : completed.total > 0 && completed.done === completed.total
-          ? "On track"
-          : "Planning"
+      const status = event.is_cancelled
+        ? "Cancelled"
+        : event.status === "closed"
+          ? "Closed"
+          : completed.total > 0 && completed.done === completed.total
+            ? "On track"
+            : "Planning"
       return {
         id: String(event.id),
         name: event.name,
@@ -176,8 +182,8 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
     : 0
 
   function openCollectionEvent(event: EventDetail) {
-    setWorkspaceTab("tasks")
     setOpenEventId(event.id)
+    setWorkspaceTab("tasks")
   }
 
   function openCreator() {
@@ -262,6 +268,7 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
         name: draft.name.trim(),
         venue: draft.venue.trim(),
         event_date: draft.event_date,
+        ...(draft.expected_attendance ? { expected_attendance: Number(draft.expected_attendance) } : {}),
       })
       if (draft.event_template_id === null && scratchTasks.length) {
         const createdTasks = await Promise.all(scratchTasks.map((task, position) => api.createEventTask(event.id, {
@@ -402,6 +409,21 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
       setMessage(next === "closed" ? "Event closed." : "Event reopened.")
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Unable to update Event status.")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function cancelEventAction(event: EventDetail) {
+    setSaving(true)
+    setError("")
+    try {
+      const updated = await api.cancelEvent(event.id)
+      replaceEvent(updated)
+      setEventDialog(null)
+      setMessage("Event cancelled.")
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Unable to cancel Event.")
     } finally {
       setSaving(false)
     }
@@ -565,12 +587,13 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
                 <h2>{openEvent.name}</h2>
               </div>
               <div className="api-event-header-actions">
-                <span className={`api-event-status ${openEvent.status}`}>{openEvent.status === "closed" ? "Closed" : "Open"}</span>
+                <span className={`api-event-status ${openEvent.is_cancelled ? "cancelled" : openEvent.status}`}>{openEvent.is_cancelled ? "Cancelled" : openEvent.status === "closed" ? "Closed" : "Open"}</span>
                 {openEvent.status === "open" ? (<>
                   <button type="button" onClick={() => openEventDialog("edit", openEvent)}>Edit details</button>
                   <button type="button" onClick={() => openEventDialog("reschedule", openEvent)}>Reschedule</button>
                   <button type="button" onClick={() => openEventDialog("close", openEvent)}>Close Event</button>
-                </>) : <button type="button" onClick={() => void changeEventStatus(openEvent, "open")}>Reopen Event</button>}
+                  <button className="api-danger-button" type="button" onClick={() => openEventDialog("cancel", openEvent)}>Cancel Event</button>
+                </>) : !openEvent.is_cancelled && <button type="button" onClick={() => void changeEventStatus(openEvent, "open")}>Reopen Event</button>}
                 <button className="api-danger-button" type="button" onClick={() => openEventDialog("delete", openEvent)}>Delete Event</button>
               </div>
             </header>
@@ -580,7 +603,13 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
               <div><dt>Venue</dt><dd>{openEvent.venue}</dd></div>
               <div><dt>Tasks</dt><dd>{openEvent.tasks.length}</dd></div>
             </dl>
-            {openEvent.status === "closed" && <p className="event-operations-closed-notice">Closed Events are read-only. The Task history is kept for reference.</p>}
+            {openEvent.status === "closed" && (
+              <p className="event-operations-closed-notice">
+                {openEvent.is_cancelled
+                  ? "This Event has been cancelled. Its details and Task history are kept for reference."
+                  : "Closed Events are read-only. The Task history is kept for reference."}
+              </p>
+            )}
             <div className="api-event-workspace-tabs" role="tablist" aria-label="Event workspace sections">
               <button
                 aria-controls="event-task-workspace"
@@ -600,6 +629,15 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
                 type="button"
                 onClick={() => setWorkspaceTab("volunteers")}
               >Volunteers</button>
+              <button
+                aria-controls="event-logistics-workspace"
+                aria-selected={workspaceTab === "logistics"}
+                className={workspaceTab === "logistics" ? "active" : ""}
+                id="event-logistics-tab"
+                role="tab"
+                type="button"
+                onClick={() => setWorkspaceTab("logistics")}
+              >Logistics</button>
             </div>
             {workspaceTab === "tasks" ? <div
               aria-labelledby="event-tasks-tab"
@@ -612,6 +650,23 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
                   <h3>Task workspace</h3>
                   {openEvent.status === "open" && <button type="button" onClick={() => openTaskEditor()}>Add Task</button>}
                 </div>
+                <div aria-label="Task status" className="event-operations-mobile-status-tabs" role="tablist">
+                  {(["incomplete", "ongoing", "done"] as const).map((status) => {
+                    const label = status === "incomplete" ? "To do" : status === "ongoing" ? "In progress" : "Done"
+                    const count = openEvent.tasks.filter((task) => task.status === status).length
+                    return <button
+                      aria-controls={`api-event-operations-column-${status}`}
+                      aria-selected={mobileTaskStatus === status}
+                      className={mobileTaskStatus === status ? "active" : ""}
+                      key={status}
+                      onClick={() => setMobileTaskStatus(status)}
+                      role="tab"
+                      type="button"
+                    >
+                      {label}<span>{count}</span>
+                    </button>
+                  })}
+                </div>
                 <div className="event-operations-kanban">
                   {(["incomplete", "ongoing", "done"] as const).map((status) => {
                     const tasks = openEvent.tasks.filter((task) => task.status === status)
@@ -619,7 +674,8 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
                     return (
                       <section
                     aria-label={`${label} Tasks`}
-                    className={`event-operations-kanban-column${dragOverStatus === status ? " drag-over" : ""}`}
+                    className={`event-operations-kanban-column${dragOverStatus === status ? " drag-over" : ""}${mobileTaskStatus === status ? " mobile-active" : ""}`}
+                    id={`api-event-operations-column-${status}`}
                     key={status}
                     onDragOver={(dragEvent) => {
                       if (openEvent.status !== "open") return
@@ -713,8 +769,10 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
                 </dl>
                 {openEvent.status === "open" && <p className="api-event-progress-help">Use <strong>Edit</strong> on a Task to update its details and Subtasks.</p>}
               </aside>
-            </div> : <div aria-labelledby="event-volunteers-tab" id="event-volunteer-workspace" role="tabpanel">
+            </div> : workspaceTab === "volunteers" ? <div aria-labelledby="event-volunteers-tab" id="event-volunteer-workspace" role="tabpanel">
               <EventVolunteerTab eventId={openEvent.id} readOnly={openEvent.status === "closed"} />
+            </div> : <div aria-labelledby="event-logistics-tab" id="event-logistics-workspace" role="tabpanel">
+              <EventLogistics eventId={openEvent.id} eventStatus={openEvent.status} />
             </div>}
           </section>
         </>
@@ -728,8 +786,6 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
             if (apiEvent) openCollectionEvent(apiEvent)
           }}
         />
-        <section className="event-operations-library" aria-labelledby="api-template-title"><div><p>Event Templates</p><h2 id="api-template-title">Reusable workflows</h2><span>Loaded from the organizer API.</span></div></section>
-        <div className="event-operations-template-list">{templates.map((template) => <article key={template.id}><div><strong>{template.name}</strong><span>{template.is_built_in ? "Built-in" : "Custom"} · {template.tasks.length} Tasks</span><p>{template.description}</p></div></article>)}</div>
         </>}
 
         {showCreator && (
@@ -764,6 +820,7 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
                     <label>Event name<input value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} /></label>
                     <label>Event date<input type="date" value={draft.event_date} onChange={(event) => setDraft({ ...draft, event_date: event.target.value })} /></label>
                     <label>Venue<input value={draft.venue} onChange={(event) => setDraft({ ...draft, venue: event.target.value })} /></label>
+                    <label>Planned attendance<input min="0" type="number" value={draft.expected_attendance} onChange={(event) => setDraft({ ...draft, expected_attendance: event.target.value })} /></label>
                   </div>
                 </div>
               )}
@@ -802,7 +859,7 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
           <div className="event-creation-overlay" role="presentation">
             <section aria-labelledby="event-action-title" aria-modal="true" className="event-creation-dialog api-action-dialog" role="dialog">
               <header>
-                <div><p>Event action</p><h2 id="event-action-title">{eventDialog === "edit" ? "Edit Event details" : eventDialog === "reschedule" ? "Reschedule Event" : eventDialog === "close" ? "Close Event" : "Delete Event"}</h2></div>
+                <div><p>Event action</p><h2 id="event-action-title">{eventDialog === "edit" ? "Edit Event details" : eventDialog === "reschedule" ? "Reschedule Event" : eventDialog === "close" ? "Close Event" : eventDialog === "cancel" ? "Cancel Event" : "Delete Event"}</h2></div>
                 <button aria-label="Cancel Event action" className="event-creation-close" type="button" onClick={() => setEventDialog(null)}>×</button>
               </header>
               <div className="event-creation-body api-action-body">
@@ -815,6 +872,7 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
                   <label className="api-checkbox-field"><input checked={eventForm.shift_task_deadlines} type="checkbox" onChange={(input) => setEventForm({ ...eventForm, shift_task_deadlines: input.target.checked })} /> Shift Task deadlines by the same number of days</label>
                 </div>}
                 {eventDialog === "close" && <p>Closing this Event makes its details and Tasks read-only until it is reopened.</p>}
+                {eventDialog === "cancel" && <p className="api-danger-notice">Cancelling tells participants and volunteers this Event isn't happening. It closes registration and marks the Event as cancelled instead of merely closed — this can't be undone from here.</p>}
                 {eventDialog === "delete" && <div className="event-creation-fields">
                   <p className="api-danger-notice">This permanently deletes the Event, Tasks, checklists, registrations, and volunteer signups.</p>
                   <label>Type {openEvent.name} to confirm<input aria-label="Confirm Event name" value={eventForm.delete_name} onChange={(input) => setEventForm({ ...eventForm, delete_name: input.target.value })} /></label>
@@ -826,6 +884,7 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
                 {eventDialog === "edit" && <button disabled={saving} type="button" onClick={() => void saveEventDetails(openEvent)}>Save changes</button>}
                 {eventDialog === "reschedule" && <button disabled={saving} type="button" onClick={() => void reschedule(openEvent)}>Reschedule Event</button>}
                 {eventDialog === "close" && <button disabled={saving} type="button" onClick={() => void changeEventStatus(openEvent, "closed")}>Confirm close</button>}
+                {eventDialog === "cancel" && <button className="api-delete-confirm" disabled={saving} type="button" onClick={() => void cancelEventAction(openEvent)}>Confirm cancellation</button>}
                 {eventDialog === "delete" && <button className="api-delete-confirm" disabled={saving || eventForm.delete_name !== openEvent.name} type="button" onClick={() => void deleteEvent(openEvent)}>Delete permanently</button>}
               </footer>
             </section>

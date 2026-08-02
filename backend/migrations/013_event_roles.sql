@@ -19,6 +19,6 @@ JOIN template_roles
 CREATE INDEX IF NOT EXISTS idx_event_roles_role ON event_roles(role_id);
 
 INSERT OR IGNORE INTO schema_migrations (version, name)
-VALUES (9, '009_event_roles.sql');
+VALUES (13, '013_event_roles.sql');
 
 COMMIT;

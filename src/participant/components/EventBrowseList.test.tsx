@@ -58,6 +58,19 @@ const PAST_EVENT = {
   status: "closed",
 }
 
+// A cancelled event (TICKET-9) — still upcoming by date, but shouldn't be
+// browsable or signable-up-for.
+const CANCELLED_EVENT = {
+  id: 5,
+  name: "Cancelled Cooking Class",
+  venue: "Woodlands CC",
+  description: "This won't happen.",
+  event_date: isoDaysFromNow(10),
+  event_time: "10:00",
+  status: "closed",
+  is_cancelled: true,
+}
+
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
@@ -171,6 +184,23 @@ describe("List view", () => {
 
     await screen.findByText("Wellness Morning")
     expect(screen.queryByText(/Past events/)).toBeNull()
+  })
+})
+
+describe("Cancelled events (TICKET-9)", () => {
+  it("does not list a cancelled event, even though it's still upcoming by date", async () => {
+    mockFetch([TODAY_EVENT, CANCELLED_EVENT])
+    renderBrowse()
+
+    await screen.findByText("Wellness Morning")
+    expect(screen.queryByText("Cancelled Cooking Class")).toBeNull()
+  })
+
+  it("shows the empty state when the only event is cancelled", async () => {
+    mockFetch([CANCELLED_EVENT])
+    renderBrowse()
+
+    expect(await screen.findByText("No events right now.")).toBeTruthy()
   })
 })
 

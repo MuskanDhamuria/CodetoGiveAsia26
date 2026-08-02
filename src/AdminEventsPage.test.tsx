@@ -12,8 +12,8 @@ afterEach(cleanup)
 describe("API-backed organizer events", () => {
   it("updates the selected event panel without opening the workspace", async () => {
     const events: EventDetail[] = [
-      { id: 4, event_template_id: null, name: "First event", venue: "Hall A", event_date: "2027-09-01", status: "open", created_at: "", updated_at: "", tasks: [] },
-      { id: 5, event_template_id: null, name: "Second event", venue: "Hall B", event_date: "2027-09-02", status: "open", created_at: "", updated_at: "", tasks: [] },
+      { id: 4, event_template_id: null, name: "First event", venue: "Hall A", event_date: "2027-09-01", status: "open", is_cancelled: false, created_at: "", updated_at: "", tasks: [] },
+      { id: 5, event_template_id: null, name: "Second event", venue: "Hall B", event_date: "2027-09-02", status: "open", is_cancelled: false, created_at: "", updated_at: "", tasks: [] },
     ]
     const api = {
       listEventTemplates: vi.fn().mockResolvedValue([]),
@@ -32,7 +32,7 @@ describe("API-backed organizer events", () => {
   it("uses the event portfolio presentation from the prototype collection", async () => {
     const event: EventDetail = {
       id: 4, event_template_id: null, name: "Wellness session", venue: "Hall",
-      event_date: "2027-09-01", status: "open", created_at: "", updated_at: "", tasks: [],
+      event_date: "2027-09-01", status: "open", is_cancelled: false, created_at: "", updated_at: "", tasks: [],
     }
     const api = {
       listEventTemplates: vi.fn().mockResolvedValue([]),
@@ -48,10 +48,46 @@ describe("API-backed organizer events", () => {
     expect(document.querySelector(".event-collection-header")).toBeNull()
   })
 
+  it("opens and closes the selected Event dialog on mobile", async () => {
+    const event: EventDetail = {
+      id: 4, event_template_id: null, name: "Wellness session", venue: "Hall",
+      event_date: "2027-09-01", status: "open", is_cancelled: false, created_at: "", updated_at: "", tasks: [],
+    }
+    const api = {
+      listEventTemplates: vi.fn().mockResolvedValue([]),
+      listEvents: vi.fn().mockResolvedValue([event]),
+      listTeamMembers: vi.fn().mockResolvedValue([]),
+    } as unknown as AdminApi
+    const originalWidth = window.innerWidth
+    const scrollTo = vi.spyOn(window, "scrollTo").mockImplementation(() => {})
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 375 })
+
+    try {
+      const user = userEvent.setup()
+      render(<AdminEventsPage api={api} />)
+      await user.click(await screen.findByRole("button", { name: "Open Wellness session" }))
+
+      expect(screen.getByRole("dialog", { name: "Wellness session" })).toBeTruthy()
+      expect(screen.queryByRole("region", { name: "Mobile selected Event actions" })).toBeNull()
+      expect(document.body.style.overflow).toBe("hidden")
+
+      await user.click(screen.getByRole("button", { name: "Close selected Event" }))
+      expect(screen.queryByRole("dialog", { name: "Wellness session" })).toBeNull()
+      expect(document.body.style.overflow).toBe("")
+
+      await user.click(screen.getByRole("button", { name: "Open Wellness session" }))
+      await user.click(document.querySelector(".portfolio-preview-overlay")!)
+      expect(screen.queryByRole("dialog", { name: "Wellness session" })).toBeNull()
+    } finally {
+      Object.defineProperty(window, "innerWidth", { configurable: true, value: originalWidth })
+      scrollTo.mockRestore()
+    }
+  })
+
   it("shows Event and Subtask completion in the workspace", async () => {
     const event: EventDetail = {
       id: 4, event_template_id: null, name: "Wellness session", venue: "Hall",
-      event_date: "2027-09-01", status: "open", created_at: "", updated_at: "",
+      event_date: "2027-09-01", status: "open", is_cancelled: false, created_at: "", updated_at: "",
       tasks: [
         { id: 20, team_member_id: null, template_task_id: null, name: "Prepare room", body: "", due_at: "2027-08-30", category: "planning", status: "ongoing", position: 0, subtasks: [
           { id: 31, title: "Count chairs", position: 0, completed: true },
@@ -83,7 +119,7 @@ describe("API-backed organizer events", () => {
   it("opens a read-only Task preview when its card is clicked", async () => {
     const event: EventDetail = {
       id: 4, event_template_id: null, name: "Wellness session", venue: "Hall",
-      event_date: "2027-09-01", status: "open", created_at: "", updated_at: "",
+      event_date: "2027-09-01", status: "open", is_cancelled: false, created_at: "", updated_at: "",
       tasks: [{
         id: 20, team_member_id: null, template_task_id: null, name: "Prepare room",
         body: "Set out chairs", due_at: "2027-08-30", category: "planning",
@@ -115,7 +151,7 @@ describe("API-backed organizer events", () => {
   it("edits Event details through the API", async () => {
     const event: EventDetail = {
       id: 4, event_template_id: null, name: "Wellness session", venue: "Old Hall",
-      event_date: "2027-09-01", status: "open", created_at: "", updated_at: "", tasks: [],
+      event_date: "2027-09-01", status: "open", is_cancelled: false, created_at: "", updated_at: "", tasks: [],
     }
     const updated = { ...event, name: "Community Wellness", venue: "Tampines Hub" }
     const updateEvent = vi.fn().mockResolvedValue(updated)
@@ -141,7 +177,7 @@ describe("API-backed organizer events", () => {
   })
 
   it("reschedules, closes, and reopens an Event", async () => {
-    const event: EventDetail = { id: 4, event_template_id: null, name: "Wellness session", venue: "Hall", event_date: "2027-09-01", status: "open", created_at: "", updated_at: "", tasks: [] }
+    const event: EventDetail = { id: 4, event_template_id: null, name: "Wellness session", venue: "Hall", event_date: "2027-09-01", status: "open", is_cancelled: false, created_at: "", updated_at: "", tasks: [] }
     const rescheduled = { ...event, event_date: "2027-09-08" }
     const closed = { ...rescheduled, status: "closed" as const }
     const reopened = { ...rescheduled, status: "open" as const }
@@ -167,8 +203,47 @@ describe("API-backed organizer events", () => {
     expect(await screen.findByRole("button", { name: "Add Task" })).toBeTruthy()
   })
 
+  it("cancels an Event distinctly from closing it (TICKET-9)", async () => {
+    const event: EventDetail = { id: 4, event_template_id: null, name: "Wellness session", venue: "Hall", event_date: "2027-09-01", status: "open", is_cancelled: false, created_at: "", updated_at: "", tasks: [] }
+    const cancelled = { ...event, status: "closed" as const, is_cancelled: true }
+    const cancelEvent = vi.fn().mockResolvedValue(cancelled)
+    const api = { listEventTemplates: vi.fn().mockResolvedValue([]), listEvents: vi.fn().mockResolvedValue([event]), listTeamMembers: vi.fn().mockResolvedValue([]), cancelEvent } as unknown as AdminApi
+    const user = userEvent.setup()
+
+    render(<AdminEventsPage api={api} />)
+    await user.click(await screen.findByRole("button", { name: /Open event workspace/ }))
+
+    await user.click(screen.getByRole("button", { name: "Cancel Event" }))
+    await user.click(screen.getByRole("button", { name: "Confirm cancellation" }))
+    expect(cancelEvent).toHaveBeenCalledWith(4)
+
+    expect(await screen.findByText("Cancelled")).toBeTruthy()
+    expect(await screen.findByText(/This Event has been cancelled/)).toBeTruthy()
+    expect(screen.queryByRole("button", { name: "Reopen Event" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "Close Event" })).toBeNull()
+  })
+
+  it("hides cancelled Events from the portfolio by default, revealing them under Show cancelled", async () => {
+    const open: EventDetail = { id: 1, event_template_id: null, name: "Open event", venue: "Hall A", event_date: "2027-09-01", status: "open", is_cancelled: false, created_at: "", updated_at: "", tasks: [] }
+    const cancelled: EventDetail = { id: 2, event_template_id: null, name: "Cancelled event", venue: "Hall B", event_date: "2027-09-05", status: "closed", is_cancelled: true, created_at: "", updated_at: "", tasks: [] }
+    const api = {
+      listEventTemplates: vi.fn().mockResolvedValue([]),
+      listEvents: vi.fn().mockResolvedValue([open, cancelled]),
+      listTeamMembers: vi.fn().mockResolvedValue([]),
+    } as unknown as AdminApi
+    const user = userEvent.setup()
+
+    render(<AdminEventsPage api={api} />)
+    await screen.findByRole("button", { name: "Open Open event" })
+
+    expect(screen.queryByText("Cancelled event")).toBeNull()
+
+    await user.click(screen.getByLabelText("Show cancelled"))
+    expect(await screen.findByText("Cancelled event")).toBeTruthy()
+  })
+
   it("requires the exact Event name before permanent deletion", async () => {
-    const event: EventDetail = { id: 4, event_template_id: null, name: "Wellness session", venue: "Hall", event_date: "2027-09-01", status: "open", created_at: "", updated_at: "", tasks: [] }
+    const event: EventDetail = { id: 4, event_template_id: null, name: "Wellness session", venue: "Hall", event_date: "2027-09-01", status: "open", is_cancelled: false, created_at: "", updated_at: "", tasks: [] }
     const deleteEvent = vi.fn().mockResolvedValue(undefined)
     const api = { listEventTemplates: vi.fn().mockResolvedValue([]), listEvents: vi.fn().mockResolvedValue([event]), listTeamMembers: vi.fn().mockResolvedValue([]), deleteEvent } as unknown as AdminApi
     const user = userEvent.setup()
@@ -185,7 +260,7 @@ describe("API-backed organizer events", () => {
   })
 
   it("creates, assigns, edits, checks, and deletes a Task", async () => {
-    const event: EventDetail = { id: 4, event_template_id: null, name: "Wellness session", venue: "Hall", event_date: "2027-09-01", status: "open", created_at: "", updated_at: "", tasks: [] }
+    const event: EventDetail = { id: 4, event_template_id: null, name: "Wellness session", venue: "Hall", event_date: "2027-09-01", status: "open", is_cancelled: false, created_at: "", updated_at: "", tasks: [] }
     const createdTask: EventDetail["tasks"][number] = { id: 20, team_member_id: 3, template_task_id: null, name: "Prepare room", body: "Set out chairs", due_at: "2027-08-30", category: "planning", status: "incomplete", position: 0, subtasks: [] }
     const checklist = { id: 31, title: "Count chairs", position: 0, completed: false }
     const createEventTask = vi.fn().mockResolvedValue(createdTask)
@@ -240,6 +315,7 @@ describe("API-backed organizer events", () => {
       venue: "Community Hall",
       event_date: "2027-09-01",
       status: "open",
+      is_cancelled: false,
       created_at: "2026-08-01 00:00:00",
       updated_at: "2026-08-01 00:00:00",
       tasks: [],
@@ -283,6 +359,7 @@ describe("API-backed organizer events", () => {
       venue: "Tampines Hub",
       event_date: "2027-09-01",
       status: "open",
+      is_cancelled: false,
       created_at: "2026-08-01 00:00:00",
       updated_at: "2026-08-01 00:00:00",
       tasks: [{
@@ -309,8 +386,7 @@ describe("API-backed organizer events", () => {
 
     const { container } = render(<AdminEventsPage api={api} />)
     await screen.findByRole("heading", { name: "Wellness session" })
-    const eventList = container.querySelector(".event-operations-template-list")!
-    expect(window.getComputedStyle(eventList).display).not.toBe("none")
+    expect(container.querySelector(".event-operations-template-list")).toBeNull()
     await user.click(await screen.findByRole("button", { name: /Open event workspace/ }))
     await user.click(screen.getByRole("button", { name: "Start task" }))
 
@@ -326,6 +402,7 @@ describe("API-backed organizer events", () => {
       venue: "Tampines Hub",
       event_date: "2027-09-01",
       status: "open",
+      is_cancelled: false,
       created_at: "2026-08-01 00:00:00",
       updated_at: "2026-08-01 00:00:00",
       tasks: [{
@@ -363,6 +440,45 @@ describe("API-backed organizer events", () => {
     expect(await screen.findByRole("button", { name: "Mark done" })).toBeTruthy()
   })
 
+  it("shows mobile status tabs and keeps task actions available", async () => {
+    const event: EventDetail = {
+      id: 4,
+      event_template_id: null,
+      name: "Wellness session",
+      venue: "Hall",
+      event_date: "2027-09-01",
+      status: "open",
+      created_at: "",
+      updated_at: "",
+      tasks: [{
+        id: 11,
+        team_member_id: null,
+        template_task_id: null,
+        name: "Prepare room",
+        body: "",
+        due_at: "2027-08-30",
+        category: "planning",
+        status: "incomplete",
+        position: 0,
+        subtasks: [],
+      }],
+    }
+    const updateEventTask = vi.fn().mockResolvedValue({ ...event.tasks[0], status: "ongoing" })
+    const api = {
+      listEventTemplates: vi.fn().mockResolvedValue([]),
+      listEvents: vi.fn().mockResolvedValue([event]),
+      listTeamMembers: vi.fn().mockResolvedValue([]),
+      updateEventTask,
+    } as unknown as AdminApi
+    const user = userEvent.setup()
+
+    render(<AdminEventsPage api={api} initialEventId={4} />)
+    const tabs = await screen.findByRole("tablist", { name: "Task status" })
+    expect(within(tabs).getByRole("tab", { name: /To do 1/ }).getAttribute("aria-selected")).toBe("true")
+    await user.click(screen.getByRole("button", { name: "Start task" }))
+    expect(updateEventTask).toHaveBeenCalledWith(4, 11, { status: "ongoing" })
+  })
+
   it("renders a compact read-only workspace for a closed event", async () => {
     const event: EventDetail = {
       id: 1,
@@ -371,6 +487,7 @@ describe("API-backed organizer events", () => {
       venue: "Tampines Hub",
       event_date: "2026-06-14",
       status: "closed",
+      is_cancelled: false,
       created_at: "2026-04-01 00:00:00",
       updated_at: "2026-06-15 00:00:00",
       tasks: [{

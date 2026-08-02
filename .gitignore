@@ -22,3 +22,6 @@ AGENTS.md
 docs/agents/
 skills-lock.json
 .venv/
+.DS_Store
+CLAUDE.md
+.claude/skills

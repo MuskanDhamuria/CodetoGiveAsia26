@@ -32,15 +32,19 @@ function EventStatus({ status }: { status: EventCollectionItem["status"] }) {
 
 function CollectionControls({
   showClosed,
+  showCancelled,
   view,
   onNewEvent,
   onShowClosed,
+  onShowCancelled,
   onView,
 }: {
   showClosed: boolean;
+  showCancelled: boolean;
   view: View;
   onNewEvent: () => void;
   onShowClosed: () => void;
+  onShowCancelled: () => void;
   onView: (view: View) => void;
 }) {
   return (
@@ -52,6 +56,10 @@ function CollectionControls({
       <label className="collection-closed-toggle">
         <input checked={showClosed} type="checkbox" onChange={onShowClosed} />
         Show closed
+      </label>
+      <label className="collection-closed-toggle">
+        <input checked={showCancelled} type="checkbox" onChange={onShowCancelled} />
+        Show cancelled
       </label>
       <button className="collection-new-event" type="button" onClick={onNewEvent}><span>＋</span> New event</button>
     </div>
@@ -113,22 +121,30 @@ type VariantProps = {
   view: View;
   month: number;
   showClosed: boolean;
+  showCancelled: boolean;
   selected: EventCollectionItem;
   onMonth: (direction: number) => void;
   onNewEvent: () => void;
   onOpen: (event: EventCollectionItem) => void;
   onSelect: (event: EventCollectionItem) => void;
   onShowClosed: () => void;
+  onShowCancelled: () => void;
   onView: (view: View) => void;
   openOnSelect: boolean;
 };
 
-function VariantA({ events, view, month, showClosed, onMonth, onNewEvent, onOpen, onShowClosed, onView }: VariantProps) {
+type VariantCProps = VariantProps & {
+  onCloseSelected: () => void;
+  isMobile: boolean;
+  selectedDialogOpen: boolean;
+};
+
+function VariantA({ events, view, month, showClosed, showCancelled, onMonth, onNewEvent, onOpen, onShowClosed, onShowCancelled, onView }: VariantProps) {
   return (
     <div className="collection-variant collection-variant-a">
       <header className="collection-titlebar">
         <div><p>Events</p><h1>Every event, in order.</h1><span>Plan ahead without losing sight of what comes next.</span></div>
-        <CollectionControls {...{ showClosed, view, onNewEvent, onShowClosed, onView }} />
+        <CollectionControls {...{ showClosed, showCancelled, view, onNewEvent, onShowClosed, onShowCancelled, onView }} />
       </header>
       {view === "calendar" ? (
         <PrototypeCalendar events={events} month={month} onMonth={onMonth} onOpen={onOpen} />
@@ -138,7 +154,7 @@ function VariantA({ events, view, month, showClosed, onMonth, onNewEvent, onOpen
           {events.map((event, index) => (
             <article key={event.name}>
               <div className="ledger-date"><strong>{event.day}</strong><span>{event.date.split(" ")[1]}</span><small>{event.date.split(" ")[2]}</small></div>
-              <div><p>{index === 0 && event.status !== "Closed" ? "NEXT UP" : event.venue}</p><h2>{event.name}</h2><span>{event.venue}</span></div>
+              <div><p>{index === 0 && event.status !== "Closed" && event.status !== "Cancelled" ? "NEXT UP" : event.venue}</p><h2>{event.name}</h2><span>{event.venue}</span></div>
               <div className="ledger-progress"><span>{event.tasksDone} of {event.tasksTotal} tasks</span><i><b style={{ width: `${event.progress}%` }} /></i></div>
               <EventStatus status={event.status} />
               <button type="button" onClick={() => onOpen(event)}>Open workspace <span>→</span></button>
@@ -150,8 +166,8 @@ function VariantA({ events, view, month, showClosed, onMonth, onNewEvent, onOpen
   );
 }
 
-function VariantB({ events, month, showClosed, onMonth, onNewEvent, onOpen, onShowClosed }: VariantProps) {
-  const upcoming = events.filter((event) => event.status !== "Closed").slice(0, 3);
+function VariantB({ events, month, showClosed, showCancelled, onMonth, onNewEvent, onOpen, onShowClosed, onShowCancelled }: VariantProps) {
+  const upcoming = events.filter((event) => event.status !== "Closed" && event.status !== "Cancelled").slice(0, 3);
   return (
     <div className="collection-variant collection-variant-b">
       <aside className="calendar-sidebar">
@@ -165,6 +181,7 @@ function VariantB({ events, month, showClosed, onMonth, onNewEvent, onOpen, onSh
           ))}
         </section>
         <label className="collection-closed-toggle"><input checked={showClosed} type="checkbox" onChange={onShowClosed} /> Include closed events</label>
+        <label className="collection-closed-toggle"><input checked={showCancelled} type="checkbox" onChange={onShowCancelled} /> Include cancelled events</label>
       </aside>
       <main>
         <header><div><p>Event-only calendar</p><h2>Coordinate the month at a glance</h2></div><span>{events.length} visible events</span></header>
@@ -174,12 +191,12 @@ function VariantB({ events, month, showClosed, onMonth, onNewEvent, onOpen, onSh
   );
 }
 
-function VariantC({ events, view, month, showClosed, selected, onMonth, onNewEvent, onOpen, onSelect, onShowClosed, onView, openOnSelect }: VariantProps) {
+function VariantC({ events, view, month, showClosed, showCancelled, selected, onMonth, onNewEvent, onOpen, onSelect, onShowClosed, onShowCancelled, onView, openOnSelect, onCloseSelected, isMobile, selectedDialogOpen }: VariantCProps) {
   return (
     <div className="collection-variant collection-variant-c">
       <header className="portfolio-header">
         <div><p>Events / Portfolio</p><h1>Event portfolio</h1></div>
-        <CollectionControls {...{ showClosed, view, onNewEvent, onShowClosed, onView }} />
+        <CollectionControls {...{ showClosed, showCancelled, view, onNewEvent, onShowClosed, onShowCancelled, onView }} />
       </header>
       {view === "calendar" ? (
         <PrototypeCalendar events={events} month={month} onMonth={onMonth} onOpen={onOpen} />
@@ -204,6 +221,35 @@ function VariantC({ events, view, month, showClosed, selected, onMonth, onNewEve
           </aside>
         </div>
       )}
+      {view === "list" && selectedDialogOpen && !openOnSelect && isMobile && (
+        <div
+          className="portfolio-preview-overlay"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) onCloseSelected();
+          }}
+          role="presentation"
+        >
+          <section aria-labelledby="selected-event-dialog-title" aria-modal="true" className="portfolio-preview portfolio-preview-dialog" role="dialog">
+            <header>
+              <p>Selected event</p>
+              <EventStatus status={selected.status} />
+              <button
+                aria-label="Close selected Event"
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onCloseSelected();
+                }}
+              >×</button>
+            </header>
+            <h2 id="selected-event-dialog-title">{selected.name}</h2>
+            <span>{selected.date} · {selected.venue}</span>
+            <div className="portfolio-score"><strong>{selected.progress}%</strong><span>plan complete</span><i><b style={{ width: `${selected.progress}%` }} /></i></div>
+            <dl><div><dt>Tasks done</dt><dd>{selected.tasksDone}</dd></div><div><dt>Tasks remaining</dt><dd>{selected.tasksTotal - selected.tasksDone}</dd></div></dl>
+            <button type="button" onClick={() => onOpen(selected)}>Open event workspace <span>→</span></button>
+          </section>
+        </div>
+      )}
     </div>
   );
 }
@@ -213,12 +259,14 @@ export default function EventCollectionPrototype({
   onNewEvent,
   onOpen,
   initialShowClosed = false,
+  initialShowCancelled = false,
   openOnSelect = false,
 }: {
   events?: EventCollectionItem[];
   onNewEvent?: () => void;
   onOpen?: (event: EventCollectionItem) => void;
   initialShowClosed?: boolean;
+  initialShowCancelled?: boolean;
   openOnSelect?: boolean;
 }) {
   const params = new URLSearchParams(window.location.search);
@@ -226,26 +274,82 @@ export default function EventCollectionPrototype({
   const variant: Variant = initialVariant === "A" || initialVariant === "B" || initialVariant === "C" ? initialVariant : "C";
   const [view, setView] = useState<View>(variant === "B" ? "calendar" : "list");
   const [showClosed, setShowClosed] = useState(initialShowClosed);
+  const [showCancelled, setShowCancelled] = useState(initialShowCancelled);
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 760);
+  const [selectedDialogOpen, setSelectedDialogOpen] = useState(false);
   const [month, setMonth] = useState(8);
   const sourceEvents = liveEvents ?? prototypeEvents;
   const [selected, setSelected] = useState(sourceEvents[0]);
   const [notice, setNotice] = useState("");
+
+  useEffect(() => {
+    const updateViewport = () => setIsMobile(window.innerWidth <= 760);
+    window.addEventListener("resize", updateViewport);
+    return () => window.removeEventListener("resize", updateViewport);
+  }, []);
+
+  useEffect(() => {
+    if (!selectedDialogOpen || view !== "list" || openOnSelect || !isMobile) return;
+
+    const scrollY = window.scrollY;
+    const html = document.documentElement;
+    const body = document.body;
+    const previousHtmlOverflow = html.style.overflow;
+    const previousBodyOverflow = body.style.overflow;
+    const previousBodyPosition = body.style.position;
+    const previousBodyTop = body.style.top;
+    const previousBodyWidth = body.style.width;
+
+    html.style.overflow = "hidden";
+    body.style.overflow = "hidden";
+    body.style.position = "fixed";
+    body.style.top = `-${scrollY}px`;
+    body.style.width = "100%";
+
+    return () => {
+      html.style.overflow = previousHtmlOverflow;
+      body.style.overflow = previousBodyOverflow;
+      body.style.position = previousBodyPosition;
+      body.style.top = previousBodyTop;
+      body.style.width = previousBodyWidth;
+      if (scrollY !== 0) {
+        try {
+          window.scrollTo(0, scrollY);
+        } catch {
+          // Some test DOMs do not implement scroll restoration.
+        }
+      }
+    };
+  }, [isMobile, openOnSelect, selectedDialogOpen, view]);
   const visibleEvents = useMemo(
     () =>
       sourceEvents
-        .filter((event) => showClosed || event.status !== "Closed")
+        .filter((event) => (showClosed || event.status !== "Closed") && (showCancelled || event.status !== "Cancelled"))
         .sort((left, right) => {
           const month = (event: EventCollectionItem) =>
             event.date.includes("Jul") ? 7 : event.date.includes("Aug") ? 8 : 9;
           return month(left) * 100 + left.day - (month(right) * 100 + right.day);
         }),
-    [showClosed, sourceEvents],
+    [showClosed, showCancelled, sourceEvents],
   );
 
   useEffect(() => {
-    setSelected((current) =>
-      sourceEvents.find((event) => event.id === current?.id) ?? sourceEvents[0],
-    );
+    setSelected((current) => {
+      const next = sourceEvents.find((event) => event.id === current?.id) ?? sourceEvents[0];
+      if (!current || !next) return next;
+
+      const unchanged = current.id === next.id
+        && current.name === next.name
+        && current.date === next.date
+        && current.day === next.day
+        && current.venue === next.venue
+        && current.status === next.status
+        && current.progress === next.progress
+        && current.tasksDone === next.tasksDone
+        && current.tasksTotal === next.tasksTotal;
+
+      return unchanged ? current : next;
+    });
   }, [sourceEvents]);
 
   if (!selected) {
@@ -259,26 +363,33 @@ export default function EventCollectionPrototype({
     );
   }
 
-  const props: VariantProps = {
+  const props: VariantCProps = {
     events: visibleEvents,
     view,
     month,
     showClosed,
+    showCancelled,
     selected,
     onMonth: (direction) => setMonth((value) => Math.min(9, Math.max(7, value + direction))),
     onNewEvent: onNewEvent ?? (() => setNotice("New Event flow would open here.")),
     onOpen: onOpen ?? ((event) => setNotice(`Opening ${event.name} workspace…`)),
-    onSelect: setSelected,
+    onSelect: (event) => {
+      setSelected(event);
+      setSelectedDialogOpen(!openOnSelect);
+    },
     onShowClosed: () => setShowClosed((value) => !value),
+    onShowCancelled: () => setShowCancelled((value) => !value),
     onView: setView,
     openOnSelect,
+    onCloseSelected: () => setSelectedDialogOpen(false),
+    isMobile,
   };
 
   return (
     <>
       {variant === "A" && <VariantA {...props} />}
       {variant === "B" && <VariantB {...props} />}
-      {variant === "C" && <VariantC {...props} />}
+      {variant === "C" && <VariantC {...props} selectedDialogOpen={selectedDialogOpen} />}
       {notice && <button className="collection-notice" type="button" onClick={() => setNotice("")}>{notice}<span>Dismiss</span></button>}
     </>
   );

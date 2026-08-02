@@ -63,6 +63,8 @@ export type EventDetail = {
   venue: string
   event_date: string
   status: EventStatus
+  expected_attendance?: number | null
+  is_cancelled: boolean
   created_at: string
   updated_at: string
   tasks: EventTask[]
@@ -70,7 +72,7 @@ export type EventDetail = {
 
 export type CreateEventInput = Pick<
   EventDetail,
-  "event_template_id" | "name" | "venue" | "event_date"
+  "event_template_id" | "name" | "venue" | "event_date" | "expected_attendance"
 >
 export type CreateTemplateInput = Pick<EventTemplate, "name" | "description"> & {
   beneficiary_id?: number | null
@@ -118,6 +120,45 @@ export type UpcomingDeadline = {
   team_member_id: number | null
 }
 
+export type Audience = "all" | "participants" | "volunteers"
+
+export type Announcement = {
+  id: number
+  event_id: number | null
+  title: string
+  body: string
+  audience: Audience
+  kind: "announcement" | "reminder"
+  created_by_team_member_id: number | null
+  created_at: string
+  sent_at: string | null
+  delivered_count: number
+  failed_count: number
+}
+
+export type CreateAnnouncementInput = {
+  title: string
+  body: string
+  audience: Audience
+}
+
+export type Certificate = {
+  id: number
+  event_id: number
+  participant_id: number | null
+  volunteer_id: number | null
+  download_token: string
+  issued_at: string
+  delivered_at: string | null
+  link: string
+}
+
+export type TeamMemberWhatsAppLink = {
+  whatsapp_contact_id: number
+  team_member_id: number
+  phone_number: string
+}
+
 type ListResponse<T> = {
   items: T[]
   total: number
@@ -128,7 +169,7 @@ type ListResponse<T> = {
 type EventTemplateSummary = Omit<EventTemplate, "tasks" | "roles">
 type EventSummary = Pick<
   EventDetail,
-  "id" | "name" | "venue" | "event_date" | "status"
+  "id" | "name" | "venue" | "event_date" | "status" | "is_cancelled"
 >
 
 export interface AdminApi {
@@ -142,6 +183,7 @@ export interface AdminApi {
   rescheduleEvent(eventId: number, input: RescheduleEventInput): Promise<EventDetail>
   closeEvent(eventId: number): Promise<EventDetail>
   reopenEvent(eventId: number): Promise<EventDetail>
+  cancelEvent(eventId: number): Promise<EventDetail>
   deleteEvent(eventId: number): Promise<void>
   createEventTask(eventId: number, input: CreateEventTaskInput): Promise<EventTask>
   updateEventTask(eventId: number, taskId: number, changes: UpdateEventTaskInput): Promise<EventTask>
@@ -152,6 +194,14 @@ export interface AdminApi {
   listTeamMembers(): Promise<TeamMember[]>
   getDashboardSummary(): Promise<DashboardSummary>
   listUpcomingDeadlines(): Promise<UpcomingDeadline[]>
+  listAnnouncements(eventId: number): Promise<Announcement[]>
+  createAnnouncement(eventId: number, input: CreateAnnouncementInput): Promise<Announcement>
+  createReminder(eventId: number, body?: string): Promise<Announcement>
+  generateCertificates(eventId: number): Promise<Certificate[]>
+  listCertificates(eventId: number): Promise<Certificate[]>
+  getTeamMemberWhatsAppLink(memberId: number): Promise<TeamMemberWhatsAppLink | null>
+  linkTeamMemberWhatsApp(memberId: number, phoneNumber: string): Promise<TeamMemberWhatsAppLink>
+  unlinkTeamMemberWhatsApp(memberId: number): Promise<void>
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -229,6 +279,10 @@ export const adminApi: AdminApi = {
     return request<EventDetail>(`/events/${eventId}/reopen`, { method: "POST" })
   },
 
+  cancelEvent(eventId) {
+    return request<EventDetail>(`/events/${eventId}/cancel`, { method: "POST" })
+  },
+
   deleteEvent(eventId) {
     return request<void>(`/events/${eventId}`, { method: "DELETE" })
   },
@@ -272,5 +326,53 @@ export const adminApi: AdminApi = {
   async listUpcomingDeadlines() {
     const result = await request<{ items: UpcomingDeadline[] }>("/dashboard/upcoming-deadlines?days=14&limit=8")
     return result.items
+  },
+
+  listAnnouncements(eventId) {
+    return request<Announcement[]>(`/events/${eventId}/announcements`)
+  },
+
+  createAnnouncement(eventId, input) {
+    return request<Announcement>(`/events/${eventId}/announcements`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    })
+  },
+
+  createReminder(eventId, body) {
+    return request<Announcement>(`/events/${eventId}/reminders`, {
+      method: "POST",
+      body: JSON.stringify(body ? { body } : {}),
+    })
+  },
+
+  generateCertificates(eventId) {
+    return request<Certificate[]>(`/events/${eventId}/certificates/generate`, { method: "POST" })
+  },
+
+  listCertificates(eventId) {
+    return request<Certificate[]>(`/events/${eventId}/certificates`)
+  },
+
+  async getTeamMemberWhatsAppLink(memberId) {
+    const baseUrl = import.meta.env.VITE_API_BASE_URL ?? "/api/v1"
+    const response = await fetch(`${baseUrl}/team-members/${memberId}/whatsapp-link`)
+    if (response.status === 404) return null
+    if (!response.ok) {
+      const payload = await response.json().catch(() => null)
+      throw new Error(payload?.detail ?? `Request failed with status ${response.status}`)
+    }
+    return response.json()
+  },
+
+  linkTeamMemberWhatsApp(memberId, phoneNumber) {
+    return request<TeamMemberWhatsAppLink>(`/team-members/${memberId}/whatsapp-link`, {
+      method: "POST",
+      body: JSON.stringify({ phone_number: phoneNumber }),
+    })
+  },
+
+  unlinkTeamMemberWhatsApp(memberId) {
+    return request<void>(`/team-members/${memberId}/whatsapp-link`, { method: "DELETE" })
   },
 }

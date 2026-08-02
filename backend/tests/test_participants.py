@@ -223,6 +223,27 @@ class ParticipantsEndpointTest(unittest.TestCase):
 
         self.assertEqual(response.json()["items"][0]["event_time"], "09:00")
 
+    def test_participant_events_flags_a_since_cancelled_event(self) -> None:
+        event_id = self.insert_template_and_event(name="Beach Cleanup")
+        participant = self.client.post(
+            "/api/v1/participants", json={"name": "Bob", "contact_number": "+6598765432"}
+        ).json()
+        self.client.post(
+            f"/api/v1/events/{event_id}/participants",
+            json={"participant_id": participant["id"]},
+        )
+
+        cancelled = self.client.post(f"/api/v1/events/{event_id}/cancel")
+        self.assertEqual(cancelled.status_code, 200)
+
+        response = self.client.get(f"/api/v1/participants/{participant['id']}/events")
+
+        self.assertEqual(response.status_code, 200)
+        item = response.json()["items"][0]
+        self.assertTrue(item["is_cancelled"])
+        self.assertEqual(item["status"], "closed")
+        self.assertNotIn("cancelled_at", item)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { clearVolunteerToken, getVolunteerDashboard, getVolunteerToken, listBeneficiaries, listEvents, type Beneficiary, type EventSummary, type VolunteerDashboardEvent } from "./volunteer-api"
+import { useWhatsAppChatLink } from "./whatsapp-link"
 
 const HERO_IMAGE = "/pts-community-hero.png"
 
@@ -122,6 +123,8 @@ export default function PublicEventsPortal({
       .sort((left, right) => left.event_date.localeCompare(right.event_date))
   }, [beneficiaryId, events, statusFilter])
 
+  const whatsappLink = useWhatsAppChatLink()
+
   return (
     <div className="public-events-portal">
       <header className="public-events-header">
@@ -131,6 +134,14 @@ export default function PublicEventsPortal({
         </a>
         <nav className="public-events-nav" aria-label="Public navigation">
           <a className="public-events-nav-link" href="#events">Events</a>
+          <a
+            className="public-events-nav-link public-events-whatsapp-link"
+            href={whatsappLink}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Chat with us on WhatsApp
+          </a>
           <button
             type="button"
             className="public-events-volunteer-link"

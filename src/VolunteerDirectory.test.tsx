@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import { readFileSync } from "node:fs"
 import { cleanup, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, describe, expect, it, vi } from "vitest"
@@ -76,8 +77,21 @@ describe("VolunteerDirectory", () => {
 
     await waitFor(() => expect(screen.getByText("No volunteers match these filters.")).toBeTruthy())
     expect(fetchMock).toHaveBeenCalledWith(
-      "http://localhost:8000/api/v1/volunteers/1",
+      "/api/v1/volunteers/1",
       { method: "DELETE" },
     )
+  })
+})
+
+describe("Volunteer directory mobile layout", () => {
+  it("contains the wide volunteer list inside its own scroll region", () => {
+    const styles = readFileSync("src/index.css", "utf8")
+
+    expect(styles).toMatch(/\.volunteer-directory\s*\{[^}]*max-width:\s*100%/)
+    expect(styles).toMatch(/\.crm-toolbar\s*\{[^}]*min-width:\s*0/)
+    expect(styles).toMatch(/\.search-field[\s\S]*min-width:\s*0/)
+    expect(styles).toMatch(/\.search-field input,[\s\S]*\.search-field select,[\s\S]*min-width:\s*0[^}]*max-width:\s*100%/)
+    expect(styles).toMatch(/\.volunteer-table-card\s*\{[^}]*min-width:\s*0/)
+    expect(styles).toMatch(/\.volunteer-table-wrap\s*\{[^}]*max-width:\s*100%[^}]*overflow-x:\s*auto/)
   })
 })

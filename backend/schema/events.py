@@ -22,6 +22,8 @@ class EventSummary(BaseModel):
     end_time: str | None = None
     status: EventStatus
     beneficiary_id: int | None = None
+    expected_attendance: int | None = None
+    is_cancelled: bool = False
     # Alias of `start_time` kept for the participant portal, which predates
     # the start_time/end_time split and still reads a single event time.
     event_time: str | None = None
@@ -36,6 +38,7 @@ class EventCreate(BaseModel):
     start_time: time | None = None
     end_time: time | None = None
     beneficiary_id: int | None = None
+    expected_attendance: int | None = Field(default=None, ge=0)
 
 
 class EventUpdate(BaseModel):
@@ -47,6 +50,7 @@ class EventUpdate(BaseModel):
     end_time: time | None = None
     status: EventStatus | None = None
     beneficiary_id: int | None = None
+    expected_attendance: int | None = Field(default=None, ge=0)
 
 
 class EventSubtaskOut(BaseModel):

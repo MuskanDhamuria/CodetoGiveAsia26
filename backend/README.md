@@ -44,6 +44,43 @@ Use `PASSION_DATABASE_PATH` to select another SQLite file and
 `PASSION_CORS_ORIGINS` for a comma-separated list of allowed frontend origins.
 The default CORS origins are the usual Vite development URLs on port 5173.
 
+The AI assistant endpoint (`POST /api/v1/ai/chat`) needs `OPENROUTER_API_KEY`
+set to a valid [OpenRouter](https://openrouter.ai) key — it returns a 500
+without one. `OPENROUTER_MODEL` optionally overrides the model slug (default:
+`anthropic/claude-3.5-sonnet`). The key is only ever read server-side; the
+frontend never sees it and never calls OpenRouter directly.
+
+## WhatsApp bot
+
+The bot integrates with the Meta WhatsApp Cloud API. Without credentials it
+falls back to a logging-only client, so the webhook and admin endpoints work
+in development without a Meta Business account. To send real messages, set:
+
+- `WHATSAPP_TOKEN` — Cloud API access token.
+- `WHATSAPP_PHONE_NUMBER_ID` — the sending number's phone number ID.
+- `WHATSAPP_APP_SECRET` — app secret used to verify inbound webhook
+  signatures (`X-Hub-Signature-256`). Leave unset in development to skip
+  signature verification.
+- `WHATSAPP_VERIFY_TOKEN` — shared secret for the one-time
+  `hub.verify_token` webhook subscription handshake.
+- `PASSION_PUBLIC_BASE_URL` — base URL used to build certificate links sent
+  over WhatsApp (defaults to `http://localhost:8000`).
+
+Webhook URL to register with Meta: `POST /api/v1/integrations/whatsapp/webhook`
+(and `GET` on the same path for the verification handshake).
+
+### Debugging the bot
+
+The backend logs every inbound message, outbound send (success and
+failure), webhook signature/verification rejections, and announcement/
+certificate delivery results — under the `backend.integrations.whatsapp_client`,
+`backend.api.routes.whatsapp`, and `backend.bot.commands` loggers. These are
+configured to print to the console by default; set `LOG_LEVEL=WARNING` to
+quiet the per-message `INFO` lines and only see failures, or `LOG_LEVEL=DEBUG`
+for more detail. If something isn't working, check the uvicorn terminal
+first — most WhatsApp issues (bad signature, missing credentials, a rejected
+send) show up there with the specific reason.
+
 ## Database
 
 Create a local database with:

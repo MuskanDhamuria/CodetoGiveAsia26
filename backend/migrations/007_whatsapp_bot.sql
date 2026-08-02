@@ -1,0 +1,4 @@
+-- Superseded: renumbered to 008_whatsapp_bot.sql to avoid colliding with
+-- 007_skill_enhancement_template.sql (both were numbered 007). This file is
+-- intentionally left as a harmless no-op; delete it if your filesystem
+-- allows removing files (the sandbox that authored this couldn't).

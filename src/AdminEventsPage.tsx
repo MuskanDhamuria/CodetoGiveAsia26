@@ -15,7 +15,6 @@ import {
 import EventCollectionPrototype, { type EventCollectionItem } from "./EventCollectionPrototype"
 import { EventCalendar } from "./EventCalendar"
 import EventVolunteerTab from "./EventVolunteerTab"
-import EventAttendanceTab from "./EventAttendanceTab"
 import EventLogistics from "./EventLogistics"
 import "./EventOperationsMvp.css"
 
@@ -167,7 +166,7 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
   const [reviewPage, setReviewPage] = useState(0)
   const [creating, setCreating] = useState(false)
   const [openEventId, setOpenEventId] = useState<number | null>(initialEventId)
-  const [workspaceTab, setWorkspaceTab] = useState<"tasks" | "volunteers" | "attendance" | "logistics">("tasks")
+  const [workspaceTab, setWorkspaceTab] = useState<"tasks" | "volunteers" | "logistics">("tasks")
   const [mobileTaskStatus, setMobileTaskStatus] = useState<"incomplete" | "ongoing" | "done">("incomplete")
   const [draggedTaskId, setDraggedTaskId] = useState<number | null>(null)
   const [dragOverStatus, setDragOverStatus] = useState<string | null>(null)
@@ -886,15 +885,6 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
                 onClick={() => setWorkspaceTab("volunteers")}
               >Volunteers</button>
               <button
-                aria-controls="event-attendance-workspace"
-                aria-selected={workspaceTab === "attendance"}
-                className={workspaceTab === "attendance" ? "active" : ""}
-                id="event-attendance-tab"
-                role="tab"
-                type="button"
-                onClick={() => setWorkspaceTab("attendance")}
-              >Attendance</button>
-              <button
                 aria-controls="event-logistics-workspace"
                 aria-selected={workspaceTab === "logistics"}
                 className={workspaceTab === "logistics" ? "active" : ""}
@@ -1049,11 +1039,6 @@ export default function AdminEventsPage({ api = adminApi, initialEventId = null 
                 onUpdateTaskAssignees={(task, people) => updateTaskPeople(openEvent, task, people)}
                 onUpdateSubtaskAssignees={(task, subtask, people) => updateSubtaskPeople(openEvent, task, subtask, people)}
                 onOpenTask={(task) => { setWorkspaceTab("tasks"); openTaskEditor(task, openEvent.status === "open" ? "edit" : "preview") }}
-              />
-            </div> : workspaceTab === "attendance" ? <div aria-labelledby="event-attendance-tab" id="event-attendance-workspace" role="tabpanel">
-              <EventAttendanceTab
-                eventId={openEvent.id}
-                readOnly={openEvent.is_cancelled}
               />
             </div> : <div aria-labelledby="event-logistics-tab" id="event-logistics-workspace" role="tabpanel">
               <EventLogistics eventId={openEvent.id} eventStatus={openEvent.status} />
